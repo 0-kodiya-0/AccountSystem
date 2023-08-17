@@ -4,7 +4,7 @@ const crypto = require("crypto");
 // Creating the redis client and connecting to redis server
 const redis = createClient({
     database: 0,
-    url: process.env.REDIS_URI
+    url: process.env.REDIS_URL
 })
 redis.connect();
 
@@ -87,10 +87,33 @@ async function uniqueJsonSet(key, path, object, options) {
     };
 };
 
+/**
+ * 
+ * Creates a session with a random id in the redis database
+ * 
+ * @param {Object} object - Session object that need to saved
+ * @param {Number} exp - Expiration time in seconds 
+ * @returns {Promise<String>}
+ */
+async function setSessionObject(object, exp) {
+    for (let i = 0; i < 5; i++) {
+        try {
+            const key = randomBytes(10).toString("base64url");
+            await uniqueJsonSet(key, "$", object);
+            await redis.expire(key, exp);
+            return key;
+        } catch (error) {
+            continue;
+        };
+    };
+    throw new ErrorReply("Server is out of resources. Please try again later.");
+};
+
 module.exports = {
     redis,
     checkConnection,
     setCode,
     uniqueSet,
-    uniqueJsonSet
+    uniqueJsonSet,
+    setSessionObject
 }
