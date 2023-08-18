@@ -55,6 +55,23 @@ function bodyPasswordEx(req, res, next) {
     };  
 };
 
+/**
+ * 
+ * @param {Object} req 
+ * @param {Object} res 
+ * @param {Function} next 
+ */
+function bodyCommentEx(req, res, next) {
+    try {
+        if (typeof req.body.comment !== "string") {
+            throw notFoundError("comment not found");
+        };
+        next();
+    } catch (error) {
+        next(error);
+    };  
+};
+
 module.exports = {
-    accountTypeEx, sessionObjectEx, bodyPasswordEx
+    accountTypeEx, sessionObjectEx, bodyPasswordEx, bodyCommentEx
 }

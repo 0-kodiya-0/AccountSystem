@@ -1,19 +1,42 @@
-const { notAccptedError } = require("../../local_modules/MyExpressServer/src/response");
+const { forbiddenError, serverError } = require("../../local_modules/MyExpressServer/src/response");
+const { redis } = require("../config/db/cache");
+const { verify } = require("../config/jwt");
 
 /**
  * 
- * Valdates the password in the body of the request in sign in and sign up
+ * Checks if the session object is valid for data add paths in the sign in and sign up
+ * 
+ * @param {Object} req 
+ * @param {Object} res 
+ * @param {Function} next
+ * 
+ * @returns {Promise} 
+ */
+async function sessionValid(req, res, next) {
+    try {
+        const token = await verify(req.searchParams.session);
+        if (await redis.exists(token.owner.id) !== 1) {
+            throw forbiddenError("session id invalid or expired");
+        };
+        req.tokenData = JSON.parse(token);
+        next();
+    } catch (error) {
+        next(serverError(error));
+    };
+};
+
+/**
+ * 
+ * Checks if the sign in, sign up session or access token has the type == server
  * 
  * @param {Object} req 
  * @param {Object} res 
  * @param {Function} next 
  */
-function validatePassword(req, res, next) {
+async function isServerAccountType(req, res, next) {
     try {
-        const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#\$%\^&\*])(?=.{8,20})/;
-        const valid = regex.test(req.body.password);
-        if (valid === false) {
-            throw notAccptedError("invalid password enterd");
+        if (req.tokenData.owner.type !== "server") {
+            throw forbiddenError(`account type ${req.tokenData.owner.type} cannot access this path`);
         };
         next();
     } catch (error) {
@@ -22,5 +45,5 @@ function validatePassword(req, res, next) {
 };
 
 module.exports = {
-    validatePassword
+    sessionValid, isServerAccountType
 };

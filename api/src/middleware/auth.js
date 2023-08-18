@@ -1,6 +1,4 @@
-const { forbiddenError, serverError } = require("../../local_modules/MyExpressServer/src/response");
-const { redis } = require("../config/db/cache");
-const { verify } = require("../config/jwt");
+const { forbiddenError } = require("../../local_modules/MyExpressServer/src/response");
 
 /**
  * 
@@ -10,12 +8,16 @@ const { verify } = require("../config/jwt");
  * @returns {Array}
  */
 function basicAuthCheck(authorization) {
-    const authDetails = authorization.split(" ");
-    const authDataArr = Buffer.from(authDetails[1], "base64").toString("utf-8").split(":");
-    if (authDataArr[0] !== process.env.SERVER_USERNAME || authDataArr[1] !== process.env.SERVER_PASSWORD) { // remider to fix
-        throw forbiddenError("basic details not valid");
+    if (authorization) {
+        const authDetails = authorization.split(" ");
+        const authDataArr = Buffer.from(authDetails[1], "base64").toString("utf-8").split(":");
+        if (authDataArr[0] !== process.env.SERVER_USERNAME || authDataArr[1] !== process.env.SERVER_PASSWORD) { // remider to fix
+            throw forbiddenError("basic details not valid");
+        };
+        return authDataArr;
+    } else {
+        throw forbiddenError("basic details missing");
     };
-    return authDataArr;
 };
 
 /**
@@ -28,8 +30,8 @@ function basicAuthCheck(authorization) {
  */
 function createSessionPathAccess(req, res, next) {
     try {
-        if (req.admin === true && req.searchParams.for === "server") {
-            basicAuthCheck(req.headers);
+        if (req.searchParams.for === "server") {
+            basicAuthCheck(req.headers.authorization);
         } else {
             if (req.admin === true) {
                 throw forbiddenError("cannot access admin paths");
@@ -42,29 +44,6 @@ function createSessionPathAccess(req, res, next) {
     };
 };
 
-/**
- * 
- * Checks if the session object is valid for data add paths in the sign in and sign up
- * 
- * @param {Object} req 
- * @param {Object} res 
- * @param {Function} next
- * 
- * @returns {Promise} 
- */
-async function sessionValid(req, res, next) {
-    try {
-        const token = await verify(req.searchParams.session);
-        if (await redis.exists(token.owner.id) !== 1) {
-            throw forbiddenError("session id invalid or expired");
-        };
-        req.tokenData = JSON.parse(token);
-        next();
-    } catch (error) {
-        next(serverError(error));
-    };
-};
-
 module.exports = {
-    basicAuthCheck, createSessionPathAccess, sessionValid
+    basicAuthCheck, createSessionPathAccess
 };

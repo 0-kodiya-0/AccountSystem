@@ -1,3 +1,4 @@
 module.exports = {
-    accountServer : "AccountServer"
+    security: "Security",
+    server: "Server"
 }

@@ -11,7 +11,7 @@ Get("/signin/createsession", accountTypeEx, createSessionPathAccess, async (req,
         const session = { userName: "", password: "" };
         const id = await setSessionObject(session, 120);
         try {
-            const token = await sign(JSON.stringify({ owner: { id: id, type: req.searchParams.for } }), 120);
+            const token = await sign({ owner: { id: id, type: req.searchParams.for } }, 120);
             next(null, ok(token.token));
         } catch (error) {
             throw serverError(error);
@@ -37,7 +37,7 @@ Get("/signup/createsession", accountTypeEx, createSessionPathAccess, async (req,
         };
         const id = await setSessionObject(session, 300);
         try {
-            const token = await sign(JSON.stringify({ owner: { id: id, type: req.searchParams.for } }), 300).token;
+            const token = await sign({ owner: { id: id, type: req.searchParams.for } }, 300).token;
             next(null, ok(token.token));
         } catch (error) {
             throw serverError(error);

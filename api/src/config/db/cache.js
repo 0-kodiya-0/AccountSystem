@@ -1,12 +1,11 @@
 const { createClient, ErrorReply } = require("redis");
-const crypto = require("crypto");
+const { randomBytes } = require("crypto");
 
 // Creating the redis client and connecting to redis server
 const redis = createClient({
     database: 0,
     url: process.env.REDIS_URL
-})
-redis.connect();
+});
 
 const retryCount = 10;
 
@@ -17,7 +16,7 @@ async function checkConnection() {
     if (redis.isOpen) {
         return;
     } else {
-        return await redis.connect();
+        return redis.connect();
     };
 };
 
@@ -33,7 +32,7 @@ async function checkConnection() {
 async function setCode(value, exp, options) {
     let code;
     for (let i = 0; i < retryCount; i++) {
-        code = crypto.randomBytes(10).toString("hex");
+        code = randomBytes(10).toString("hex");
         if (await redis.get(code) || await redis.json.get(code)) {
             continue;
         } else {
@@ -65,7 +64,7 @@ async function uniqueSet(key, value, options) {
     if (await redis.exists(key) > 0) {
         throw new ErrorReply("Key exists");
     } else {
-        return await redis.set(key, value, options);
+        return redis.set(key, value, options);
     };
 };
 
@@ -83,7 +82,7 @@ async function uniqueJsonSet(key, path, object, options) {
     if (await redis.exists(key) > 0) {
         throw new ErrorReply("Key exists");
     } else {
-        return await redis.json.set(key, path, object, options);
+        return redis.json.set(key, path, object, options);
     };
 };
 

@@ -1,24 +1,13 @@
-const { forbiddenError, notFoundError, ok } = require("../../local_modules/MyExpressServer/src/response");
+const { ok, notAccptedError } = require("../../local_modules/MyExpressServer/src/response");
 const { redis } = require("../config/db/cache");
-const { sessionValid } = require("../middleware/auth");
-const { sessionObjectEx, bodyPasswordEx } = require("../middleware/requirement");
-const { validatePassword } = require("../middleware/validate");
+const { sessionObjectEx, bodyPasswordEx, bodyCommentEx } = require("../middleware/requirement");
+const { isServerAccountType, sessionValid } = require("../middleware/validate");
+const { validatePassword, insertInfo } = require("../schema/security");
+const { ServerModel } = require("../schema/server");
 
 const { Post } = require("../../local_modules/MyExpressServer/index").Routes
 
-Post("/signup/add/comment", sessionObjectEx, sessionValid, (req, res, next) => {
-    try {
-        if (req.tokenData.owner.type !== "server") {
-            throw forbiddenError(`account type ${req.tokenData.owner.type} cannot access this path`);
-        };
-        if (typeof req.body.comment !== "string") {
-            throw notFoundError("comment not found");
-        };
-        next();
-    } catch (error) {
-        next(error);
-    };
-}, async (req, res, next) => {
+Post("/signup/add/comment", bodyCommentEx, sessionObjectEx, sessionValid, async (req, res, next) => {
     try {
         await redis.json.set(req.tokenData.owner.id, "comment", req.body.comment);
         next(ok("validated successfully"));
@@ -27,8 +16,13 @@ Post("/signup/add/comment", sessionObjectEx, sessionValid, (req, res, next) => {
     };
 });
 
-Post("/signup/add/password", bodyPasswordEx, validatePassword, sessionObjectEx, sessionValid, async (req, res, next) => {
+Post("/signup/add/password", bodyPasswordEx, sessionObjectEx, sessionValid, async (req, res, next) => {
     try {
+        try {
+            validatePassword(req.body.password);
+        } catch (error) {
+            throw notAccptedError(error);
+        };
         await redis.json.set(req.tokenData.owner.id, "password", req.body.password);
         next(ok("validated successfully"));
     } catch (error) {
@@ -36,9 +30,12 @@ Post("/signup/add/password", bodyPasswordEx, validatePassword, sessionObjectEx, 
     };
 });
 
-Post("/signup/submit", bodyPasswordEx, validatePassword, sessionObjectEx, sessionValid, async (req, res, next) => {
+Post("/signup/submit", bodyPasswordEx, sessionObjectEx, isServerAccountType, sessionValid, async (req, res, next) => {
     try {
-        
+        const cacheData = await redis.json.get(req.tokenData.owner.id);
+        await new ServerModel({ comment: cacheData.comment }).save();
+        await insertInfo({ type: "server", password: cacheData.password });
+        next(ok("data insert successfully"));
     } catch (error) {
         next(error);
     };
