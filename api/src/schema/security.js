@@ -1,4 +1,4 @@
-const { Schema, model } = require("mongoose");
+const { Schema, default: mongoose } = require("mongoose");
 const { hash, compare } = require("bcrypt");
 const schemaNames = require("./names");
 const { ServerModel } = require("./server");
@@ -13,14 +13,15 @@ const passwordValidateRegex = {
 };
 
 const SecuritySchema = new Schema({
-    _id: {
-        type: String,
+    accountId: {
+        type: mongoose.Types.ObjectId,
         cast: false,
+        index: true,
         unique: true,
         validate: async function (data) {
             let exists;
-            switch (data) {
-                case "personal":
+            switch (this.type) {
+                case "server":
                     exists = await ServerModel.exists({ _id: data });
                     break;
                 default:
@@ -69,7 +70,7 @@ const SecuritySchema = new Schema({
             };
         }
     },
-    organizationAccountId: {
+    organizationId: {
         type: String,
         cast: false,
         required: function () {
@@ -91,9 +92,9 @@ const SecuritySchema = new Schema({
             };
         }
     }
-}, { id: false, timestamps: true, writeConcern: { w: "majority", j: true, wtimeout: 5000 }, strict: true, strictQuery: true })
+}, { timestamps: true, writeConcern: { w: "majority", j: true, wtimeout: 5000 }, strict: true, strictQuery: true })
 
-const SecurityModel = model(schemaNames.security, SecuritySchema, schemaNames.security);
+const SecurityModel = global.mongooseClient.model(schemaNames.security, SecuritySchema, schemaNames.security);
 
 // Schema functions
 
@@ -149,13 +150,18 @@ async function hashPassword(password) {
  */
 async function insertInfo(inputData, options) {
     for (let i = 0; i < 5; i++) {
-        setTimeout(async () => {
+        setTimeout(() => {
+            return;
+        }, 1000);
+        try {
             validatePassword(inputData.password);
             inputData.password = await hashPassword(inputData.password);
             const dataObject = new SecurityModel(inputData);
             await dataObject.validate();
             return dataObject.save(options);
-        }, 1000);
+        } catch (error) {
+            continue;
+        };
     };
     throw new Error("Data inserting error");
 };
@@ -164,12 +170,38 @@ async function insertInfo(inputData, options) {
  * 
  * Update data in security collection
  * 
+ * @param {String} aType - Account type
  * @param {Object} fillter 
  * @param {Object} update 
  * @param {Object|undefined} options 
  * @returns {Promise}
  */
-async function updateInfo(fillter, update, options) {
+async function updateInfo(fillter, update, aType, options) {
+    if (typeof fillter !== "object" || typeof update !== "object" || typeof options !== "object") {
+        throw new TypeError("Fillter and update and options needs to be object");
+    };
+    if (typeof update.$set !== "object") {
+        throw new TypeError("Update object invalid. Need to have a $set object");
+    };
+    // Checking for the account type. Because account type is needed so that we can identify what are required values and not required values for the
+    // specific account type
+    if (typeof aType === "undefined") {
+        data = await SecurityModel.findOne(fillter, { type: 1 });
+        if (typeof data === "object") {
+            aType = data.type
+        } else {
+            throw new TypeError("Account type not found");
+        };
+    } else {
+        if (aType === "server" || aType === "admin" || aType === "root") {
+            update = { $set: { password: update.$set.password } };
+        };
+        if (aType !== "organization") {
+            if (typeof update.$set.organizationId === "string") {
+                throw new TypeError("Only account type organization can have a organization id");
+            };
+        };
+    };
     for (let i = 0; i < 5; i++) {
         if (update.$set) {
             if (typeof update.$set.password === "string") {

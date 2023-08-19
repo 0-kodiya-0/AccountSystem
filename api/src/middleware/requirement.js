@@ -11,7 +11,7 @@ const { notFoundError } = require("../../local_modules/MyExpressServer/src/respo
 function accountTypeEx(req, res, next) {
     try {
         if (typeof req.searchParams.for !== "string") {
-            throw notFoundError("account type not found");
+            throw notFoundError("Account type not found");
         };
         next()  
     } catch (error) {
@@ -30,7 +30,7 @@ function accountTypeEx(req, res, next) {
 function sessionObjectEx(req, res, next) {
     try {
         if (typeof req.searchParams.session !== "string") {
-            throw notFoundError("session object not found")  
+            throw notFoundError("Session object not found")  
         };
         next();      
     } catch (error) {
@@ -47,7 +47,7 @@ function sessionObjectEx(req, res, next) {
 function bodyPasswordEx(req, res, next) {
     try {
         if (typeof req.body.password !== "string") {
-            throw notFoundError("password not found");
+            throw notFoundError("Password not found");
         };
         next();
     } catch (error) {
@@ -64,7 +64,7 @@ function bodyPasswordEx(req, res, next) {
 function bodyCommentEx(req, res, next) {
     try {
         if (typeof req.body.comment !== "string") {
-            throw notFoundError("comment not found");
+            throw notFoundError("Comment not found");
         };
         next();
     } catch (error) {

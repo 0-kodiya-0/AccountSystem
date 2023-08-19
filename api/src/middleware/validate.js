@@ -14,14 +14,45 @@ const { verify } = require("../config/jwt");
  */
 async function sessionValid(req, res, next) {
     try {
-        const token = await verify(req.searchParams.session);
-        if (await redis.exists(token.owner.id) !== 1) {
-            throw forbiddenError("session id invalid or expired");
+        req.tokenData = await verify(req.searchParams.session);
+        if (await redis.exists(req.tokenData.owner.id) !== 1) {
+            throw forbiddenError("Session id invalid or expired");
         };
-        req.tokenData = JSON.parse(token);
         next();
     } catch (error) {
         next(serverError(error));
+    };
+};
+
+/**
+ * 
+ * Checks session is issued for the sign in path 
+ * 
+ * @param {Object} req 
+ * @param {Object} res 
+ * @param {Function} next 
+ */
+function isSessionSignIn(req, res, next) {
+    if (req.tokenData.for === "signin") {
+        next();
+    } else {
+        next(forbiddenError("Invalid session object"));
+    };
+};
+
+/**
+ * 
+ * Checks session is issued for the sign up path 
+ * 
+ * @param {Object} req 
+ * @param {Object} res 
+ * @param {Function} next 
+ */
+function isSessionSignUp(req, res, next) {
+    if (req.tokenData.for === "signup") {
+        next();
+    } else {
+        next(forbiddenError("Invalid session object"));
     };
 };
 
@@ -36,7 +67,7 @@ async function sessionValid(req, res, next) {
 async function isServerAccountType(req, res, next) {
     try {
         if (req.tokenData.owner.type !== "server") {
-            throw forbiddenError(`account type ${req.tokenData.owner.type} cannot access this path`);
+            throw forbiddenError(`Account type ${req.tokenData.owner.type} cannot access this path`);
         };
         next();
     } catch (error) {
@@ -45,5 +76,5 @@ async function isServerAccountType(req, res, next) {
 };
 
 module.exports = {
-    sessionValid, isServerAccountType
+    sessionValid, isServerAccountType, isSessionSignIn, isSessionSignUp
 };

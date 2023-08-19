@@ -12,11 +12,11 @@ function basicAuthCheck(authorization) {
         const authDetails = authorization.split(" ");
         const authDataArr = Buffer.from(authDetails[1], "base64").toString("utf-8").split(":");
         if (authDataArr[0] !== process.env.SERVER_USERNAME || authDataArr[1] !== process.env.SERVER_PASSWORD) { // remider to fix
-            throw forbiddenError("basic details not valid");
+            throw forbiddenError("Basic details not valid");
         };
         return authDataArr;
     } else {
-        throw forbiddenError("basic details missing");
+        throw forbiddenError("Basic details missing");
     };
 };
 
@@ -34,9 +34,9 @@ function createSessionPathAccess(req, res, next) {
             basicAuthCheck(req.headers.authorization);
         } else {
             if (req.admin === true) {
-                throw forbiddenError("cannot access admin paths");
+                throw forbiddenError("Cannot access admin paths");
             };
-            throw forbiddenError("under construction"); // fix
+            throw forbiddenError("Under construction"); // fix
         };
         next();
     } catch (error) {

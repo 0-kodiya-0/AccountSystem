@@ -9,9 +9,9 @@ const { Get } = require("../../local_modules/MyExpressServer/index").Routes;
 Get("/signin/createsession", accountTypeEx, createSessionPathAccess, async (req, res, next) => {
     try {
         const session = { userName: "", password: "" };
-        const id = await setSessionObject(session, 120);
+        const id = await setSessionObject(session, 500000000);
         try {
-            const token = await sign({ owner: { id: id, type: req.searchParams.for } }, 120);
+            const token = await sign({ owner: { id: id, type: req.searchParams.for }, for: "signin" }, 500000000);
             next(null, ok(token.token));
         } catch (error) {
             throw serverError(error);
@@ -35,9 +35,9 @@ Get("/signup/createsession", accountTypeEx, createSessionPathAccess, async (req,
         } else {
             throw notFoundError("Account type invalid");
         };
-        const id = await setSessionObject(session, 300);
+        const id = await setSessionObject(session, 500000000);
         try {
-            const token = await sign({ owner: { id: id, type: req.searchParams.for } }, 300).token;
+            const token = await sign({ owner: { id: id, type: req.searchParams.for }, for: "signup" }, 500000000);
             next(null, ok(token.token));
         } catch (error) {
             throw serverError(error);

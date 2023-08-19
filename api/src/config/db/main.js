@@ -3,22 +3,16 @@ const mongoose = require("mongoose");
 
 const dbName = "account";
 
-let mongooseClient = mongoose;
-let mongodbClient;
-let gridFsClient;
-
 async function connect() {
-    const client = new MongoClient(process.env.MONGO_DB_URL, { dbName: dbName, serverSelectionTimeoutMS: 1000 });
-    mongodbClient = await client.connect(); // Connecting to mongodb
-
-    mongooseClient = mongoose.createConnection().setClient(mongodbClient); // Creating a mongoose cleint
-    mongooseClient.set('strictQuery', false);
-
-    gridFsClient = new GridFSBucket(mongodbClient.db(`${dbName}_chunks`), { writeConcern: { w: "majority", j: true } }); // Creating a mongodb grid fs client
-
-    mongodbClient = mongodbClient.db(dbName);
+    if (typeof global.mongooseClient === "undefined" && typeof global.mongodbClient === "undefined" && typeof global.gridFsClient === "undefined") {
+        const client = await new MongoClient(process.env.MONGO_DB_URL, { serverSelectionTimeoutMS: 1000 }).connect();
+        global.mongooseClient = mongoose.createConnection().setClient(client); // Creating a mongoose cleint
+        global.mongooseClient.set('strictQuery', false);
+        global.gridFsClient = new GridFSBucket(client.db(`${dbName}_chunks`), { writeConcern: { w: "majority", j: true } }); // Creating a mongodb grid fs client
+        global.mongodbClient = client.db(dbName);
+    };
 };
 
 module.exports = {
-    mongooseClient, mongodbClient, gridFsClient, dbName, connect
+    dbName, connect
 };
