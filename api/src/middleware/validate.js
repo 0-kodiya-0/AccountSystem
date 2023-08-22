@@ -1,5 +1,5 @@
 const { forbiddenError, serverError, notAccptedError } = require("../../local_modules/MyExpressServer/src/response");
-const { redis } = require("../config/db/cache");
+const { redis, cacheKeyIdentifyNames } = require("../config/db/cache");
 const { verify } = require("../config/jwt");
 const { compare } = require('bcrypt');
 const { MongooseError } = require("mongoose");
@@ -17,16 +17,19 @@ const securityCollection = require("../schema/security");
  * 
  * @returns {Promise} 
  */
-async function sessionValid(req, res, next) {
+async function signinUpsessionValid(req, res, next) {
     try {
-        req.tokenData = await verify(req.searchParams.session);
-        if (await redis.exists(req.tokenData.owner.id) !== 1) {
-            next(forbiddenError("Session id invalid or expired"));
-        } else {
-            next();
+        try {
+            req.tokenData = await verify(req.searchParams.session);
+        } catch (error) {
+            throw forbiddenError(error.message);
         };
+        if (await redis.exists(cacheKeyIdentifyNames.signInUpsession + req.tokenData.owner.id) !== 1) {
+            throw forbiddenError("Session id invalid or expired");
+        };
+        next();
     } catch (error) {
-        next(serverError(error));
+        next(error);
     };
 };
 
@@ -163,5 +166,5 @@ async function passwordEx(accountId, password) {
 };
 
 module.exports = {
-    sessionValid, isServerAccountType, isSessionSignIn, isSessionSignUp, schemaPathValidate, userNameEx, passwordEx
+    signinUpsessionValid, isServerAccountType, isSessionSignIn, isSessionSignUp, schemaPathValidate, userNameEx, passwordEx
 };

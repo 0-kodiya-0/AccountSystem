@@ -4,7 +4,7 @@ const server = require("./local_modules/MyExpressServer").Server;
 const db = require("./src/config/db/main");
 const cache = require("./src/config/db/cache");
 
-server.listen(3000, async () => {
+server.listen(4000, async () => {
     try {
         await db.connect();
         await cache.redis.connect();

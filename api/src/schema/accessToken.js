@@ -1,6 +1,7 @@
 const { Schema, Types } = require("mongoose");
 const schemaNames = require("./names");
 const { ServerModel } = require("./server");
+const { getAccountType } = require("./security");
 const { getErrorMinimized } = require("./error");
 
 const AccessTokenSchema = new Schema({
@@ -8,7 +9,6 @@ const AccessTokenSchema = new Schema({
         type: Types.ObjectId,
         cast: false,
         index: true,
-        unique: true,
         validate: async function (data) {
             if (await ServerModel.exists({ _id: data }) === null) {
                 throw "Invalid server account id";
@@ -54,7 +54,22 @@ const AccessTokenModel = global.mongooseClient.model(schemaNames.accessTokens, A
  * @param {Object|undefined} options
  * @returns {Promise} 
  */
-async function insertInfo(inputData, options) {
+async function insertInfo(inputData, aType, options) {
+    if (typeof aType === "undefined") {
+        aType = await getAccountType({ _id: inputData.accountId });
+    };
+    if (aType !== "server") {
+        if (await AccessTokenModel.findOne({ accountId: inputData.accountId, loged: true })) {
+            inputData.loged = false;
+        };
+        if (aType === "root") {
+            if (await AccessTokenModel.findOne({ accountId: inputData.accountId, loged: true })) {
+                throw new TypeError("Root cannot have multiple access tokens");
+            };
+        };
+    } else {
+        await updateInfo({ accountId: inputData.accountId, loged: true }, { $set: { loged: false } });
+    };
     const dataObject = new AccessTokenModel(inputData);
     try {
         await dataObject.validate();
@@ -84,7 +99,7 @@ async function insertInfo(inputData, options) {
  * @returns {Promise}
  */
 async function updateInfo(fillter, update, options) {
-    if (typeof fillter !== "object" || typeof update !== "object" || typeof options !== "object") {
+    if (typeof fillter !== "object" || typeof update !== "object") {
         throw new TypeError("fillter and update and options needs to be object");
     };
     if (typeof update.$set !== "object") {

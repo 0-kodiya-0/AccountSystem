@@ -177,6 +177,27 @@ async function insertInfo(inputData, options) {
 
 /**
  * 
+ * Returns the found account type that match the given fillter 
+ * 
+ * @param {object} fillter
+ * @returns {Promise<String>}
+ */
+async function getAccountType(fillter) {
+    let data;
+    try {
+        data = await SecurityModel.findOne(fillter, { type: 1 });
+        if (typeof data === "object") {
+            return data.type;
+        } else {
+            throw "error";
+        };
+    } catch (error) {
+        throw new TypeError("Account type not found");
+    };
+};
+
+/**
+ * 
  * Update data in security collection
  * 
  * @param {String} aType - Account type
@@ -186,7 +207,7 @@ async function insertInfo(inputData, options) {
  * @returns {Promise}
  */
 async function updateInfo(fillter, update, aType, options) {
-    if (typeof fillter !== "object" || typeof update !== "object" || typeof options !== "object") {
+    if (typeof fillter !== "object" || typeof update !== "object") {
         throw new TypeError("fillter and update and options needs to be object");
     };
     if (typeof update.$set !== "object") {
@@ -195,20 +216,14 @@ async function updateInfo(fillter, update, aType, options) {
     // Checking for the account type. Because account type is needed so that we can identify what are required values and not required values for the
     // specific account type
     if (typeof aType === "undefined") {
-        data = await SecurityModel.findOne(fillter, { type: 1 });
-        if (typeof data === "object") {
-            aType = data.type
-        } else {
-            throw new TypeError("Account type not found");
-        };
-    } else {
-        if (aType === "server" || aType === "admin" || aType === "root") {
-            update = { $set: { password: update.$set.password } };
-        };
-        if (aType !== "organization") {
-            if (typeof update.$set.organizationId === "string") {
-                throw new TypeError("Only account type organization can have a organization id");
-            };
+        aType = await getAccountType(fillter);
+    };
+    if (aType === "server" || aType === "admin" || aType === "root") {
+        update = { $set: { password: update.$set.password } };
+    };
+    if (aType !== "organization") {
+        if (typeof update.$set.organizationId === "string") {
+            throw new TypeError("Only account type organization can have a organization id");
         };
     };
     if (update.$set) {
@@ -226,5 +241,6 @@ module.exports = {
     validatePassword,
     hashPassword,
     insertInfo,
-    updateInfo
+    updateInfo,
+    getAccountType
 };

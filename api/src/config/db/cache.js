@@ -86,6 +86,10 @@ async function uniqueJsonSet(key, path, object, options) {
     };
 };
 
+const cacheKeyIdentifyNames = {
+    signInUpsession: "signinUpsession"
+};
+
 /**
  * 
  * Creates a session with a random id in the redis database
@@ -95,12 +99,73 @@ async function uniqueJsonSet(key, path, object, options) {
  * @returns {Promise<String>}
  */
 async function setSessionObject(object, exp) {
+    let keyCount = await redis.get(cacheKeyIdentifyNames.signInUpsession + "count");
+    if (keyCount === null) {
+        keyCount = 0;
+        await redis.set(cacheKeyIdentifyNames.signInUpsession + "count", 0);
+    };
+    if (keyCount <= 1000) {
+        for (let i = 0; i < 5; i++) {
+            try {
+                const key = randomBytes(10).toString("base64url");
+                await uniqueJsonSet(cacheKeyIdentifyNames.signInUpsession + key, "$", object);
+                await redis.expire(cacheKeyIdentifyNames.signInUpsession + key, exp);
+                await redis.incr(cacheKeyIdentifyNames.signInUpsession + "count");
+                return key;
+            } catch (error) {
+                continue;
+            };
+        };
+    };
+    throw new ErrorReply("Server is out of resources. Please try again later.");
+};
+
+/**
+ * 
+ * Update a session object from the redis cache
+ * 
+ * @param {String} key 
+ */
+async function updateSessionObject(key, path, updateData, options) {
     for (let i = 0; i < 5; i++) {
         try {
-            const key = randomBytes(10).toString("base64url");
-            await uniqueJsonSet(key, "$", object);
-            await redis.expire(key, exp);
-            return key;
+            return await redis.json.set(cacheKeyIdentifyNames.signInUpsession + key, path, updateData, options);
+        } catch (error) {
+            continue;
+        };
+    };
+    throw new ErrorReply("Server is out of resources. Please try again later.");
+};
+
+/**
+ * 
+ * Get a session object from the redis cache
+ * 
+ * @param {String} key 
+ */
+async function getSessionObject(key, options) {
+    for (let i = 0; i < 5; i++) {
+        try {
+            return await redis.json.get(cacheKeyIdentifyNames.signInUpsession + key, options);
+        } catch (error) {
+            continue;
+        };
+    };
+    throw new ErrorReply("Server is out of resources. Please try again later.");
+};
+
+/**
+ * 
+ * Deletes a session object from the redis cache
+ * 
+ * @param {String} key 
+ */
+async function delSessionObject(key) {
+    for (let i = 0; i < 5; i++) {
+        try {
+            await redis.json.del(cacheKeyIdentifyNames.signInUpsession + key);
+            await redis.decr(cacheKeyIdentifyNames.signInUpsession + "count");
+            return;
         } catch (error) {
             continue;
         };
@@ -114,5 +179,9 @@ module.exports = {
     setCode,
     uniqueSet,
     uniqueJsonSet,
-    setSessionObject
+    setSessionObject,
+    updateSessionObject,
+    getSessionObject,
+    delSessionObject,
+    cacheKeyIdentifyNames
 }

@@ -1,9 +1,9 @@
 const { ok, notFoundError, serverError, notAccptedError } = require("../../local_modules/MyExpressServer/src/response");
-const { setSessionObject, redis } = require("../config/db/cache");
+const { setSessionObject, delSessionObject, getSessionObject } = require("../config/db/cache");
 const { sign } = require("../config/jwt");
 const { createSessionPathAccess, s_a_UsernameAuth } = require("../middleware/auth");
 const { accountTypeEx, sessionObjectEx } = require("../middleware/requirement");
-const { sessionValid, isSessionSignUp, isSessionSignIn, passwordEx } = require("../middleware/validate");
+const { signinUpsessionValid, isSessionSignUp, isSessionSignIn, passwordEx } = require("../middleware/validate");
 const { Types } = require("mongoose");
 
 const { Get } = require("../../local_modules/MyExpressServer/index").Routes;
@@ -16,9 +16,9 @@ const names = require("../schema/names");
 Get("/signin/createsession", accountTypeEx, createSessionPathAccess, async (req, res, next) => {
     try {
         const session = { userName: "", password: "" };
-        const id = await setSessionObject(session, 500000000);
+        const id = await setSessionObject(session, 120);
         try {
-            const token = await sign({ owner: { id: id, type: req.searchParams.for }, for: "signin" }, 500000000);
+            const token = await sign({ owner: { id: id, type: req.searchParams.for }, for: "signin" }, 120);
             next(null, ok(token.token));
         } catch (error) {
             throw serverError(error);
@@ -42,9 +42,9 @@ Get("/signup/createsession", accountTypeEx, createSessionPathAccess, async (req,
         } else {
             throw notFoundError("Account type invalid");
         };
-        const id = await setSessionObject(session, 500000000);
+        const id = await setSessionObject(session, 360);
         try {
-            const token = await sign({ owner: { id: id, type: req.searchParams.for }, for: "signup" }, 500000000);
+            const token = await sign({ owner: { id: id, type: req.searchParams.for }, for: "signup" }, 360);
             next(null, ok(token.token));
         } catch (error) {
             throw serverError(error);
@@ -54,9 +54,13 @@ Get("/signup/createsession", accountTypeEx, createSessionPathAccess, async (req,
     };
 });
 
-Get("/signin/submit", sessionObjectEx, sessionValid, isSessionSignIn, async (req, res, next) => {
+Get("/signin/submit", sessionObjectEx, signinUpsessionValid, isSessionSignIn, async (req, res, next) => {
     try {
-        const cacheData = await redis.json.get(req.tokenData.owner.id);
+        let response = "Access token created successfully";
+        const cacheData = await getSessionObject(req.tokenData.owner.id);
+        if (typeof cacheData.userName !== "string" && typeof cacheData.password !== "string") { // Checking if the data has been added to the session
+            throw notAccptedError("Username and password not added to the session");  
+        };
         const userName = new Types.ObjectId(cacheData.userName)
         await passwordEx(userName, cacheData.password);
         let newTokenData;
@@ -68,26 +72,30 @@ Get("/signin/submit", sessionObjectEx, sessionValid, isSessionSignIn, async (req
                     throw serverError(error);
                 };
                 try {
-                    await accessTokenColl.insertInfo({ accountId: userName, tokenId: newTokenData.tokenId, userAgent: req.headers["user-agent"], loged: true, twoFactorAuth: true });
+                    await accessTokenColl.insertInfo({ accountId: userName, tokenId: newTokenData.tokenId, userAgent: req.headers["user-agent"], loged: true, twoFactorAuth: true }, "server");
                 } catch (error) {
                     throw notAccptedError(error);
                 };
+                response = newTokenData.token; // Adding the token to the response
                 break;
             default:
                 throw forbiddenError("Account type not valid");
         };
-        await redis.json.del(req.tokenData.owner.id);
-        next(ok(newTokenData.token));
+        await delSessionObject(req.tokenData.owner.id);
+        next(ok(response));
     } catch (error) {
         next(error);
     };
 });
 
-Get("/signup/submit", sessionObjectEx, sessionValid, isSessionSignUp, async (req, res, next) => {
+Get("/signup/submit", sessionObjectEx, signinUpsessionValid, isSessionSignUp, async (req, res, next) => {
     try {
-        const cacheData = await redis.json.get(req.tokenData.owner.id);
+        const cacheData = await getSessionObject(req.tokenData.owner.id);
         switch (req.tokenData.owner.type) {
             case "server":
+                if (typeof cacheData.userName !== "string" && typeof cacheData.password !== "string") { // Checking if the data has been added to the session
+                    throw notAccptedError("Username and password not added to the session");
+                };
                 try {
                     const insertedData = await serverColl.insertInfo({ comment: cacheData.comment });
                     await securityColl.insertInfo({ accountId: insertedData._id, type: "server", password: cacheData.password });
@@ -98,7 +106,7 @@ Get("/signup/submit", sessionObjectEx, sessionValid, isSessionSignUp, async (req
             default:
                 throw forbiddenError("Account type not valid");
         };
-        await redis.json.del(req.tokenData.owner.id);
+        await delSessionObject(req.tokenData.owner.id);
         next(ok("Data insert successfully"));
     } catch (error) {
         next(error);
