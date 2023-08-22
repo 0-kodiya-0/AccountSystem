@@ -1,7 +1,8 @@
-const { Schema, default: mongoose } = require("mongoose");
+const { Schema, Types } = require("mongoose");
 const { hash, compare } = require("bcrypt");
 const schemaNames = require("./names");
 const { ServerModel } = require("./server");
+const { getErrorMinimized } = require("./error");
 
 const passwordValidateRegex = {
     simpleLetters: /^(?=.*[a-z])/,
@@ -9,12 +10,13 @@ const passwordValidateRegex = {
     digits: /^(?=.*[0-9])/,
     specialCharacters: /^(?=.*[!@#\$%\^&\*])/,
     length: /^(?=.{8,})/,
-    all: /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#\$%\^&\*])(?=.{8,20})/
+    containsSpaces: /^((?![/ /]).)*$/,
+    all: /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#\$%\^&\*])(?=.{8,20})((?![/ /]).)*$/
 };
 
 const SecuritySchema = new Schema({
     accountId: {
-        type: mongoose.Types.ObjectId,
+        type: Types.ObjectId,
         cast: false,
         index: true,
         unique: true,
@@ -107,19 +109,22 @@ const SecurityModel = global.mongooseClient.model(schemaNames.security, Security
 function validatePassword(password) {
     if (passwordValidateRegex.all.test(password) === false) {
         if (passwordValidateRegex.length.test(password) === false) {
-            throw new TypeError("Need to have eight characters")
+            throw new TypeError("Need to have eight characters");
         };
         if (passwordValidateRegex.simpleLetters.test(password) === false) {
-            throw new TypeError("Need to have one simple character")
+            throw new TypeError("Need to have one simple character");
         };
         if (passwordValidateRegex.capitalLetters.test(password) === false) {
-            throw new TypeError("Need to have one capital character")
+            throw new TypeError("Need to have one capital character");
         };
         if (passwordValidateRegex.digits.test(password) === false) {
-            throw new TypeError("Need to have one number")
+            throw new TypeError("Need to have one number");
+        };
+        if (passwordValidateRegex.containsSpaces.test(password) === false) {
+            throw new TypeError("Cannot contain any spaces");
         };
         if (passwordValidateRegex.specialCharacters.test(password) === false) {
-            throw new TypeError("Need to have one for these (!,@,#,$,%,^,&,*) characters")
+            throw new TypeError("Need to have one for these (!,@,#,$,%,^,&,*) characters");
         };
     };
 };
@@ -149,21 +154,25 @@ async function hashPassword(password) {
  * @returns {Promise} 
  */
 async function insertInfo(inputData, options) {
+    validatePassword(inputData.password);
+    inputData.password = await hashPassword(inputData.password);
+    const dataObject = new SecurityModel(inputData);
+    try {
+        await dataObject.validate();
+    } catch (error) {
+        throw getErrorMinimized(error);
+    };
     for (let i = 0; i < 5; i++) {
         setTimeout(() => {
             return;
-        }, 1000);
+        }, 2000);
         try {
-            validatePassword(inputData.password);
-            inputData.password = await hashPassword(inputData.password);
-            const dataObject = new SecurityModel(inputData);
-            await dataObject.validate();
-            return dataObject.save(options);
+            return await dataObject.save(options);
         } catch (error) {
             continue;
         };
     };
-    throw new Error("Data inserting error");
+    throw "Data inserting error";
 };
 
 /**
@@ -178,10 +187,10 @@ async function insertInfo(inputData, options) {
  */
 async function updateInfo(fillter, update, aType, options) {
     if (typeof fillter !== "object" || typeof update !== "object" || typeof options !== "object") {
-        throw new TypeError("Fillter and update and options needs to be object");
+        throw new TypeError("fillter and update and options needs to be object");
     };
     if (typeof update.$set !== "object") {
-        throw new TypeError("Update object invalid. Need to have a $set object");
+        throw new TypeError("update object invalid. Need to have a $set object");
     };
     // Checking for the account type. Because account type is needed so that we can identify what are required values and not required values for the
     // specific account type
@@ -202,16 +211,13 @@ async function updateInfo(fillter, update, aType, options) {
             };
         };
     };
-    for (let i = 0; i < 5; i++) {
-        if (update.$set) {
-            if (typeof update.$set.password === "string") {
-                validatePassword(update.$set.password);
-                update.$set.password = await hashPassword(update.$set.password);
-            };
+    if (update.$set) {
+        if (typeof update.$set.password === "string") {
+            validatePassword(update.$set.password);
+            update.$set.password = await hashPassword(update.$set.password);
         };
-        return SecurityModel.updateOne(fillter, update, options);
     };
-    throw new Error("Data updating error");
+    return SecurityModel.updateOne(fillter, update, options);
 };
 
 module.exports = {

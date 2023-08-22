@@ -33,9 +33,29 @@ function createSessionPathAccess(req, res, next) {
         if (req.searchParams.for === "server") {
             basicAuthCheck(req.headers.authorization);
         } else {
-            if (req.admin === true) {
-                throw forbiddenError("Cannot access admin paths");
-            };
+            throw forbiddenError("Under construction"); // fix
+        };
+        next();
+    } catch (error) {
+        next(error);
+    };
+};
+
+/**
+ * 
+ * Validates the authentication when accessing path account/username in search
+ * 
+ * @param {Object} req 
+ * @param {Object} res 
+ * @param {Function} next 
+ */
+function s_a_UsernameAuth(req, res, next) {
+    try {
+        if (req.searchParams.for === "server") { // Can access the server details with the server username and password
+            basicAuthCheck(req.headers.authorization);
+            req.aType = "server";
+            req.fillter = req.searchParams.username ? { _id: req.searchParams.username } : {};
+        } else {
             throw forbiddenError("Under construction"); // fix
         };
         next();
@@ -45,5 +65,5 @@ function createSessionPathAccess(req, res, next) {
 };
 
 module.exports = {
-    basicAuthCheck, createSessionPathAccess
+    basicAuthCheck, createSessionPathAccess, s_a_UsernameAuth
 };

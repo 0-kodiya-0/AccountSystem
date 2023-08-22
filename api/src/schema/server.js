@@ -19,7 +19,38 @@ const ServerSchema = new Schema({
 
 const ServerModel = global.mongooseClient.model(schemaNames.server, ServerSchema, schemaNames.server);
 
+// Schema functions
+
+/**
+ * 
+ * Inserts data into security collection
+ * 
+ * @param {Object} inputData
+ * @param {Object|undefined} options
+ * @returns {Promise} 
+ */
+async function insertInfo(inputData, options) {
+    const dataObject = new ServerModel(inputData);
+    try {
+        await dataObject.validate();
+    } catch (error) {
+        throw getErrorMinimized(error);
+    };
+    for (let i = 0; i < 5; i++) {
+        setTimeout(() => {
+            return;
+        }, 2000);
+        try {
+            return await dataObject.save(options);
+        } catch (error) {
+            continue;
+        };
+    };
+    throw "Data inserting error";
+};
+
 module.exports = {
     ServerSchema,
-    ServerModel
+    ServerModel,
+    insertInfo
 }

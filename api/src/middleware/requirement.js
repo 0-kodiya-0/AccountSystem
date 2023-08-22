@@ -72,6 +72,40 @@ function bodyCommentEx(req, res, next) {
     };  
 };
 
+/**
+ * 
+ * @param {Object} req 
+ * @param {Object} res 
+ * @param {Function} next 
+ */
+function bodyUsernameEx(req, res, next) {
+    try {
+        if (typeof req.body.username !== "string") {
+            throw notFoundError("Username not found");
+        };
+        next();
+    } catch (error) {
+        next(error);
+    };  
+};
+
+/**
+ * 
+ * @param {Object} req 
+ * @param {Object} res 
+ * @param {Function} next 
+ */
+function sParaUsernameEx(req, res, next) {
+    try {
+        if (typeof req.searchParams.username !== "string") {
+            throw notFoundError("Username not found");
+        };
+        next();
+    } catch (error) {
+        next(error);
+    };  
+};
+
 module.exports = {
-    accountTypeEx, sessionObjectEx, bodyPasswordEx, bodyCommentEx
+    accountTypeEx, sessionObjectEx, bodyPasswordEx, bodyCommentEx, bodyUsernameEx, sParaUsernameEx
 }
