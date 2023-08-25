@@ -45,10 +45,10 @@ async function setCode(value, exp, options) {
                 await redis.set(code, value, exp);
                 return code;
             };
-            throw new TypeError("input value type not valid")
+            throw "Input value type not valid";
         };
     };
-    throw new ErrorReply("Cache saving error. Please try again later");
+    throw "Cache saving error. Please try again later";
 };
 
 /**
@@ -62,7 +62,7 @@ async function setCode(value, exp, options) {
  */
 async function uniqueSet(key, value, options) {
     if (await redis.exists(key) > 0) {
-        throw new ErrorReply("Key exists");
+        throw "Key exists";
     } else {
         return redis.set(key, value, options);
     };
@@ -80,7 +80,7 @@ async function uniqueSet(key, value, options) {
  */
 async function uniqueJsonSet(key, path, object, options) {
     if (await redis.exists(key) > 0) {
-        throw new ErrorReply("Key exists");
+        throw "Key exists";
     } else {
         return redis.json.set(key, path, object, options);
     };
@@ -117,7 +117,7 @@ async function setSessionObject(object, exp) {
             };
         };
     };
-    throw new ErrorReply("Server is out of resources. Please try again later.");
+    throw "Server is out of resources. Please try again later.";
 };
 
 /**
@@ -134,7 +134,7 @@ async function updateSessionObject(key, path, updateData, options) {
             continue;
         };
     };
-    throw new ErrorReply("Server is out of resources. Please try again later.");
+    throw "Server is out of resources. Please try again later.";
 };
 
 /**
@@ -151,7 +151,7 @@ async function getSessionObject(key, options) {
             continue;
         };
     };
-    throw new ErrorReply("Server is out of resources. Please try again later.");
+    throw "Server is out of resources. Please try again later.";
 };
 
 /**
@@ -170,7 +170,7 @@ async function delSessionObject(key) {
             continue;
         };
     };
-    throw new ErrorReply("Server is out of resources. Please try again later.");
+    throw "Server is out of resources. Please try again later.";
 };
 
 module.exports = {

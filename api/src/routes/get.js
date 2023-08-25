@@ -3,7 +3,7 @@ const { setSessionObject, delSessionObject, getSessionObject } = require("../con
 const { sign } = require("../config/jwt");
 const { createSessionPathAccess, s_a_UsernameAuth } = require("../middleware/auth");
 const { accountTypeEx, sessionObjectEx } = require("../middleware/requirement");
-const { signinUpsessionValid, isSessionSignUp, isSessionSignIn, passwordEx } = require("../middleware/validate");
+const { signinUpSessionValid, isSessionSignUp, isSessionSignIn, passwordEx } = require("../middleware/validate");
 const { Types } = require("mongoose");
 
 const { Get } = require("../../local_modules/MyExpressServer/index").Routes;
@@ -18,7 +18,7 @@ Get("/signin/createsession", accountTypeEx, createSessionPathAccess, async (req,
         const session = { userName: "", password: "" };
         const id = await setSessionObject(session, 120);
         try {
-            const token = await sign({ owner: { id: id, type: req.searchParams.for }, for: "signin" }, 120);
+            const token = await sign({ aType: req.searchParams.for, for: "signin" }, 120, id);
             next(null, ok(token.token));
         } catch (error) {
             throw serverError(error);
@@ -33,7 +33,7 @@ Get("/signup/createsession", accountTypeEx, createSessionPathAccess, async (req,
         const gloSession = { password: "", type: req.searchParams.for };
         let session;
         if (req.searchParams.for === "personal" || req.searchParams.for === "admin" || req.searchParams.for === "root" || req.searchParams.for === "business" || req.searchParams.for === "student") {
-            session = { userName: "", firstName: "", lastName: "", birth: "", sex: "", ...gloSession };
+            session = { userName: "", email: "", firstName: "", lastName: "", age: "", birth: "", sex: "", ...gloSession };
             if (req.searchParams.for === "student") {
                 session = { ...session, parentAccountId: "" };
             };
@@ -44,7 +44,7 @@ Get("/signup/createsession", accountTypeEx, createSessionPathAccess, async (req,
         };
         const id = await setSessionObject(session, 360);
         try {
-            const token = await sign({ owner: { id: id, type: req.searchParams.for }, for: "signup" }, 360);
+            const token = await sign({ aType: req.searchParams.for, for: "signup" }, 360, id);
             next(null, ok(token.token));
         } catch (error) {
             throw serverError(error);
@@ -54,17 +54,17 @@ Get("/signup/createsession", accountTypeEx, createSessionPathAccess, async (req,
     };
 });
 
-Get("/signin/submit", sessionObjectEx, signinUpsessionValid, isSessionSignIn, async (req, res, next) => {
+Get("/signin/submit", sessionObjectEx, signinUpSessionValid, isSessionSignIn, async (req, res, next) => {
     try {
         let response = "Access token created successfully";
-        const cacheData = await getSessionObject(req.tokenData.owner.id);
+        const cacheData = await getSessionObject(req.tokenData.tid);
         if (typeof cacheData.userName !== "string" && typeof cacheData.password !== "string") { // Checking if the data has been added to the session
-            throw notAccptedError("Username and password not added to the session");  
+            throw notAccptedError("Username and password not added to the session");
         };
         const userName = new Types.ObjectId(cacheData.userName)
         await passwordEx(userName, cacheData.password);
         let newTokenData;
-        switch (req.tokenData.owner.type) {
+        switch (req.tokenData.aType) {
             case "server":
                 try {
                     newTokenData = await sign({ message: "Token generated successfully" }, 300);
@@ -81,17 +81,17 @@ Get("/signin/submit", sessionObjectEx, signinUpsessionValid, isSessionSignIn, as
             default:
                 throw forbiddenError("Account type not valid");
         };
-        await delSessionObject(req.tokenData.owner.id);
+        await delSessionObject(req.tokenData.tid);
         next(ok(response));
     } catch (error) {
         next(error);
     };
 });
 
-Get("/signup/submit", sessionObjectEx, signinUpsessionValid, isSessionSignUp, async (req, res, next) => {
+Get("/signup/submit", sessionObjectEx, signinUpSessionValid, isSessionSignUp, async (req, res, next) => {
     try {
-        const cacheData = await getSessionObject(req.tokenData.owner.id);
-        switch (req.tokenData.owner.type) {
+        const cacheData = await getSessionObject(req.tokenData.tid);
+        switch (req.tokenData.aType) {
             case "server":
                 if (typeof cacheData.userName !== "string" && typeof cacheData.password !== "string") { // Checking if the data has been added to the session
                     throw notAccptedError("Username and password not added to the session");
@@ -106,7 +106,7 @@ Get("/signup/submit", sessionObjectEx, signinUpsessionValid, isSessionSignUp, as
             default:
                 throw forbiddenError("Account type not valid");
         };
-        await delSessionObject(req.tokenData.owner.id);
+        await delSessionObject(req.tokenData.tid);
         next(ok("Data insert successfully"));
     } catch (error) {
         next(error);

@@ -10,7 +10,7 @@ const AccessTokenSchema = new Schema({
         cast: false,
         index: true,
         validate: async function (data) {
-            if (await ServerModel.exists({ _id: data }) === null) {
+            if (await ServerModel.exists({ _id: data, display: true }) === null) {
                 throw "Invalid server account id";
             };
         },
@@ -26,6 +26,7 @@ const AccessTokenSchema = new Schema({
         type: String,
         cast: false,
         index: true,
+        trim: true,
         required: true
     },
     loged: {
@@ -51,6 +52,7 @@ const AccessTokenModel = global.mongooseClient.model(schemaNames.accessTokens, A
  * Inserts data into accessToken collection
  * 
  * @param {Object} inputData
+ * @param {string} aType - Account Type
  * @param {Object|undefined} options
  * @returns {Promise} 
  */
@@ -64,7 +66,7 @@ async function insertInfo(inputData, aType, options) {
         };
         if (aType === "root") {
             if (await AccessTokenModel.findOne({ accountId: inputData.accountId, loged: true })) {
-                throw new TypeError("Root cannot have multiple access tokens");
+                throw "Root cannot have multiple access tokens";
             };
         };
     } else {
@@ -100,17 +102,17 @@ async function insertInfo(inputData, aType, options) {
  */
 async function updateInfo(fillter, update, options) {
     if (typeof fillter !== "object" || typeof update !== "object") {
-        throw new TypeError("fillter and update and options needs to be object");
+        throw "Fillter and update and options needs to be object";
     };
     if (typeof update.$set !== "object") {
-        throw new TypeError("update object invalid. Need to have a $set object");
+        throw "Update object invalid. Need to have a $set object";
     };
     if (typeof update.$set.loged === "boolean") {
         update = { $set: { loged: update.$set.loged } };
     } else if (typeof update.$set.twoFactorAuth === "boolean") {
         update = { $set: { twoFactorAuth: update.$set.twoFactorAuth } };
     } else {
-        throw new TypeError("Only loged and twoFactorAuth variables can be updated");
+        throw "Only loged and twoFactorAuth variables can be updated";
     };
     return AccessTokenModel.updateOne(fillter, update, options);
 };

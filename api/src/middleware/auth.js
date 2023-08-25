@@ -1,4 +1,7 @@
 const { forbiddenError, unauthorizedError } = require("../../local_modules/MyExpressServer/src/response");
+const { verify } = require("../config/jwt");
+
+const accessTokenColl = require("../schema/accessToken");
 
 /**
  * 
@@ -27,6 +30,22 @@ function basicAuthCheck(authorization) {
 
 /**
  * 
+ * @param {String} token 
+ */
+async function tokenAuthCheck(token) {
+    try {
+        req.tokenData = await verify(token);
+    } catch (error) {
+        throw forbiddenError(error);
+    };
+    req.dbTokenData = await accessTokenColl.AccessTokenModel.findOne({ tokenId: req.tokenData.tid, userAgent: req.headers["user-agent"], loged: true }, { twoFactorAuth: 1, accountId: 1 });
+    if (req.dbTokenData === null) {
+        throw forbiddenError("Token expired or invalid");
+    };
+};
+
+/**
+ * 
  * Validates the authentication when accessing path creatsession in sign in and sign up
  * 
  * @param {Object} req 
@@ -38,7 +57,7 @@ function createSessionPathAccess(req, res, next) {
         if (req.searchParams.for === "server") {
             basicAuthCheck(req.headers.authorization);
         } else {
-            throw forbiddenError("Under construction"); // fix
+            tokenAuthCheck(req.headers.authorization);
         };
         next();
     } catch (error) {

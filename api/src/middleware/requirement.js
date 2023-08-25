@@ -95,6 +95,63 @@ function bodyUsernameEx(req, res, next) {
  * @param {Object} res 
  * @param {Function} next 
  */
+function bodyEmailEx(req, res, next) {
+    try {
+        if (typeof req.body.email !== "string") {
+            throw notFoundError("Email not found");
+        };
+        next();
+    } catch (error) {
+        next(error);
+    };  
+};
+
+/**
+ * 
+ * @param {Object} req 
+ * @param {Object} res 
+ * @param {Function} next 
+ */
+function bodyNameEx(req, res, next) {
+    try {
+        if (typeof req.body.firstname !== "string") {
+            throw notFoundError("Firstname not found");
+        };
+        if (typeof req.body.lastname !== "string") {
+            throw notFoundError("Lastname not found");
+        };
+        next();
+    } catch (error) {
+        next(error);
+    };  
+};
+
+/**
+ * 
+ * @param {Object} req 
+ * @param {Object} res 
+ * @param {Function} next 
+ */
+function bodyBasicEx(req, res, next) {
+    try {
+        if (typeof req.body.birth !== "string") {
+            throw notFoundError("Birth not found");
+        };
+        if (typeof req.body.gender !== "string") {
+            throw notFoundError("Gender not found");
+        };
+        next();
+    } catch (error) {
+        next(error);
+    };  
+};
+
+/**
+ * 
+ * @param {Object} req 
+ * @param {Object} res 
+ * @param {Function} next 
+ */
 function sParaUsernameEx(req, res, next) {
     try {
         if (typeof req.searchParams.username !== "string") {
@@ -107,5 +164,6 @@ function sParaUsernameEx(req, res, next) {
 };
 
 module.exports = {
-    accountTypeEx, sessionObjectEx, bodyPasswordEx, bodyCommentEx, bodyUsernameEx, sParaUsernameEx
+    accountTypeEx, sessionObjectEx, bodyPasswordEx, bodyCommentEx, bodyUsernameEx, sParaUsernameEx,
+    bodyEmailEx, bodyNameEx, bodyBasicEx 
 }

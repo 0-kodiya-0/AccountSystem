@@ -5,8 +5,8 @@ const ServerSchema = new Schema({
     comment: {
         type: String,
         cast: false,
-        minlength: [2, "comment.length didn't reached min length"],
-        maxlength: [30, "comment.length reached max length"],
+        minlength: [2, "Comment.length didn't reached min length"],
+        maxlength: [30, "Comment.length reached max length"],
         lowercase: true,
         required: true
     },

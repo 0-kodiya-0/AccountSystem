@@ -25,7 +25,7 @@ function sign(message, time, id) {
         const ranId = id || randomBytes(20).toString("base64url");
         jwt.sign(message, privateKey, { algorithm: "RS512", expiresIn: time, jwtid: ranId, issuer: process.env.DOMAIN }, (error, data) => {
             if (error) {
-                reject(new TypeError(error));
+                reject(error);
             } else {
                 resolve({ tokenId: ranId, token: data });
             };
@@ -56,9 +56,9 @@ function verify(token) {
     return new Promise((resolve, reject) => {
         jwt.verify(token, certKey, (error, data) => {
             if (error instanceof jwt.TokenExpiredError) {
-                reject(new TypeError("Token expired"));
+                reject("Token expired");
             } else if (error instanceof jwt.JsonWebTokenError || error instanceof jwt.NotBeforeError) {
-                reject(new TypeError("Token decode error"));
+                reject("Token decode error");
             } else {
                 resolve(data);
             };

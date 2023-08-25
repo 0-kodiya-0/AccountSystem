@@ -9,9 +9,9 @@ const passwordValidateRegex = {
     capitalLetters: /^(?=.*[A-Z])/,
     digits: /^(?=.*[0-9])/,
     specialCharacters: /^(?=.*[!@#\$%\^&\*])/,
-    length: /^(?=.{8,})/,
+    length: /^(?=.{8,30})/,
     containsSpaces: /^((?![/ /]).)*$/,
-    all: /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#\$%\^&\*])(?=.{8,20})((?![/ /]).)*$/
+    all: /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#\$%\^&\*])(?=.{8,30})((?![/ /]).)*$/
 };
 
 const SecuritySchema = new Schema({
@@ -27,10 +27,10 @@ const SecuritySchema = new Schema({
                     exists = await ServerModel.exists({ _id: data });
                     break;
                 default:
-                    throw "invalid account type";
+                    throw "Invalid account type";
             };
             if (exists === null) {
-                throw "invalid server account id";
+                throw "Invalid server account id";
             };
         },
         required: true
@@ -38,15 +38,17 @@ const SecuritySchema = new Schema({
     type: {
         type: String,
         cast: false,
+        index: true,
         enum: {
             values: ["personal", "business", "student", "organization", "admin", "root", "server"],
-            message: "type not valid"
+            message: "Type not valid"
         },
         required: true
     },
     password: {
         type: String,
         cast: false,
+        index: true,
         unique: true,
         required: true
     },
@@ -94,7 +96,7 @@ const SecuritySchema = new Schema({
             };
         }
     }
-}, { timestamps: true, writeConcern: { w: "majority", j: true, wtimeout: 5000 }, strict: true, strictQuery: true })
+}, { timestamps: true, writeConcern: { w: "majority", j: true, wtimeout: 5000 }, strict: true, strictQuery: true });
 
 const SecurityModel = global.mongooseClient.model(schemaNames.security, SecuritySchema, schemaNames.security);
 
@@ -109,22 +111,22 @@ const SecurityModel = global.mongooseClient.model(schemaNames.security, Security
 function validatePassword(password) {
     if (passwordValidateRegex.all.test(password) === false) {
         if (passwordValidateRegex.length.test(password) === false) {
-            throw new TypeError("Need to have eight characters");
+            throw "Characters length need to be in between 8 and 30";
         };
         if (passwordValidateRegex.simpleLetters.test(password) === false) {
-            throw new TypeError("Need to have one simple character");
+            throw "Need to have one simple character";
         };
         if (passwordValidateRegex.capitalLetters.test(password) === false) {
-            throw new TypeError("Need to have one capital character");
+            throw "Need to have one capital character";
         };
         if (passwordValidateRegex.digits.test(password) === false) {
-            throw new TypeError("Need to have one number");
+            throw "Need to have one number";
         };
         if (passwordValidateRegex.containsSpaces.test(password) === false) {
-            throw new TypeError("Cannot contain any spaces");
+            throw "Cannot contain any spaces";
         };
         if (passwordValidateRegex.specialCharacters.test(password) === false) {
-            throw new TypeError("Need to have one for these (!,@,#,$,%,^,&,*) characters");
+            throw "Need to have one for these (!,@,#,$,%,^,&,*) characters";
         };
     };
 };
@@ -142,7 +144,7 @@ async function hashPassword(password) {
             return hashPass;
         };
     };
-    throw new Error("Password hashing error. Try again later");
+    throw "Password hashing error. Try again later";
 };
 
 /**
@@ -192,7 +194,7 @@ async function getAccountType(fillter) {
             throw "error";
         };
     } catch (error) {
-        throw new TypeError("Account type not found");
+        throw "Account type not found";
     };
 };
 
@@ -208,10 +210,10 @@ async function getAccountType(fillter) {
  */
 async function updateInfo(fillter, update, aType, options) {
     if (typeof fillter !== "object" || typeof update !== "object") {
-        throw new TypeError("fillter and update and options needs to be object");
+        throw "Fillter and update and options needs to be object";
     };
     if (typeof update.$set !== "object") {
-        throw new TypeError("update object invalid. Need to have a $set object");
+        throw "Update object invalid. Need to have a $set object";
     };
     // Checking for the account type. Because account type is needed so that we can identify what are required values and not required values for the
     // specific account type
@@ -223,7 +225,7 @@ async function updateInfo(fillter, update, aType, options) {
     };
     if (aType !== "organization") {
         if (typeof update.$set.organizationId === "string") {
-            throw new TypeError("Only account type organization can have a organization id");
+            throw "Only account type organization can have a organization id";
         };
     };
     if (update.$set) {

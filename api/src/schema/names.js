@@ -1,5 +1,8 @@
 module.exports = {
     security: "Security",
     server: "Server",
-    accessTokens: "AccessTokens"
+    accessTokens: "AccessTokens",
+    commonDetails: "CommonDetails",
+    phoneNumbers : "PhoneNumbers",
+    locations: "Locations"
 }

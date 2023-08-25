@@ -1,11 +1,12 @@
-const { forbiddenError, serverError, notAccptedError } = require("../../local_modules/MyExpressServer/src/response");
+const { forbiddenError, notAccptedError } = require("../../local_modules/MyExpressServer/src/response");
 const { redis, cacheKeyIdentifyNames } = require("../config/db/cache");
 const { verify } = require("../config/jwt");
 const { compare } = require('bcrypt');
 const { MongooseError } = require("mongoose");
 
-const serverCollection = require("../schema/server");
-const securityCollection = require("../schema/security");
+const serverColl = require("../schema/server");
+const commonDetailsColl = require("../schema/commonDetails");
+const securityColl = require("../schema/security");
 
 /**
  * 
@@ -17,14 +18,14 @@ const securityCollection = require("../schema/security");
  * 
  * @returns {Promise} 
  */
-async function signinUpsessionValid(req, res, next) {
+async function signinUpSessionValid(req, res, next) {
     try {
         try {
             req.tokenData = await verify(req.searchParams.session);
         } catch (error) {
-            throw forbiddenError(error.message);
+            throw forbiddenError(error);
         };
-        if (await redis.exists(cacheKeyIdentifyNames.signInUpsession + req.tokenData.owner.id) !== 1) {
+        if (await redis.exists(cacheKeyIdentifyNames.signInUpsession + req.tokenData.tid) !== 1) {
             throw forbiddenError("Session id invalid or expired");
         };
         next();
@@ -73,10 +74,29 @@ function isSessionSignUp(req, res, next) {
  * @param {Object} res 
  * @param {Function} next 
  */
-async function isServerAccountType(req, res, next) {
+async function isServerAType(req, res, next) {
     try {
-        if (req.tokenData.owner.type !== "server") {
-            throw forbiddenError(`Account type ${req.tokenData.owner.type} cannot access this path`);
+        if (req.tokenData.aType !== "server") {
+            throw forbiddenError(`Account type ${req.tokenData.aType} cannot access this path`);
+        };
+        next();
+    } catch (error) {
+        next(error);
+    };
+};
+
+/**
+ * 
+ * Checks if the sign in, sign up session or access token has the type != server
+ * 
+ * @param {Object} req 
+ * @param {Object} res 
+ * @param {Function} next 
+ */
+async function isNotServerAType(req, res, next) {
+    try {
+        if (req.tokenData.aType === "server") {
+            throw forbiddenError("Account type server cannot access this path");
         };
         next();
     } catch (error) {
@@ -106,7 +126,10 @@ function schemaPathValidate(aType, path, value) {
         };
         switch (aType) {
             case "server":
-                serverCollection.ServerSchema.path(path).doValidate(value, cb);
+                serverColl.ServerSchema.path(path).doValidate(value, cb);
+                break;
+            case "notserver":
+                commonDetailsColl.CommonDetailsSchema.path(path).doValidate(value, cb);
                 break;
             default:
                 throw forbiddenError("Account type not valid");
@@ -130,7 +153,7 @@ async function userNameEx(aType, userName) {
     try {
         switch (aType) {
             case "server":
-                account = await serverCollection.ServerModel.findOne({ _id: userName }, { _id: 1 });
+                account = await serverColl.ServerModel.findOne({ _id: userName, display: true }, { _id: 1 });
                 break;
             default:
                 throw forbiddenError("Account type not valid");
@@ -159,12 +182,12 @@ async function userNameEx(aType, userName) {
  * @throws - password invalid (406)
  */
 async function passwordEx(accountId, password) {
-    const fData = await securityCollection.SecurityModel.findOne({ accountId: accountId }, { password: 1 });
+    const fData = await securityColl.SecurityModel.findOne({ accountId: accountId }, { password: 1 });
     if (await compare(password, fData.password) === false) {
         throw notAccptedError("Password invalid");
     };
 };
 
 module.exports = {
-    signinUpsessionValid, isServerAccountType, isSessionSignIn, isSessionSignUp, schemaPathValidate, userNameEx, passwordEx
+    signinUpSessionValid, isServerAType, isNotServerAType, isSessionSignIn, isSessionSignUp, schemaPathValidate, userNameEx, passwordEx
 };
