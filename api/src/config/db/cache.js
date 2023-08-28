@@ -103,6 +103,7 @@ async function setSessionObject(object, exp) {
     if (keyCount === null) {
         keyCount = 0;
         await redis.set(cacheKeyIdentifyNames.signInUpsession + "count", 0);
+        await redis.expire(cacheKeyIdentifyNames.signInUpsession + "count", 20);
     };
     if (keyCount <= 1000) {
         for (let i = 0; i < 5; i++) {

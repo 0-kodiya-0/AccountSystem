@@ -6,11 +6,14 @@
  * @returns 
  */
 function getErrorMinimized(error) {
-    data = Object.values(error.errors)
+    data = Object.values(error.errors || error);
+    const newData = [];
     for (let i = 0; i < data.length; i++) {
-        data[i] = { value: data[i].value, reason: data[i].reason };
+        if (typeof data[i] === "object") {
+            newData.push({ path: data[i].path, value: data[i].value, message: data[i].message, reason: data[i].reason });
+        };
     };
-    return data;
+    return newData;
 };
 
 module.exports = {

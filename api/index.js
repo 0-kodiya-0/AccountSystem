@@ -16,3 +16,7 @@ server.listen(4000, async () => {
         process.exit(1);
     };
 });
+
+process.on("unhandledRejection" , (data) =>{
+    console.log(data)
+})

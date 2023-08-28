@@ -1,5 +1,7 @@
 const { Schema } = require("mongoose");
+const { getErrorMinimized } = require("./error");
 const schemaNames = require("./names");
+const moment = require("moment");
 
 const userNameValidateRegex = {
     simpleLetters: /^(?=.*[a-z])/,
@@ -18,7 +20,6 @@ const CommonDetailsSchema = new Schema({
         validate: validateUserName,
         unique: true,
         index: true,
-        match: userNameValidateRegex.all,
         required: true
     },
     email: {
@@ -33,7 +34,7 @@ const CommonDetailsSchema = new Schema({
         },
         unique: true,
         index: true,
-        match: /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|.(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/,
+        match: [/^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|.(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/, "Email invalid"],
         required: true
     },
     firstName: {
@@ -41,7 +42,7 @@ const CommonDetailsSchema = new Schema({
         cast: false,
         minlength: [2, "Firstname length didn't reached min length"],
         maxlength: [30, "Firstname length reached max length"],
-        match: /^((?![/ /]).)*$/,
+        match: [/^((?![/ /]).)*$/, "Firstname invalid"],
         lowercase: true,
         required: true
     },
@@ -50,7 +51,7 @@ const CommonDetailsSchema = new Schema({
         cast: false,
         minlength: [2, "Lastname length didn't reached min length"],
         maxlength: [30, "Lastname length reached max length"],
-        match: /^((?![/ /]).)*$/,
+        match: [/^((?![/ /]).)*$/, "Lastname invalid"],
         lowercase: true,
         required: true
     },
@@ -70,7 +71,7 @@ const CommonDetailsSchema = new Schema({
         cast: false,
         enum: {
             values: ["male", "female", "other", "rathernotsay"],
-            message: "Gender not valid"
+            message: "Gender invalid"
         },
         required: true
     },
@@ -103,22 +104,22 @@ function validateBirthDay(birthday) {
                         if (date.date() < now.getDate()) {
                             return;
                         } else {
-                            throw "Birth date";
+                            throw "Birth date out of range";
                         };
                     } else {
                         return true;
                     };
                 } else {
-                    throw "Birth month";
+                    throw "Birth month out of range";
                 };
             } else {
                 return true;
             };
         } else {
-            throw "Birth year";
+            throw "Birth year out of range";
         };
     } else {
-        throw "Birth";
+        throw "Birth need to be a date (DD-MM-YYYY)";
     };
 };
 
@@ -166,7 +167,7 @@ function validateAge(age, aType) {
 /**
  * 
  * @param {String} userName 
- */ 
+ */
 async function validateUserName(userName) {
     if (userNameValidateRegex.all.test(userName) === false) {
         if (userNameValidateRegex.length.test(userName) === false) {
@@ -206,12 +207,16 @@ async function insertInfo(aType, inputData, options) {
     } catch (error) {
         throw getErrorMinimized(error);
     };
+    let returnData;
     for (let i = 0; i < 5; i++) {
-        setTimeout(() => {
-            return;
-        }, 2000);
         try {
-            return await dataObject.save(options);
+            returnData = await dataObject.save(options);
+            await new Promise((resolve, reject) => {
+                setTimeout(() => {
+                    resolve();
+                }, 2000);
+            });
+            return returnData;
         } catch (error) {
             continue;
         };

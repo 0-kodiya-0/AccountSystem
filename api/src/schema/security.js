@@ -2,6 +2,7 @@ const { Schema, Types } = require("mongoose");
 const { hash, compare } = require("bcrypt");
 const schemaNames = require("./names");
 const { ServerModel } = require("./server");
+const { CommonDetailsModel } = require("./commonDetails");
 const { getErrorMinimized } = require("./error");
 
 const passwordValidateRegex = {
@@ -27,7 +28,7 @@ const SecuritySchema = new Schema({
                     exists = await ServerModel.exists({ _id: data });
                     break;
                 default:
-                    throw "Invalid account type";
+                    exists = await CommonDetailsModel.exists({ _id: data });
             };
             if (exists === null) {
                 throw "Invalid server account id";
@@ -55,6 +56,12 @@ const SecuritySchema = new Schema({
     parentAccountId: {
         type: String,
         cast: false,
+        validate: async function (data) {
+            const pAccount = await SecurityModel.exists({ accountId: data, $or: [{ type: "personal" }, { type: "business" }] });
+            if (pAccount === null) {
+                throw "Parent account need to be type personal or business";
+            };
+        },
         required: function () {
             if (this.type === "student") {
                 return true;
@@ -65,14 +72,7 @@ const SecuritySchema = new Schema({
     },
     linkAccountId: {
         type: String,
-        cast: false,
-        required: function () {
-            if (this.type === "personal" || this.type === "business" || this.type === "student") {
-                return true;
-            } else {
-                return false;
-            };
-        }
+        cast: false
     },
     organizationId: {
         type: String,
@@ -87,14 +87,7 @@ const SecuritySchema = new Schema({
     },
     familyId: {
         type: String,
-        cast: false,
-        required: function () {
-            if (this.type === "personal" || this.type === "business" || this.type === "student") {
-                return true;
-            } else {
-                return false;
-            };
-        }
+        cast: false
     }
 }, { timestamps: true, writeConcern: { w: "majority", j: true, wtimeout: 5000 }, strict: true, strictQuery: true });
 

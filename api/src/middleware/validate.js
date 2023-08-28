@@ -4,6 +4,7 @@ const { verify } = require("../config/jwt");
 const { compare } = require('bcrypt');
 const { MongooseError } = require("mongoose");
 
+const schemaErrors = require("../schema/error");
 const serverColl = require("../schema/server");
 const commonDetailsColl = require("../schema/commonDetails");
 const securityColl = require("../schema/security");
@@ -21,11 +22,11 @@ const securityColl = require("../schema/security");
 async function signinUpSessionValid(req, res, next) {
     try {
         try {
-            req.tokenData = await verify(req.searchParams.session);
+            req.sessionData = await verify(req.searchParams.session);
         } catch (error) {
             throw forbiddenError(error);
         };
-        if (await redis.exists(cacheKeyIdentifyNames.signInUpsession + req.tokenData.tid) !== 1) {
+        if (await redis.exists(cacheKeyIdentifyNames.signInUpsession + req.sessionData.jti) !== 1) {
             throw forbiddenError("Session id invalid or expired");
         };
         next();
@@ -43,7 +44,7 @@ async function signinUpSessionValid(req, res, next) {
  * @param {Function} next 
  */
 function isSessionSignIn(req, res, next) {
-    if (req.tokenData.for === "signin") {
+    if (req.sessionData.for === "signin") {
         next();
     } else {
         next(forbiddenError("Invalid session object"));
@@ -59,7 +60,7 @@ function isSessionSignIn(req, res, next) {
  * @param {Function} next 
  */
 function isSessionSignUp(req, res, next) {
-    if (req.tokenData.for === "signup") {
+    if (req.sessionData.for === "signup") {
         next();
     } else {
         next(forbiddenError("Invalid session object"));
@@ -76,8 +77,8 @@ function isSessionSignUp(req, res, next) {
  */
 async function isServerAType(req, res, next) {
     try {
-        if (req.tokenData.aType !== "server") {
-            throw forbiddenError(`Account type ${req.tokenData.aType} cannot access this path`);
+        if (req.sessionData.aType !== "server") {
+            throw forbiddenError(`Account type ${req.sessionData.aType} cannot access this path`);
         };
         next();
     } catch (error) {
@@ -95,7 +96,7 @@ async function isServerAType(req, res, next) {
  */
 async function isNotServerAType(req, res, next) {
     try {
-        if (req.tokenData.aType === "server") {
+        if (req.sessionData.aType === "server") {
             throw forbiddenError("Account type server cannot access this path");
         };
         next();
@@ -119,7 +120,7 @@ function schemaPathValidate(aType, path, value) {
     return new Promise((resolve, reject) => {
         const cb = (err) => {
             if (err) {
-                reject(notAccptedError(err)); // fix json stringnify
+                reject(notAccptedError(schemaErrors.getErrorMinimized(err))); // fix json stringnify
             } else {
                 resolve();
             };
@@ -156,7 +157,7 @@ async function userNameEx(aType, userName) {
                 account = await serverColl.ServerModel.findOne({ _id: userName, display: true }, { _id: 1 });
                 break;
             default:
-                throw forbiddenError("Account type not valid");
+                account = await commonDetailsColl.CommonDetailsModel.findOne({ _id: userName, display: true }, { _id: 1 });
         };
     } catch (error) {
         if (error instanceof MongooseError) {

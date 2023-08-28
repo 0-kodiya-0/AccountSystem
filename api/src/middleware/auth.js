@@ -32,13 +32,14 @@ function basicAuthCheck(authorization) {
  * 
  * @param {String} token 
  */
-async function tokenAuthCheck(token) {
+async function tokenAuthCheck(req) {
     try {
-        req.tokenData = await verify(token);
+        req.tokenData = await verify(req.headers.authorization);
     } catch (error) {
         throw forbiddenError(error);
     };
-    req.dbTokenData = await accessTokenColl.AccessTokenModel.findOne({ tokenId: req.tokenData.tid, userAgent: req.headers["user-agent"], loged: true }, { twoFactorAuth: 1, accountId: 1 });
+    console.log(req.tokenData)
+    req.dbTokenData = await accessTokenColl.AccessTokenModel.findOne({ tokenId: req.tokenData.jti, userAgent: req.headers["user-agent"], loged: true }, { twoFactorAuth: 1, accountId: 1, type: 1 });
     if (req.dbTokenData === null) {
         throw forbiddenError("Token expired or invalid");
     };
@@ -52,12 +53,12 @@ async function tokenAuthCheck(token) {
  * @param {Object} res 
  * @param {Function} next 
  */
-function createSessionPathAccess(req, res, next) {
+async function createSessionPathAccess(req, res, next) {
     try {
         if (req.searchParams.for === "server") {
             basicAuthCheck(req.headers.authorization);
         } else {
-            tokenAuthCheck(req.headers.authorization);
+            await tokenAuthCheck(req);
         };
         next();
     } catch (error) {
