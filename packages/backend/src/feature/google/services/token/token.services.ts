@@ -1,6 +1,4 @@
 import { google } from 'googleapis';
-import { ScopeToServiceMap } from '../../config/config';
-import { TokenScopeInfo } from './token.types';
 import { ProviderValidationError } from '../../../../types/response.types';
 import { OAuthProviders } from '../../../account/Account.types';
 import db from '../../../../config/db';
@@ -25,57 +23,27 @@ export async function getTokenInfo(accessToken: string) {
 }
 
 /**
-* Get detailed scope information from a token
-* @param accessToken The access token to analyze
+* Get token scopes from Google
+* @param accessToken The access token to check
+* @returns Array of granted scope URLs
 */
-export async function getTokenScopes(accessToken: string): Promise<TokenScopeInfo> {
+export async function getTokenScopes(accessToken: string): Promise<string[]> {
     try {
         // Get token info
         const tokenInfoResult = await google.oauth2('v2').tokeninfo({
             access_token: accessToken
         });
 
-        // Parse granted scopes
-        const grantedScopes = tokenInfoResult.data.scope ? tokenInfoResult.data.scope.split(' ') : [];
-
-        // Map scopes to services and levels
-        const scopeDetails = grantedScopes.map(scope => {
-            const serviceInfo = ScopeToServiceMap.get(scope);
-            return {
-                scope,
-                service: serviceInfo?.service || 'unknown',
-                level: serviceInfo?.level || 'unknown'
-            };
-        });
-
-        // Determine which services are accessible
-        const serviceAccess = {
-            gmail: false,
-            calendar: false,
-            drive: false,
-            people: false,
-            meet: false
-        };
-
-        // Check each service
-        scopeDetails.forEach(detail => {
-            if (detail.service in serviceAccess) {
-                serviceAccess[detail.service as keyof typeof serviceAccess] = true;
-            }
-        });
-
-        return {
-            granted: scopeDetails,
-            serviceAccess
-        };
+        // Parse and return granted scopes
+        return tokenInfoResult.data.scope ? tokenInfoResult.data.scope.split(' ') : [];
     } catch (error) {
         console.error('Error getting token scopes:', error);
-        throw new ProviderValidationError(OAuthProviders.Google, 'Failed to get token scope information', undefined);
+        throw new ProviderValidationError(OAuthProviders.Google, 'Failed to get token scopes');
     }
 }
 
 /**
- * Update Google permissions for an account (replaces updateAccountScopes)
+ * Update Google permissions for an account
  * @param accountId The account ID to update
  * @param accessToken The access token containing scopes
  */
@@ -105,6 +73,7 @@ export async function updateAccountScopes(accountId: string, accessToken: string
             const newScopes = grantedScopes.filter(scope => !existingScopeSet.has(scope));
             
             if (newScopes.length > 0) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (existingPermissions as any).addScopes(newScopes);
                 await existingPermissions.save();
             }
@@ -291,7 +260,8 @@ export async function checkForAdditionalScopes(accountId: string, accessToken: s
     // Only care about missing scopes that aren't the basic profile and email
     const filteredStoredScopes = storedScopes.filter(scope => 
         !scope.includes('auth/userinfo.email') && 
-        !scope.includes('auth/userinfo.profile')
+        !scope.includes('auth/userinfo.profile') &&
+        scope !== 'openid'
     );
     
     // Find scopes that are in GooglePermissions but not in the current token

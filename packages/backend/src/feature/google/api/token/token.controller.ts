@@ -1,9 +1,8 @@
 import { NextFunction, Response } from 'express';
 import { ApiErrorCode, AuthError, BadRequestError, JsonSuccess, ServerError } from '../../../../types/response.types';
-import { GoogleServiceName, getGoogleScope } from '../../config';
 import { GoogleApiRequest } from '../../types';
-import { isValidGoogleService } from '../../utils';
-import { getTokenInfo, getTokenScopes } from '../../services/token';
+import { getTokenInfo, getTokenScopes, hasScope } from '../../services/token';
+import { buildGoogleScopeUrls, validateScopeNames } from '../../config';
 import { asyncHandler } from '../../../../utils/response';
 
 /**
@@ -24,53 +23,57 @@ export const getTokenInfoController = asyncHandler(async (req: GoogleApiRequest,
         throw new AuthError('Access token not available', 401, ApiErrorCode.TOKEN_INVALID);
     }
 
+    // Get token info and scopes using the service functions
     const tokenInfo = await getTokenInfo(accessToken);
-    const scopeInfo = await getTokenScopes(accessToken);
+    const grantedScopes = await getTokenScopes(accessToken);
 
-    // Create a response with both token info and parsed scopes
+    // Create a response with token info and scopes
     const response = {
         tokenInfo,
-        scopes: scopeInfo
+        grantedScopes,
+        scopeCount: grantedScopes.length
     };
 
     next(new JsonSuccess(response));
 });
 
 /**
- * Check if the token has access to a specific service and scope level
- * @param req Request with service and scopeLevel query parameters
+ * Check if the token has access to specific scope names
+ * @param req Request with scopes query parameter (can be single scope name or array)
  * @param res Response
- * @returns Response indicating whether the token has access to the specified service and scope
+ * @returns Response indicating whether the token has access to the specified scopes
  */
-export const checkServiceAccess = asyncHandler(async (req: GoogleApiRequest, res: Response, next: NextFunction) => {
-    // Get service and scope levels from query parameters
-    const { service, scopeLevel, scopeLevels } = req.query;
+export const checkScopeAccess = asyncHandler(async (req: GoogleApiRequest, res: Response, next: NextFunction) => {
+    // Get scope names from query parameters
+    const { scopes, scope } = req.query;
 
-    if (!service) {
-        throw new BadRequestError('Service parameter is required');
-    }
+    // Determine scope names to check
+    let scopeNamesToCheck: string[] = [];
 
-    // Determine scope levels to check
-    let scopesToCheck: string[] = [];
-
-    if (scopeLevels) {
+    if (scopes) {
         try {
-            // Parse the JSON array of scope levels
-            scopesToCheck = JSON.parse(scopeLevels.toString());
-            if (!Array.isArray(scopesToCheck)) {
-                scopesToCheck = [];
+            // Parse the JSON array of scope names
+            scopeNamesToCheck = JSON.parse(scopes.toString());
+            if (!Array.isArray(scopeNamesToCheck)) {
+                scopeNamesToCheck = [];
             }
         } catch {
             // Try treating it as a comma-separated string if JSON parsing fails
-            scopesToCheck = scopeLevels.toString().split(',');
+            scopeNamesToCheck = scopes.toString().split(',').map(s => s.trim());
         }
-    } else if (scopeLevel) {
-        // Fall back to single scope level
-        scopesToCheck = [scopeLevel.toString()];
+    } else if (scope) {
+        // Fall back to single scope
+        scopeNamesToCheck = [scope.toString().trim()];
     }
 
-    if (scopesToCheck.length === 0) {
-        throw new BadRequestError('At least one scope level is required');
+    if (scopeNamesToCheck.length === 0) {
+        throw new BadRequestError('At least one scope is required. Use "scopes" (JSON array) or "scope" (single scope) query parameter');
+    }
+
+    // Basic validation of scope name format
+    const validation = validateScopeNames(scopeNamesToCheck);
+    if (!validation.valid) {
+        throw new BadRequestError(`Invalid scope name format: ${validation.errors.join(', ')}`);
     }
 
     // Ensure we have a Google client attached by the middleware
@@ -86,46 +89,36 @@ export const checkServiceAccess = asyncHandler(async (req: GoogleApiRequest, res
         throw new AuthError('Access token not available', 401, ApiErrorCode.TOKEN_INVALID);
     }
 
-    // Validate service name is one of the expected Google services
-    if (!isValidGoogleService(service.toString())) {
-        throw new BadRequestError(`Invalid Google service: ${service}`, 400, ApiErrorCode.INVALID_SERVICE);
+    // Convert scope names to URLs and check access
+    const requestedScopeUrls = buildGoogleScopeUrls(scopeNamesToCheck);
+    
+    // Check each requested scope using the service function
+    const results: Record<string, { hasAccess: boolean; scopeName: string; scopeUrl: string }> = {};
+
+    for (let i = 0; i < requestedScopeUrls.length; i++) {
+        const scopeUrl = requestedScopeUrls[i];
+        const scopeName = scopeNamesToCheck[i];
+        const hasAccess = await hasScope(accessToken, scopeUrl);
+        
+        results[`scope_${i}`] = {
+            hasAccess,
+            scopeName,
+            scopeUrl
+        };
     }
 
-    // Cast to GoogleServiceName since we've validated it
-    const serviceName = service.toString() as GoogleServiceName;
-
-    // Use GoogleTokenService to get all granted scopes at once
-    const tokenInfo = await getTokenInfo(accessToken);
-    const grantedScopes = tokenInfo.scope ? tokenInfo.scope.split(' ') : [];
-
-    // Process all requested scopes at once
-    const results: Record<string, { hasAccess: boolean, requiredScope: string }> = {};
-
-    for (const scope of scopesToCheck) {
-        try {
-            const requiredScope = getGoogleScope(serviceName, scope);
-            // Check if the token has this scope
-            const hasAccess = grantedScopes.includes(requiredScope);
-
-            results[scope] = {
-                hasAccess,
-                requiredScope
-            };
-        } catch (error) {
-            // If getGoogleScope throws an error due to invalid scope level
-            if (error instanceof Error && error.message.includes('Invalid scope level')) {
-                results[scope] = {
-                    hasAccess: false,
-                    requiredScope: error.message
-                };
-            } else {
-                throw error; // Re-throw other errors
-            }
-        }
-    }
+    // Provide a summary
+    const allGranted = Object.values(results).every(result => result.hasAccess);
+    const grantedCount = Object.values(results).filter(result => result.hasAccess).length;
 
     next(new JsonSuccess({
-        service: serviceName,
-        scopeResults: results
+        summary: {
+            totalRequested: scopeNamesToCheck.length,
+            totalGranted: grantedCount,
+            allGranted
+        },
+        requestedScopeNames: scopeNamesToCheck,
+        requestedScopeUrls,
+        results
     }));
 });

@@ -1,37 +1,39 @@
 import { NextFunction, Response, Request } from 'express';
 import passport from 'passport';
-import { 
-    ApiErrorCode, 
-    BadRequestError, 
+import {
+    ApiErrorCode,
+    BadRequestError,
     NotFoundError,
-    RedirectError, 
-    RedirectSuccess 
+    RedirectError,
+    RedirectSuccess
 } from '../../types/response.types';
 import * as AuthService from './OAuth.service';
 import { AuthType, AuthUrls, OAuthState, PermissionState, ProviderResponse, SignInState } from './OAuth.types';
 import { OAuthProviders } from '../account/Account.types';
-import { 
-    validateOAuthState, 
-    validateSignInState, 
-    validateSignUpState, 
-    validatePermissionState, 
-    validateProvider, 
-    validateState, 
+import {
+    validateOAuthState,
+    validateSignInState,
+    validateSignUpState,
+    validatePermissionState,
+    validateProvider,
+    validateState,
 } from './OAuth.validation';
-import { 
-    clearOAuthState, 
-    clearSignInState, 
-    clearSignUpState, 
-    generateOAuthState, 
-    generatePermissionState} from './OAuth.utils';
-import { 
+import {
+    clearOAuthState,
+    clearSignInState,
+    clearSignUpState,
+    generateOAuthState,
+    generatePermissionState
+} from './OAuth.utils';
+import {
     getTokenInfo,
-    verifyTokenOwnership} from '../google/services/token';
+    verifyTokenOwnership
+} from '../google/services/token';
 import { setAccessTokenCookie, setRefreshTokenCookie } from '../../services/session';
 import { createRedirectUrl, RedirectType } from '../../utils/redirect';
-import { GoogleServiceName, getGoogleScope } from '../google/config';
 import { SignUpRequest, SignInRequest, OAuthCallBackRequest } from './OAuth.dto';
 import { ValidationUtils } from '../../utils/validation';
+import { buildGoogleScopeUrls, validateScopeNames } from '../google/config';
 
 /**
  * Initiate Google authentication
@@ -74,11 +76,11 @@ export const signup = async (req: SignUpRequest, res: Response, next: NextFuncti
     const reqState = req.query.state;
     if (reqState && typeof reqState === 'string') {
         const stateDetails = await validateState(reqState, validateSignUpState, res) as SignInState;
-        
+
         try {
             const result = await AuthService.processSignup(stateDetails, provider);
             await clearSignUpState(stateDetails.state);
-            
+
             if (result.accessTokenInfo && result.accessTokenInfo.expires_in) {
                 setAccessTokenCookie(
                     res,
@@ -86,20 +88,20 @@ export const signup = async (req: SignUpRequest, res: Response, next: NextFuncti
                     result.accessToken, // This is now our JWT token that wraps the OAuth token
                     result.accessTokenInfo.expires_in * 1000
                 );
-                
+
                 if (result.refreshToken) {
                     setRefreshTokenCookie(res, result.accountId, result.refreshToken); // This is our JWT refresh token
                 }
             }
-            
+
             // Use the stored redirect URL if available, otherwise use the default
             const redirectTo = stateDetails.redirectUrl || frontendRedirectUrl;
-            
+
             next(new RedirectSuccess({
                 accountId: result.accountId,
                 name: result.name
             }, redirectTo));
-            
+
             return;
         } catch (error) {
             console.log(error);
@@ -139,7 +141,7 @@ export const signin = async (req: SignInRequest, res: Response, next: NextFuncti
         try {
             const result = await AuthService.processSignIn(stateDetails, frontendRedirectUrl);
             await clearSignInState(stateDetails.state);
-            
+
             if (result.accessTokenInfo && result.accessTokenInfo.expires_in) {
                 setAccessTokenCookie(
                     res,
@@ -147,22 +149,22 @@ export const signin = async (req: SignInRequest, res: Response, next: NextFuncti
                     result.accessToken, // This is now our JWT token that wraps the OAuth token
                     result.accessTokenInfo.expires_in * 1000
                 );
-                
+
                 if (result.refreshToken) {
                     setRefreshTokenCookie(res, result.userId, result.refreshToken); // This is our JWT refresh token
                 }
             }
-            
+
             // Handle additional scopes
             if (result.needsAdditionalScopes) {
                 const redirectTo = createRedirectUrl(stateDetails.redirectUrl || frontendRedirectUrl, {
-                    type: RedirectType.SUCCESS, 
+                    type: RedirectType.SUCCESS,
                     data: {
                         accountId: result.userId,
                         name: result.userName
                     }
                 });
-                
+
                 next(new RedirectSuccess({
                     accountId: result.userId,
                     name: result.userName,
@@ -171,13 +173,13 @@ export const signin = async (req: SignInRequest, res: Response, next: NextFuncti
             } else {
                 // No additional scopes needed, continue with normal flow
                 const redirectTo = stateDetails.redirectUrl || frontendRedirectUrl;
-                
+
                 next(new RedirectSuccess({
                     accountId: result.userId,
                     name: result.userName
                 }, redirectTo));
             }
-            
+
             return;
         } catch (error) {
             console.log(error);
@@ -226,9 +228,9 @@ export const handleCallback = async (req: OAuthCallBackRequest, res: Response, n
             if (!userData) {
                 return next(new RedirectError(ApiErrorCode.AUTH_FAILED, redirectUrl, 'Authentication failed - no user data'));
             }
-            
+
             const result = await AuthService.processSignInSignupCallback(userData, stateDetails, redirectUrl);
-            
+
             if (result.authType === AuthType.SIGN_UP) {
                 next(new RedirectSuccess({ state: result.state },
                     `../signup/${provider}`,
@@ -303,21 +305,21 @@ export const handlePermissionCallback = async (req: Request, res: Response, next
 
             // Update tokens and scopes
             await AuthService.updateTokensAndScopes(
-                accountId, 
+                accountId,
                 result.tokenDetails.accessToken
             );
 
             // Create our JWT tokens that wrap the OAuth tokens
             const { createOAuthJwtToken, createOAuthRefreshToken } = await import('./OAuth.jwt');
-            
+
             const jwtAccessToken = await createOAuthJwtToken(
-                accountId, 
+                accountId,
                 result.tokenDetails.accessToken,
                 accessTokenInfo.expires_in
             );
-            
+
             const jwtRefreshToken = await createOAuthRefreshToken(
-                accountId, 
+                accountId,
                 result.tokenDetails.refreshToken
             );
 
@@ -347,11 +349,11 @@ export const handlePermissionCallback = async (req: Request, res: Response, next
 };
 
 /**
- * Request permission for a specific service
+ * Request permission for specific scope names
+ * Accepts scope names and converts them to proper Google OAuth scope URLs
  */
 export const requestPermission = async (req: Request, res: Response, next: NextFunction) => {
-    const service = req.params.service as string;
-    const scopeLevel = req.params.scopeLevel as string;
+    const requestedScopeNames = req.params.scopeNames as string; // Changed from scopes to scopeNames
     const { accountId, redirectUrl } = req.query;
 
     ValidationUtils.validateRequiredFields(req.query, ['redirectUrl', 'accountId']);
@@ -360,31 +362,51 @@ export const requestPermission = async (req: Request, res: Response, next: NextF
 
     // Get user account information
     const account = await AuthService.getUserAccount(accountId as string);
-    
+
     if (!account || !account.userDetails.email) {
         throw new NotFoundError('Account not found or missing email', 404, ApiErrorCode.USER_NOT_FOUND);
     }
 
     const userEmail = account.userDetails.email;
-    const scopeLevels = scopeLevel.split(',');
 
-    // Get the scopes - handle both single and multiple scopes
-    const scopes = scopeLevels.map(level =>
-        getGoogleScope(service as GoogleServiceName, level)
-    );
+    // Parse scope names - support both single scope and comma-separated scope names
+    let scopeNames: string[];
+
+    try {
+        // Try to parse as JSON array first
+        scopeNames = JSON.parse(requestedScopeNames);
+        if (!Array.isArray(scopeNames)) {
+            throw new Error('Not an array');
+        }
+    } catch {
+        // Fall back to comma-separated string
+        scopeNames = requestedScopeNames.split(',').map(name => name.trim());
+    }
+
+    const validation = validateScopeNames(scopeNames);
+
+    if (!validation.valid) {
+        throw new BadRequestError(`Invalid scope name format: ${validation.errors.join(', ')}`);
+    }
+
+    if (scopeNames.length === 0) {
+        throw new BadRequestError('At least one scope name is required');
+    }
+
+    const scopes = buildGoogleScopeUrls(scopeNames);
 
     // Generate state and save permission state
     const state = await generatePermissionState(
         OAuthProviders.Google,
         redirectUrl as string,
         accountId as string,
-        service,
-        scopeLevel
+        'custom', // service field - keeping for backward compatibility
+        requestedScopeNames // Store original scope names string
     );
 
     // CRITICAL: These options force Google to use the specified account
     const authOptions = {
-        scope: scopes,
+        scope: scopes, // Full Google OAuth scope URLs - Google will validate these
         accessType: 'offline',
         prompt: 'consent',
         loginHint: userEmail,     // Pre-select the account
@@ -392,9 +414,11 @@ export const requestPermission = async (req: Request, res: Response, next: NextF
         includeGrantedScopes: true
     };
 
-    console.log(`Initiating permission request for service: ${service}, scope: ${scopeLevel}, account: ${userEmail}`);
+    console.log(`Initiating permission request for scope names: ${scopeNames.join(', ')}`);
+    console.log(`Converted to scope URLs: ${scopes.join(', ')}`);
+    console.log(`Account: ${userEmail}`);
 
-    // Redirect to Google authorization page
+    // Redirect to Google authorization page - Google will validate the scopes
     passport.authenticate('google-permission', authOptions)(req, res, next);
 };
 
