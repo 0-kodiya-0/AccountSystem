@@ -12,17 +12,17 @@ const REQUIRED_ENV_VARS = [
     // Core Authentication & Security
     'JWT_SECRET',
     'SESSION_SECRET',
-    
+
     // Google OAuth (Required for main functionality)
     'GOOGLE_CLIENT_ID',
     'GOOGLE_CLIENT_SECRET',
-    
+
     // Application URLs
     'BASE_URL',
-    
+
     // Application Identity
     'APP_NAME',
-    
+
     // Email Configuration (Required for user verification, password reset, etc.)
     'SMTP_HOST',
     'SMTP_PORT',
@@ -32,7 +32,7 @@ const REQUIRED_ENV_VARS = [
     'SENDER_NAME',
 
     "MONGODB_USERNAME",
-    "MONGODB_PASSWORD"
+    "MONGODB_PASSWORD",
 ] as const;
 
 // Define optional environment variables with defaults
@@ -40,25 +40,32 @@ const OPTIONAL_ENV_VARS = {
     // Environment & Server
     NODE_ENV: 'development',
     PORT: '3000',
-    
+
     // Frontend & Proxy URLs
     FRONTEND_URL: 'http://localhost:5173',
     PROXY_URL: 'http://localhost:8080',
-    
+
     // Database URIs (have hardcoded fallbacks in db.config.ts)
     ACCOUNTS_DB_URI: '',
     CHAT_DB_URI: '',
-    
+
     // Token Expiry
     ACCESS_TOKEN_EXPIRY: '1h',
     REFRESH_TOKEN_EXPIRY: '7d',
     COOKIE_MAX_AGE: '31536000000', // 1 year in milliseconds
-    
+
     // Optional OAuth Providers
     MICROSOFT_CLIENT_ID: '',
     MICROSOFT_CLIENT_SECRET: '',
     FACEBOOK_CLIENT_ID: '',
-    FACEBOOK_CLIENT_SECRET: ''
+    FACEBOOK_CLIENT_SECRET: '',
+
+    INTERNAL_PORT: '4443',
+    INTERNAL_SERVER_ENABLED: 'true',
+
+    INTERNAL_SERVER_KEY_PATH: '',
+    INTERNAL_SERVER_CERT_PATH: '',
+    INTERNAL_CA_CERT_PATH: ''
 } as const;
 
 type RequiredEnvVar = typeof REQUIRED_ENV_VARS[number];
@@ -70,7 +77,7 @@ class EnvironmentConfig {
     private configCache: Record<string, string> = {};
     private isInitialized = false;
 
-    private constructor() {}
+    private constructor() { }
 
     static getInstance(): EnvironmentConfig {
         if (!EnvironmentConfig.instance) {
@@ -196,6 +203,15 @@ export const getCookieMaxAge = (): number => parseInt(envConfig.get('COOKIE_MAX_
 
 export const getMongodbUsername = (): string => envConfig.get('MONGODB_USERNAME');
 export const getMongodbPassword = (): string => envConfig.get('MONGODB_PASSWORD');
+
+// Internal server configuration
+export const getInternalPort = (): number => parseInt(envConfig.get('INTERNAL_PORT'));
+export const getInternalServerEnabled = (): boolean => envConfig.get('INTERNAL_SERVER_ENABLED') === 'true';
+
+// Internal SSL certificate paths
+export const getInternalServerKeyPath = (): string => envConfig.get('INTERNAL_SERVER_KEY_PATH');
+export const getInternalServerCertPath = (): string => envConfig.get('INTERNAL_SERVER_CERT_PATH');
+export const getInternalCACertPath = (): string => envConfig.get('INTERNAL_CA_CERT_PATH');
 
 // Initialize environment on module load
 envConfig.initialize();

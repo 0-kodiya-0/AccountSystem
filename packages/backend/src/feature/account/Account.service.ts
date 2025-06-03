@@ -6,7 +6,7 @@ import {
     clearSession, 
     handleTokenRefresh, 
     revokeAuthTokens 
-} from '../../services/session';
+} from '../../services';
 import { AccountDocument } from './Account.model';
 import { Account } from './Account.types';
 import db from '../../config/db';

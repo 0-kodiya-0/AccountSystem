@@ -9,7 +9,6 @@ import cookieParser from 'cookie-parser';
 
 import setupPassport from './config/passport';
 import db from './config/db';
-import { authenticateSession, validateAccountAccess, validateTokenAccess } from './services/session';
 import socketConfig from './config/socket.config';
 import { applyErrorHandlers } from './utils/response';
 
@@ -18,6 +17,7 @@ import { authenticatedNeedRouter as authNeedAccountRouter, authenticationNotNeed
 import { router as googleRoutes } from './feature/google';
 import { authNotRequiredRouter as localAuthNotRequiredRouter, authRequiredRouter as localAuthRequiredRouter } from './feature/local_auth';
 import notificationRoutes, { NotificationSocketHandler } from './feature/notifications';
+import { authenticateSession, validateAccountAccess, validateTokenAccess } from './middleware';
 
 const app = express();
 // Create HTTP server using the Express app
@@ -85,7 +85,27 @@ app.use((req: Request, res: Response) => {
 
 // IMPORTANT: Use httpServer.listen instead of app.listen to support Socket.IO
 const PORT = getPort();
+
 httpServer.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-    console.log(`Socket.IO is listening on the same port`);
+    console.log(`🌐 Main HTTP server running on port ${PORT}`);
+    console.log(`📡 Socket.IO is listening on the same port`);
+});
+
+httpServer.on('error', (error) => {
+    console.error('Failed to start main server:', error);
+});
+
+// Graceful shutdown handling
+process.on('SIGTERM', () => {
+    console.log('Received SIGTERM, shutting down main server gracefully');
+    httpServer.close(() => {
+        console.log('Main server closed');
+    });
+});
+
+process.on('SIGINT', () => {
+    console.log('Received SIGINT, shutting down main server gracefully');
+    httpServer.close(() => {
+        console.log('Main server closed');
+    });
 });

@@ -29,7 +29,7 @@ import {
     getTokenInfo,
     verifyTokenOwnership
 } from '../google/services/token';
-import { setAccessTokenCookie, setRefreshTokenCookie } from '../../services/session';
+import { setAccessTokenCookie, setRefreshTokenCookie } from '../../services';
 import { createRedirectUrl, RedirectType } from '../../utils/redirect';
 import { SignUpRequest, SignInRequest, OAuthCallBackRequest } from './OAuth.dto';
 import { ValidationUtils } from '../../utils/validation';

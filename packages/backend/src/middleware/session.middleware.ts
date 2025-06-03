@@ -1,15 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
-import { ApiErrorCode, BadRequestError, NotFoundError, RedirectError, ServerError } from '../../types/response.types';
-import db from '../../config/db';
-import { asyncHandler } from '../../utils/response';
-import { validateAccount } from '../../feature/account/Account.validation';
-import { extractAccessToken, extractRefreshToken } from './session.manager';
-import { removeRootUrl } from '../../utils/url';
-import { AccountType } from '../../feature/account/Account.types';
-import { AccountDocument } from '../../feature/account/Account.model';
-import { ValidationUtils } from '../../utils/validation';
-import { verifyLocalJwtToken } from '../../feature/local_auth';
-import { verifyOAuthJwtToken, verifyOAuthRefreshToken } from '../../feature/oauth/OAuth.jwt';
+import { ApiErrorCode, BadRequestError, NotFoundError, RedirectError, ServerError } from '../types/response.types';
+import db from '../config/db';
+import { asyncHandler } from '../utils/response';
+import { validateAccount } from '../feature/account/Account.validation';
+import { extractAccessToken, extractRefreshToken } from '../services';
+import { removeRootUrl } from '../utils/url';
+import { AccountType } from '../feature/account/Account.types';
+import { AccountDocument } from '../feature/account/Account.model';
+import { ValidationUtils } from '../utils/validation';
+import { verifyLocalJwtToken } from '../feature/local_auth';
+import { verifyOAuthJwtToken, verifyOAuthRefreshToken } from '../feature/oauth/OAuth.jwt';
 
 /**
  * Middleware to verify token from cookies and add accountId to request

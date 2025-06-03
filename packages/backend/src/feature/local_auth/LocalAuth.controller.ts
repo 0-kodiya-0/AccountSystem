@@ -24,7 +24,7 @@ import {
     VerifyEmailRequest,
     Account,
 } from '../account/Account.types';
-import { setAccessTokenCookie, setRefreshTokenCookie } from '../../services/session';
+import { setAccessTokenCookie, setRefreshTokenCookie } from '../../services';
 import { sendTwoFactorEnabledNotification } from '../email/Email.service';
 import QRCode from 'qrcode';
 import { ValidationUtils } from '../../utils/validation';
