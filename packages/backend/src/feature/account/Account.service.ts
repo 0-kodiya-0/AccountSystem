@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { ApiErrorCode, BadRequestError, ServerError } from '../../types/response.types';
+import { ApiErrorCode, BadRequestError } from '../../types/response.types';
 import { toSafeAccount } from './Account.utils';
 import { 
     clearAllSessions, 
@@ -8,7 +8,7 @@ import {
     revokeAuthTokens 
 } from '../../services/session';
 import { AccountDocument } from './Account.model';
-import { Account, AccountType, OAuthProviders } from './Account.types';
+import { Account } from './Account.types';
 import db from '../../config/db';
 import { ValidationUtils } from '../../utils/validation';
 

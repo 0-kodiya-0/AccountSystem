@@ -16,10 +16,8 @@ import { applyErrorHandlers } from './utils/response';
 import { router as oauthRoutes } from './feature/oauth';
 import { authenticatedNeedRouter as authNeedAccountRouter, authenticationNotNeedRouter as authNotNeedAccountRouter } from './feature/account';
 import { router as googleRoutes } from './feature/google';
-import environmentRoutes from './feature/environment';
 import { authNotRequiredRouter as localAuthNotRequiredRouter, authRequiredRouter as localAuthRequiredRouter } from './feature/local_auth';
 import notificationRoutes, { NotificationSocketHandler } from './feature/notifications';
-import { chatRoutes, ChatSocketHandler } from './feature/chat';
 
 const app = express();
 // Create HTTP server using the Express app
@@ -45,8 +43,8 @@ setupPassport();
 
 // Initialize Socket.IO with the HTTP server
 const io = socketConfig.initializeSocketIO(httpServer);
+
 // Initialize socket handlers
-new ChatSocketHandler(io);
 new NotificationSocketHandler(io);
 
 // Initialize database connections and models
@@ -75,8 +73,6 @@ app.use("/:accountId", authenticateSession, validateAccountAccess, validateToken
 
 app.use('/:accountId/account', authNeedAccountRouter);
 app.use('/:accountId/google', googleRoutes);
-app.use('/:accountId/chat', chatRoutes);
-app.use('/:accountId/environments', environmentRoutes);
 app.use('/:accountId/notifications', notificationRoutes);
 app.use('/:accountId/auth', localAuthRequiredRouter);
 

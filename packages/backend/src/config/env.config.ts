@@ -1,4 +1,3 @@
-// src/config/env.config.ts
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -30,7 +29,10 @@ const REQUIRED_ENV_VARS = [
     'SMTP_SECURE',
     'SMTP_APP_PASSWORD',
     'SENDER_EMAIL',
-    'SENDER_NAME'
+    'SENDER_NAME',
+
+    "MONGODB_USERNAME",
+    "MONGODB_PASSWORD"
 ] as const;
 
 // Define optional environment variables with defaults
@@ -191,6 +193,9 @@ export const getSenderName = (): string => envConfig.get('SENDER_NAME');
 export const getAccessTokenExpiry = (): string => envConfig.get('ACCESS_TOKEN_EXPIRY');
 export const getRefreshTokenExpiry = (): string => envConfig.get('REFRESH_TOKEN_EXPIRY');
 export const getCookieMaxAge = (): number => parseInt(envConfig.get('COOKIE_MAX_AGE'));
+
+export const getMongodbUsername = (): string => envConfig.get('MONGODB_USERNAME');
+export const getMongodbPassword = (): string => envConfig.get('MONGODB_PASSWORD');
 
 // Initialize environment on module load
 envConfig.initialize();
