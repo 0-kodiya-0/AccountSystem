@@ -1,4 +1,3 @@
-import { NextFunction, Request, Response } from 'express';
 import { asyncHandler } from '../../utils/response';
 import {
     JsonSuccess,
@@ -34,7 +33,7 @@ import { findUserById } from '../account';
 /**
  * Sign up (register) with email and password
  */
-export const signup = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+export const signup = asyncHandler(async (req, res, next) => {
     const signupData = req.body as SignupRequest;
 
     // Validate signup request
@@ -56,7 +55,7 @@ export const signup = asyncHandler(async (req: Request, res: Response, next: Nex
 /**
  * Login with email/username and password
  */
-export const login = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+export const login = asyncHandler(async (req, res, next) => {
     const loginData = req.body as LocalAuthRequest;
 
     // Validate login request
@@ -105,7 +104,7 @@ export const login = asyncHandler(async (req: Request, res: Response, next: Next
 /**
  * Verify two-factor authentication during login
  */
-export const verifyTwoFactor = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+export const verifyTwoFactor = asyncHandler(async (req, res, next) => {
     const { token, tempToken } = req.body as VerifyTwoFactorRequest & { tempToken: string };
 
     if (!token || !tempToken) {
@@ -138,7 +137,7 @@ export const verifyTwoFactor = asyncHandler(async (req: Request, res: Response, 
 /**
  * Verify email address - now uses cache
  */
-export const verifyEmail = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+export const verifyEmail = asyncHandler(async (req, res, next) => {
     const { token } = req.query as unknown as VerifyEmailRequest;
 
     if (!token) {
@@ -159,7 +158,7 @@ export const verifyEmail = asyncHandler(async (req: Request, res: Response, next
 /**
  * Request password reset - now uses cache
  */
-export const requestPasswordReset = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+export const requestPasswordReset = asyncHandler(async (req, res, next) => {
     const data = req.body as PasswordResetRequest;
 
     if (!data.email) {
@@ -178,7 +177,7 @@ export const requestPasswordReset = asyncHandler(async (req: Request, res: Respo
 /**
  * Reset password with token - now uses cache
  */
-export const resetPassword = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+export const resetPassword = asyncHandler(async (req, res, next) => {
     const { token } = req.query;
     const { password, confirmPassword } = req.body;
 
@@ -203,7 +202,7 @@ export const resetPassword = asyncHandler(async (req: Request, res: Response, ne
 /**
  * Change password (authenticated user)
  */
-export const changePassword = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+export const changePassword = asyncHandler(async (req, res, next) => {
     const accountId = req.params.accountId;
     const data = req.body as PasswordChangeRequest;
 
@@ -225,7 +224,7 @@ export const changePassword = asyncHandler(async (req: Request, res: Response, n
 /**
  * Set up two-factor authentication
  */
-export const setupTwoFactor = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+export const setupTwoFactor = asyncHandler(async (req, res, next) => {
     const accountId = req.params.accountId;
     const data = req.body as SetupTwoFactorRequest;
 
@@ -276,7 +275,7 @@ export const setupTwoFactor = asyncHandler(async (req: Request, res: Response, n
 /**
  * Verify and enable two-factor authentication
  */
-export const verifyAndEnableTwoFactor = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+export const verifyAndEnableTwoFactor = asyncHandler(async (req, res, next) => {
     const accountId = req.params.accountId;
     const { token } = req.body;
 
@@ -299,7 +298,7 @@ export const verifyAndEnableTwoFactor = asyncHandler(async (req: Request, res: R
 /**
  * Generate new backup codes for two-factor authentication
  */
-export const generateBackupCodes = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+export const generateBackupCodes = asyncHandler(async (req, res, next) => {
     const accountId = req.params.accountId;
     const { password } = req.body;
 

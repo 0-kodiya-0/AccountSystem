@@ -1,11 +1,15 @@
-import express from 'express';
+import express, { NextFunction } from 'express';
 import https from 'https';
 import cors from 'cors';
 import { Socket } from 'net';
 import { TLSSocket } from 'tls';
 import { getInternalServerConfig, validateInternalServerConfig } from './config/internal-server.config';
-import { applyErrorHandlers } from './utils/response';
+import { applyErrorHandlers, asyncHandler } from './utils/response';
 import { internalAuthentication, InternalRequest } from './middleware/internal-auth.middleware';
+import internalAuthRoutes from './feature/internal/auth/internal-auth.routes';
+import socketConfig from './config/socket.config';
+import { InternalNotificationHandler } from './feature/internal/socket/internal-socket.handler';
+import { ApiErrorCode, JsonSuccess, NotFoundError } from './types/response.types';
 
 // Validate configuration first
 const validation = validateInternalServerConfig();
@@ -47,10 +51,13 @@ app.use((req, res, next) => {
 // Apply internal authentication middleware to all routes
 app.use('/internal', internalAuthentication);
 
+// Internal API routes
+app.use('/internal/auth', internalAuthRoutes);
+
 // Health check endpoint (with authentication)
-app.get('/internal/health', (req, res) => {
+app.get('/internal/health', asyncHandler(async (req, res, next: NextFunction) => {
     const internalReq = req as InternalRequest;
-    res.json({
+    next(new JsonSuccess({
         success: true,
         data: {
             status: 'healthy',
@@ -63,25 +70,25 @@ app.get('/internal/health', (req, res) => {
             },
             service: req.get('X-Internal-Service-ID')
         }
-    });
-});
+    }));
+}));
 
 // Apply error handlers
 applyErrorHandlers(app);
 
 // 404 handler for internal routes
-app.use((req, res) => {
-    res.status(404).json({
-        success: false,
-        error: {
-            code: 'INTERNAL_ENDPOINT_NOT_FOUND',
-            message: 'Internal endpoint not found'
-        }
-    });
-});
+app.use(asyncHandler(async (req, res, next) => {
+    next(new NotFoundError('Internal endpoint not found', 404, ApiErrorCode.RESOURCE_NOT_FOUND))
+}));
 
 // Create HTTPS server with client certificate authentication
 const httpsServer = https.createServer(config.httpsOptions, app);
+
+// Initialize Socket.IO for internal services
+const io = socketConfig.initializeSocketIO(httpsServer);
+
+// Initialize internal notification handler
+new InternalNotificationHandler(io);
 
 // Enhanced error handling for the HTTPS server
 httpsServer.on('error', (error: NodeJS.ErrnoException) => {
@@ -128,7 +135,9 @@ httpsServer.listen(config.port, () => {
     console.log('   ✓ Client certificate authentication enabled');
     console.log('   ✓ Same-CA certificate validation enabled');
     console.log('   ✓ Internal service authentication required');
+    console.log('   ✓ Internal notification socket.io enabled');
     console.log(`   📡 Health check: https://localhost:${config.port}/internal/health`);
+    console.log(`   📡 Internal notifications: /internal-notifications namespace`);
 });
 
 // Graceful shutdown handling

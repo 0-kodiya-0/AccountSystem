@@ -1,11 +1,11 @@
 import { Response } from 'express';
 import { ApiErrorCode, BadRequestError } from '../../types/response.types';
 import { toSafeAccount } from './Account.utils';
-import { 
-    clearAllSessions, 
-    clearSession, 
-    handleTokenRefresh, 
-    revokeAuthTokens 
+import {
+    clearAllSessions,
+    clearSession,
+    handleTokenRefresh,
+    revokeAuthTokens
 } from '../../services';
 import { AccountDocument } from './Account.model';
 import { Account } from './Account.types';
@@ -31,7 +31,7 @@ export async function searchAccountByEmail(email: string) {
 /**
  * Validate account IDs array
  */
-export function validateAccountIds(accountIds: any): string[] {
+export function validateAccountIds(accountIds: string[] | undefined | null): string[] {
     if (!Array.isArray(accountIds)) {
         throw new BadRequestError("Invalid format or undefined account ids");
     }
@@ -41,7 +41,7 @@ export function validateAccountIds(accountIds: any): string[] {
 /**
  * Validate single account ID
  */
-export function validateSingleAccountId(accountId: any): string {
+export function validateSingleAccountId(accountId: string | undefined | null): string {
     if (!accountId) {
         throw new BadRequestError("Missing accountId");
     }
@@ -116,7 +116,7 @@ export async function updateAccountSecurity(account: AccountDocument, securityUp
 /**
  * Validate redirect URL
  */
-export function validateRedirectUrl(redirectUrl: any): string {
+export function validateRedirectUrl(redirectUrl: string | undefined | null): string {
     if (!redirectUrl) {
         throw new BadRequestError("Missing redirectUrl query parameter");
     }
@@ -127,9 +127,9 @@ export function validateRedirectUrl(redirectUrl: any): string {
  * Refresh account token - now directly calls session manager
  */
 export async function refreshAccountToken(
-    res: Response, 
-    accountId: string, 
-    account: AccountDocument, 
+    res: Response,
+    accountId: string,
+    account: AccountDocument,
     refreshToken: string
 ): Promise<void> {
     // Direct call to session manager - no need for wrapper logic
@@ -148,10 +148,10 @@ export async function revokeAccountTokens(
 ) {
     // Direct call to session manager - no need for wrapper logic
     return await revokeAuthTokens(
-        accountId, 
-        account.accountType, 
-        accessToken, 
-        refreshToken, 
+        accountId,
+        account.accountType,
+        accessToken,
+        refreshToken,
         res
     );
 }
@@ -181,7 +181,7 @@ export const findUserById = async (id: string): Promise<Account | null> => {
 
     try {
         const accountDoc = await models.accounts.Account.findById(id);
-        
+
         if (accountDoc) {
             return { id: accountDoc._id.toHexString(), ...accountDoc.toObject() };
         }

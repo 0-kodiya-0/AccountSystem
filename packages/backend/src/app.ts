@@ -3,14 +3,14 @@ import { getPort, getFrontendUrl, getProxyUrl } from './config/env.config';
 
 import { createServer } from 'http';
 import cors from 'cors';
-import express, { Request, Response } from 'express';
+import express from 'express';
 import passport from 'passport';
 import cookieParser from 'cookie-parser';
 
 import setupPassport from './config/passport';
 import db from './config/db';
 import socketConfig from './config/socket.config';
-import { applyErrorHandlers } from './utils/response';
+import { applyErrorHandlers, asyncHandler } from './utils/response';
 
 import { router as oauthRoutes } from './feature/oauth';
 import { authenticatedNeedRouter as authNeedAccountRouter, authenticationNotNeedRouter as authNotNeedAccountRouter } from './feature/account';
@@ -18,6 +18,7 @@ import { router as googleRoutes } from './feature/google';
 import { authNotRequiredRouter as localAuthNotRequiredRouter, authRequiredRouter as localAuthRequiredRouter } from './feature/local_auth';
 import notificationRoutes, { NotificationSocketHandler } from './feature/notifications';
 import { authenticateSession, validateAccountAccess, validateTokenAccess } from './middleware';
+import { ApiErrorCode, NotFoundError } from './types/response.types';
 
 const app = express();
 // Create HTTP server using the Express app
@@ -79,9 +80,9 @@ app.use('/:accountId/auth', localAuthRequiredRouter);
 applyErrorHandlers(app);
 
 // 404 handler
-app.use((req: Request, res: Response) => {
-    res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Resource not found' } });
-});
+app.use(asyncHandler((req, res, next) => {
+    next(new NotFoundError('Endpoint not found', 404, ApiErrorCode.RESOURCE_NOT_FOUND))
+}));
 
 // IMPORTANT: Use httpServer.listen instead of app.listen to support Socket.IO
 const PORT = getPort();

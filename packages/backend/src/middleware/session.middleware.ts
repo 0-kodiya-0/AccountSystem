@@ -8,8 +8,9 @@ import { removeRootUrl } from '../utils/url';
 import { AccountType } from '../feature/account/Account.types';
 import { AccountDocument } from '../feature/account/Account.model';
 import { ValidationUtils } from '../utils/validation';
-import { verifyLocalJwtToken } from '../feature/local_auth';
+import { verifyLocalJwtToken, verifyLocalRefreshToken } from '../feature/local_auth';
 import { verifyOAuthJwtToken, verifyOAuthRefreshToken } from '../feature/oauth/OAuth.jwt';
+import { getBaseUrl } from '../config/env.config';
 
 /**
  * Middleware to verify token from cookies and add accountId to request
@@ -27,7 +28,7 @@ export const authenticateSession = (req: Request, res: Response, next: NextFunct
  * Middleware to validate access to a specific account
  * Now works with unified Account model
  */
-export const validateAccountAccess = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+export const validateAccountAccess = asyncHandler(async (req, res, next) => {
     const accountId = req.params.accountId;
 
     const models = await db.getModels();
@@ -46,7 +47,7 @@ export const validateAccountAccess = asyncHandler(async (req: Request, res: Resp
     // Attach the account to the request for downstream middleware/handlers
     // We'll use a unified property name
     req.account = account as AccountDocument;
-    
+
     // Keep legacy properties for backward compatibility during transition
     if (account.accountType === AccountType.OAuth) {
         req.oauthAccount = account as AccountDocument;
@@ -61,7 +62,7 @@ export const validateAccountAccess = asyncHandler(async (req: Request, res: Resp
  * Middleware to validate token access
  * Now properly handles both OAuth and Local auth tokens with security verification
  */
-export const validateTokenAccess = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+export const validateTokenAccess = asyncHandler(async (req, res, next) => {
     const accountId = req.params.accountId;
     const account = req.account as AccountDocument;
 
@@ -87,16 +88,23 @@ export const validateTokenAccess = asyncHandler(async (req: Request, res: Respon
         if (account.accountType === AccountType.Local) {
             // For local auth, verify JWT token
             try {
-                const { accountId: tokenAccountId } = verifyLocalJwtToken(token);
-
-                // Check if token belongs to the right account
-                if (tokenAccountId !== accountId) {
-                    throw new Error('Invalid token for this account');
-                }
-
                 if (isRefreshTokenPath) {
+                    const { accountId: tokenAccountId } = verifyLocalRefreshToken(token);
+
+                    // Check if token belongs to the right account
+                    if (tokenAccountId !== accountId) {
+                        throw new Error('Invalid refresh token for this account');
+                    }
+
                     req.refreshToken = token;
                 } else {
+                    const { accountId: tokenAccountId } = verifyLocalJwtToken(token);
+
+                    // Check if token belongs to the right account
+                    if (tokenAccountId !== accountId) {
+                        throw new Error('Invalid access token for this account');
+                    }
+
                     req.accessToken = token;
                 }
             } catch {
@@ -144,7 +152,7 @@ export const validateTokenAccess = asyncHandler(async (req: Request, res: Respon
         if (isRefreshTokenPath) {
             throw new RedirectError(
                 ApiErrorCode.TOKEN_INVALID,
-                `/api/v1/account/logout?accountId=${accountPath}`,
+                `${getBaseUrl()}/account/logout?accountId=${accountPath}`,
                 "Refresh token expired",
                 302
             );

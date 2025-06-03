@@ -26,7 +26,7 @@ export const authenticateGoogleApi = asyncHandler(async (
     // Create OAuth2 client with the valid token
     const oauth2Client = new google.auth.OAuth2(
         getGoogleClientId(),
-        getGoogleClientSecret() 
+        getGoogleClientSecret()
     );
 
     oauth2Client.setCredentials({
@@ -52,7 +52,7 @@ export const authenticateGoogleApi = asyncHandler(async (
  * @param requiredScopeUrl The exact scope URL required (e.g., 'https://www.googleapis.com/auth/gmail.readonly')
  */
 export const requireGoogleScope = (requiredScopeUrl: string) => {
-    return asyncHandler(async (req: GoogleApiRequest, res: Response, next: NextFunction) => {
+    return asyncHandler(async (req: GoogleApiRequest, res, next) => {
         // Ensure we have a Google client attached by authenticateGoogleApi
         if (!req.googleAuth) {
             throw new ServerError('Google API client not initialized', 500, ApiErrorCode.SERVER_ERROR);
@@ -91,7 +91,7 @@ export const requireGoogleScope = (requiredScopeUrl: string) => {
  * @param requiredScopeUrls Array of exact scope URLs required
  */
 export const requireGoogleScopes = (requiredScopeUrls: string[]) => {
-    return asyncHandler(async (req: GoogleApiRequest, res: Response, next: NextFunction) => {
+    return asyncHandler(async (req: GoogleApiRequest, res, next) => {
         // Ensure we have a Google client attached by authenticateGoogleApi
         if (!req.googleAuth) {
             throw new ServerError('Google API client not initialized', 500, ApiErrorCode.SERVER_ERROR);
@@ -142,7 +142,7 @@ export const requireGoogleScopeName = (scopeName: string) => {
     return asyncHandler(async (req: GoogleApiRequest, res: Response, next: NextFunction) => {
         // Convert scope name to URL
         const requiredScopeUrl = buildGoogleScopeUrl(scopeName);
-        
+
         // Use the existing scope URL middleware
         return requireGoogleScope(requiredScopeUrl)(req, res, next);
     });
@@ -155,13 +155,10 @@ export const requireGoogleScopeName = (scopeName: string) => {
  * @param scopeNames Array of scope names
  */
 export const requireGoogleScopeNames = (scopeNames: string[]) => {
-    return asyncHandler(async (req: GoogleApiRequest, res: Response, next: NextFunction) => {
-        // Convert scope names to URLs
-        const requiredScopeUrls = buildGoogleScopeUrls(scopeNames);
-        
-        // Use the existing scope URLs middleware
-        return requireGoogleScopes(requiredScopeUrls)(req, res, next);
-    });
+    const requiredScopeUrls = buildGoogleScopeUrls(scopeNames);
+
+    // Use the existing scope URLs middleware
+    return requireGoogleScopes(requiredScopeUrls);
 };
 
 /**

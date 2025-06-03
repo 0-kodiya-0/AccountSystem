@@ -45,21 +45,19 @@ export const sendError = <T>(res: Response, status: number, code: ApiErrorCode, 
 };
 
 
-export const asyncHandler = (
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-    fn: Function
+export const asyncHandler = <T extends Request> (
+    fn: (req: T, res: Response, next: NextFunction) => Promise<void> | void
 ): RequestHandler => {
     return (req, res, next) => {
-        Promise.resolve(fn(req, res, next)).catch(next);
+        Promise.resolve(fn(req as T, res, next)).catch(next);
     };
 };
 
-export const asyncHandlerWithErr = (
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-    fn: Function
+export const asyncHandlerWithErr = <T extends Error, K extends Request>(
+    fn: (err: T, req: K, res: Response, next: NextFunction) => Promise<void> | void
 ): ErrorRequestHandler => {
     return (err, req, res, next) => {
-        Promise.resolve(fn(err, req, res, next)).catch(next);
+        Promise.resolve(fn(err, req as K, res, next)).catch(next);
     };
 };
 

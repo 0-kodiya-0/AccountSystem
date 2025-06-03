@@ -1,4 +1,3 @@
-import { Request, Response, NextFunction } from 'express';
 import { asyncHandler } from '../../utils/response';
 import { JsonSuccess } from '../../types/response.types';
 import * as NotificationService from './Notification.service';
@@ -8,7 +7,7 @@ import { ValidationUtils } from '../../utils/validation';
 /**
  * Get all notifications for the current user
  */
-export const getNotifications = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+export const getNotifications = asyncHandler(async (req, res, next) => {
     const accountId = req.params.accountId;
     const { read, type, limit, offset } = req.query;
     
@@ -33,7 +32,7 @@ export const getNotifications = asyncHandler(async (req: Request, res: Response,
 /**
  * Get unread count
  */
-export const getUnreadCount = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+export const getUnreadCount = asyncHandler(async (req, res, next) => {
     const accountId = req.params.accountId;
     
     const result = await NotificationService.getUserNotifications({
@@ -48,7 +47,7 @@ export const getUnreadCount = asyncHandler(async (req: Request, res: Response, n
 /**
  * Create a new notification
  */
-export const createNotification = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+export const createNotification = asyncHandler(async (req, res, next) => {
     const accountId = req.params.accountId;
     const notificationData = req.body as Omit<CreateNotificationRequest, 'accountId'>;
     
@@ -63,7 +62,7 @@ export const createNotification = asyncHandler(async (req: Request, res: Respons
 /**
  * Mark a notification as read
  */
-export const markAsRead = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+export const markAsRead = asyncHandler(async (req, res, next) => {
     const accountId = req.params.accountId;
     const notificationId = req.params.notificationId;
     
@@ -75,7 +74,7 @@ export const markAsRead = asyncHandler(async (req: Request, res: Response, next:
 /**
  * Mark all notifications as read
  */
-export const markAllAsRead = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+export const markAllAsRead = asyncHandler(async (req, res, next) => {
     const accountId = req.params.accountId;
     
     const count = await NotificationService.markAllNotificationsAsRead(accountId);
@@ -86,7 +85,7 @@ export const markAllAsRead = asyncHandler(async (req: Request, res: Response, ne
 /**
  * Update a notification
  */
-export const updateNotification = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+export const updateNotification = asyncHandler(async (req, res, next) => {
     const accountId = req.params.accountId;
     const notificationId = req.params.notificationId;
     const updates = req.body as UpdateNotificationRequest;
@@ -99,7 +98,7 @@ export const updateNotification = asyncHandler(async (req: Request, res: Respons
 /**
  * Delete a notification
  */
-export const deleteNotification = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+export const deleteNotification = asyncHandler(async (req, res, next) => {
     const accountId = req.params.accountId;
     const notificationId = req.params.notificationId;
     
@@ -111,7 +110,7 @@ export const deleteNotification = asyncHandler(async (req: Request, res: Respons
 /**
  * Delete all notifications
  */
-export const deleteAllNotifications = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+export const deleteAllNotifications = asyncHandler(async (req, res, next) => {
     const accountId = req.params.accountId;
     
     const count = await NotificationService.deleteAllNotifications(accountId);

@@ -1,4 +1,3 @@
-import { NextFunction, Response } from 'express';
 import { ApiErrorCode, AuthError, BadRequestError, JsonSuccess, ServerError } from '../../../../types/response.types';
 import { GoogleApiRequest } from '../../types';
 import { getTokenInfo, getTokenScopes, hasScope } from '../../services/token';
@@ -9,7 +8,7 @@ import { asyncHandler } from '../../../../utils/response';
  * Get token information for the current user
  * This endpoint retrieves detailed information about the token including granted scopes
  */
-export const getTokenInfoController = asyncHandler(async (req: GoogleApiRequest, res: Response, next: NextFunction) => {
+export const getTokenInfoController = asyncHandler(async (req: GoogleApiRequest, res, next) => {
     // Ensure we have a Google client attached by the middleware
     if (!req.googleAuth) {
         throw new ServerError('Google API client not initialized');
@@ -43,7 +42,7 @@ export const getTokenInfoController = asyncHandler(async (req: GoogleApiRequest,
  * @param res Response
  * @returns Response indicating whether the token has access to the specified scopes
  */
-export const checkScopeAccess = asyncHandler(async (req: GoogleApiRequest, res: Response, next: NextFunction) => {
+export const checkScopeAccess = asyncHandler(async (req: GoogleApiRequest, res, next) => {
     // Get scope names from query parameters
     const { scopes, scope } = req.query;
 

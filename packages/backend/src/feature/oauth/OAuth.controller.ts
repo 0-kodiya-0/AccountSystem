@@ -1,4 +1,3 @@
-import { NextFunction, Response, Request } from 'express';
 import passport from 'passport';
 import {
     ApiErrorCode,
@@ -34,11 +33,12 @@ import { createRedirectUrl, RedirectType } from '../../utils/redirect';
 import { SignUpRequest, SignInRequest, OAuthCallBackRequest } from './OAuth.dto';
 import { ValidationUtils } from '../../utils/validation';
 import { buildGoogleScopeUrls, validateScopeNames } from '../google/config';
+import { asyncHandler } from '../../utils/response';
 
 /**
  * Initiate Google authentication
  */
-export const initiateGoogleAuth = async (req: Request, res: Response, next: NextFunction) => {
+export const initiateGoogleAuth = asyncHandler(async (req, res, next) => {
     const { state } = req.query;
 
     await validateState(state as string,
@@ -56,12 +56,12 @@ export const initiateGoogleAuth = async (req: Request, res: Response, next: Next
 
     // Pass control to passport middleware
     passport.authenticate('google', authOptions)(req, res, next);
-};
+});
 
 /**
  * Handle sign up process
  */
-export const signup = async (req: SignUpRequest, res: Response, next: NextFunction) => {
+export const signup = asyncHandler(async (req: SignUpRequest, res, next) => {
     const frontendRedirectUrl = req.query.redirectUrl as string;
     const provider = req.params.provider as OAuthProviders;
 
@@ -117,12 +117,12 @@ export const signup = async (req: SignUpRequest, res: Response, next: NextFuncti
     };
 
     next(new RedirectSuccess({ state: generatedState }, authUrls[provider], 302, "State generated", frontendRedirectUrl));
-};
+});
 
 /**
  * Handle sign in process
  */
-export const signin = async (req: SignInRequest, res: Response, next: NextFunction) => {
+export const signin = asyncHandler(async (req: SignInRequest, res, next) => {
     const frontendRedirectUrl = req.query.redirectUrl as string;
     const provider = req.params.provider as OAuthProviders;
     const { state } = req.query;
@@ -195,12 +195,12 @@ export const signin = async (req: SignInRequest, res: Response, next: NextFuncti
     };
 
     next(new RedirectSuccess({ state: generatedState }, authUrls[provider], 302, undefined, frontendRedirectUrl));
-};
+});
 
 /**
  * Handle callback from OAuth provider
  */
-export const handleCallback = async (req: OAuthCallBackRequest, res: Response, next: NextFunction) => {
+export const handleCallback = asyncHandler(async (req: OAuthCallBackRequest, res, next) => {
     const provider = req.params.provider;
     const stateFromProvider = req.query.state;
 
@@ -247,12 +247,12 @@ export const handleCallback = async (req: OAuthCallBackRequest, res: Response, n
             next(new RedirectError(ApiErrorCode.SERVER_ERROR, redirectUrl, 'Failed to process authentication'));
         }
     })(req, res, next);
-};
+});
 
 /**
  * Handle callback for permission request
  */
-export const handlePermissionCallback = async (req: Request, res: Response, next: NextFunction) => {
+export const handlePermissionCallback = asyncHandler(async (req, res, next) => {
     const provider = req.params.provider;
     const stateFromProvider = req.query.state as string;
 
@@ -346,13 +346,13 @@ export const handlePermissionCallback = async (req: Request, res: Response, next
             next(new RedirectError(ApiErrorCode.SERVER_ERROR, redirectUrl, 'Failed to update token'));
         }
     })(req, res, next);
-};
+});
 
 /**
  * Request permission for specific scope names
  * Accepts scope names and converts them to proper Google OAuth scope URLs
  */
-export const requestPermission = async (req: Request, res: Response, next: NextFunction) => {
+export const requestPermission = asyncHandler(async (req, res, next) => {
     const requestedScopeNames = req.params.scopeNames as string; // Changed from scopes to scopeNames
     const { accountId, redirectUrl } = req.query;
 
@@ -420,12 +420,12 @@ export const requestPermission = async (req: Request, res: Response, next: NextF
 
     // Redirect to Google authorization page - Google will validate the scopes
     passport.authenticate('google-permission', authOptions)(req, res, next);
-};
+});
 
 /**
  * Reauthorize permissions
  */
-export const reauthorizePermissions = async (req: Request, res: Response, next: NextFunction) => {
+export const reauthorizePermissions = asyncHandler(async (req, res, next) => {
     const { accountId, redirectUrl } = req.query;
 
     if (!accountId || !redirectUrl) {
@@ -470,4 +470,4 @@ export const reauthorizePermissions = async (req: Request, res: Response, next: 
 
     // Redirect to Google authorization page
     passport.authenticate('google-permission', authOptions)(req, res, next);
-};
+});
