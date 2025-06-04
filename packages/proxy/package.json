@@ -1,0 +1,42 @@
+{
+  "name": "@accountsystem/proxy",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "npm run clean && tsc",
+    "start": "node dist/index.js",
+    "dev": "npx tsx src/index.ts",
+    "dev:watch": "nodemon --exec ts-node src/index.ts",
+    "clean": "node -e \"const fs = require('fs'); if (fs.existsSync('dist')) fs.rmSync('dist', { recursive: true });\"",
+    "lint": "eslint src/**/*.ts --fix",
+    "test": "echo \"Tests not implemented yet\" && exit 0"
+  },
+  "keywords": [
+    "proxy",
+    "microservices",
+    "typescript",
+    "express",
+    "websocket",
+    "load-balancer",
+    "gateway"
+  ],
+  "author": "0-kodiya-0",
+  "license": "MIT",
+  "description": "",
+  "devDependencies": {
+    "@eslint/js": "^9.28.0",
+    "@types/cors": "^2.8.18",
+    "@types/express": "^5.0.2",
+    "esbuild": "0.25.5",
+    "eslint": "^9.28.0",
+    "nodemon": "^3.1.10",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "http-proxy-middleware": "^3.0.5"
+  }
+}
