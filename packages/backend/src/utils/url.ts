@@ -1,4 +1,5 @@
 import { Request } from "express";
+import { getBaseUrl } from "../config/env.config";
 
 /**
  * Helper function to build absolute URLs that work behind proxies
@@ -14,7 +15,7 @@ export function getAbsoluteUrl(req: Request, path: string): string {
     const host = req.get('X-Forwarded-Host') || req.get('host');
 
     // Combine to get full URL
-    return `${protocol}://${host}/api/v1${path}`;
+    return `${protocol}://${host}${getBaseUrl()}${path}`;
 }
 
 export function removeRootUrl(url: string) {

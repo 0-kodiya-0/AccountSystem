@@ -169,7 +169,7 @@ export const signin = asyncHandler(async (req: SignInRequest, res, next) => {
                     accountId: result.userId,
                     name: result.userName,
                     skipRedirectUrl: redirectTo
-                }, '/auth/permission-confirmation', undefined, undefined, `/api/v1/oauth/permission/reauthorize?redirectUrl=${redirectTo}`));
+                }, '../auth/permission-confirmation', undefined, undefined, `../oauth/permission/reauthorize?redirectUrl=${redirectTo}`));
             } else {
                 // No additional scopes needed, continue with normal flow
                 const redirectTo = stateDetails.redirectUrl || frontendRedirectUrl;

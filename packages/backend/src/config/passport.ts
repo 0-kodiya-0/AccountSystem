@@ -3,7 +3,7 @@ import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import refresh from 'passport-oauth2-refresh';
 import { OAuthProviders } from '../feature/account/Account.types';
 import { ProviderResponse } from '../feature/oauth/OAuth.types';
-import { getGoogleClientId, getGoogleClientSecret } from './env.config';
+import { getBaseUrl, getGoogleClientId, getGoogleClientSecret, getProxyUrl } from './env.config';
 
 /**
  * Sets up passport strategies for OAuth providers
@@ -13,7 +13,7 @@ const setupPassport = () => {
     const googleAuthStrategy = new GoogleStrategy({
         clientID: getGoogleClientId(),
         clientSecret: getGoogleClientSecret(),
-        callbackURL: 'http://localhost:8080/api/v1/oauth/callback/google',
+        callbackURL: `${getProxyUrl()}${getBaseUrl()}/oauth/callback/google`,
         passReqToCallback: true
     }, async (req, accessToken, refreshToken, profile, done) => {
         try {
@@ -44,7 +44,7 @@ const setupPassport = () => {
     const googlePermissionStrategy = new GoogleStrategy({
         clientID: getGoogleClientId(),
         clientSecret: getGoogleClientSecret(),
-        callbackURL: 'http://localhost:8080/api/v1/oauth/callback/permission/google',
+        callbackURL: `${getProxyUrl()}${getBaseUrl()}/oauth/callback/permission/google`,
         passReqToCallback: true,
         skipUserProfile: true
     }, async (req, accessToken, refreshToken, params, done) => {
