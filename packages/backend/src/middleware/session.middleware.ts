@@ -4,13 +4,11 @@ import db from '../config/db';
 import { asyncHandler } from '../utils/response';
 import { validateAccount } from '../feature/account/Account.validation';
 import { extractAccessToken, extractRefreshToken } from '../services';
-import { removeRootUrl } from '../utils/url';
 import { AccountType } from '../feature/account/Account.types';
 import { AccountDocument } from '../feature/account/Account.model';
 import { ValidationUtils } from '../utils/validation';
 import { verifyLocalJwtToken, verifyLocalRefreshToken } from '../feature/local_auth';
 import { verifyOAuthJwtToken, verifyOAuthRefreshToken } from '../feature/oauth/OAuth.jwt';
-import { getBaseUrl } from '../config/env.config';
 
 /**
  * Middleware to verify token from cookies and add accountId to request
@@ -152,18 +150,18 @@ export const validateTokenAccess = asyncHandler(async (req, res, next) => {
         if (isRefreshTokenPath) {
             throw new RedirectError(
                 ApiErrorCode.TOKEN_INVALID,
-                `${getBaseUrl()}/account/logout?accountId=${accountPath}`,
+                `/account/logout?accountId=${accountPath}`,
                 "Refresh token expired",
                 302
             );
         } else {
             throw new RedirectError(
                 ApiErrorCode.TOKEN_INVALID,
-                `../${accountPath}/account/refreshToken`,
+                `/${accountPath}/account/refreshToken`,
                 "Access token expired",
                 302,
                 undefined,
-                `..${removeRootUrl(req.originalUrl)}`
+                req.originalUrl
             );
         }
     }

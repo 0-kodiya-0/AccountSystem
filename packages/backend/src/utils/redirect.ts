@@ -1,7 +1,6 @@
 import { Response, Request } from "express";
 import { ApiErrorCode } from "../types/response.types";
 import * as path from "path";
-import { getProxyUrl } from "../config/env.config";
 
 // Redirect types
 export enum RedirectType {
@@ -20,9 +19,40 @@ export interface RedirectOptions {
 }
 
 /**
- * Creates a redirect URL with proper parameters
+ * Get the path prefix that was stripped by the proxy
+ * @param req Express request object
+ * @returns The stripped path prefix (e.g., "/api")
+ */
+function getStrippedPathPrefix(req: Request): string {
+    // First check if X-Path-Prefix header exists
+    const headerPrefix = req.get('X-Path-Prefix');
+    if (headerPrefix) {
+        return headerPrefix;
+    }
+
+    // Fallback: calculate from original URL vs current URL
+    const originalUrl = req.originalUrl || req.url;
+    const currentUrl = req.url;
+
+    // Parse URLs to get just the path (no query params)
+    const originalPath = originalUrl.split('?')[0];
+    const currentPath = currentUrl.split('?')[0];
+
+    // If originalPath ends with currentPath, the difference is the stripped prefix
+    if (originalPath.endsWith(currentPath) && originalPath !== currentPath) {
+        const strippedPrefix = originalPath.substring(0, originalPath.length - currentPath.length);
+        // Remove trailing slash if present
+        return strippedPrefix.endsWith('/') ? strippedPrefix.slice(0, -1) : strippedPrefix;
+    }
+
+    return '';
+}
+
+/**
+ * Creates a redirect URL with proper parameters and smart path prefix handling
  */
 export const createRedirectUrl = (
+    req: Request,
     baseUrl: string,
     options: RedirectOptions,
     originalUrl?: string
@@ -30,11 +60,14 @@ export const createRedirectUrl = (
     let finalUrl = '';
     const queryParams = new URLSearchParams();
 
+    // Get the path prefix that was stripped by proxy
+    const pathPrefix = getStrippedPathPrefix(req);
+
     // Check if it's an absolute URL (starts with http:// or https://)
     const isAbsoluteUrl = baseUrl.startsWith('http://') || baseUrl.startsWith('https://');
 
     if (isAbsoluteUrl) {
-        // For absolute URLs, we can use the URL constructor
+        // For absolute URLs, use as-is
         try {
             const urlObj = new URL(baseUrl);
             finalUrl = urlObj.origin + urlObj.pathname;
@@ -48,13 +81,28 @@ export const createRedirectUrl = (
             finalUrl = baseUrl;
         }
     } else {
+        // For relative URLs, clean them up and add path prefix
         baseUrl = decodeURIComponent(baseUrl);
 
-        // For relative URLs (including '../' notation), just use the path directly
-        // We'll normalize it to handle '../' paths correctly
-        finalUrl = path.normalize(baseUrl).split('?')[0];
+        // Normalize the path and remove any query parameters
+        let cleanPath = path.normalize(baseUrl).split('?')[0];
 
-        // Extract any existing query parameters
+        // Remove any leading "./" or "../" patterns - we don't want relative navigation
+        cleanPath = cleanPath.replace(/^(\.\.?\/)+/, '');
+
+        // Ensure path starts with /
+        if (!cleanPath.startsWith('/')) {
+            cleanPath = '/' + cleanPath;
+        }
+
+        // Add path prefix if it exists and isn't already present
+        if (pathPrefix && !cleanPath.startsWith(pathPrefix)) {
+            cleanPath = pathPrefix + cleanPath;
+        }
+
+        finalUrl = cleanPath;
+
+        // Extract any existing query parameters from original baseUrl
         const queryIndex = baseUrl.indexOf('?');
         if (queryIndex !== -1) {
             const queryString = baseUrl.substring(queryIndex + 1);
@@ -90,9 +138,14 @@ export const createRedirectUrl = (
         }
     }
 
-    // For permission redirects, include original URL
+    // For permission redirects, include original URL (cleaned)
     if (originalUrl) {
-        queryParams.append('redirectUrl', encodeURIComponent(path.normalize(originalUrl)));
+        // Clean the original URL too
+        let cleanOriginalUrl = originalUrl.replace(/^(\.\.?\/)+/, '');
+        if (pathPrefix && !cleanOriginalUrl.startsWith(pathPrefix)) {
+            cleanOriginalUrl = pathPrefix + cleanOriginalUrl;
+        }
+        queryParams.append('redirectUrl', encodeURIComponent(cleanOriginalUrl));
     }
 
     // Construct the final URL with query parameters
@@ -108,12 +161,13 @@ export const createRedirectUrl = (
  * Handle redirects with proper status and parameters
  */
 export const handleRedirect = (
+    req: Request,
     res: Response,
     baseUrl: string,
     options: RedirectOptions,
     originalUrl?: string
 ): void => {
-    const redirectUrl = createRedirectUrl(baseUrl, options, originalUrl);
+    const redirectUrl = createRedirectUrl(req, baseUrl, options, originalUrl);
     res.redirect(redirectUrl);
 };
 
@@ -121,6 +175,7 @@ export const handleRedirect = (
  * Redirect on success
  */
 export const redirectWithSuccess = (
+    req: Request,
     res: Response,
     path: string,
     options: {
@@ -130,7 +185,7 @@ export const redirectWithSuccess = (
         sendStatus?: boolean
     }
 ): void => {
-    handleRedirect(res, path, {
+    handleRedirect(req, res, path, {
         type: RedirectType.SUCCESS,
         ...options
     }, options.originalUrl);
@@ -140,6 +195,7 @@ export const redirectWithSuccess = (
  * Redirect on error
  */
 export const redirectWithError = (
+    req: Request,
     res: Response,
     path: string,
     code: ApiErrorCode,
@@ -150,7 +206,7 @@ export const redirectWithError = (
         sendStatus?: boolean
     }
 ): void => {
-    handleRedirect(res, path, {
+    handleRedirect(req, res, path, {
         type: RedirectType.ERROR,
         code,
         ...options
@@ -159,18 +215,33 @@ export const redirectWithError = (
 
 /**
  * Extract frontend redirect URL from request query parameters
- * With fallback to default URL
+ * With fallback to default URL and smart path prefix handling
  */
 export const getRedirectUrl = (req: Request, defaultUrl: string): string => {
     const redirectUrl = req.query.redirectUrl as string;
+    const pathPrefix = getStrippedPathPrefix(req);
 
     // Validate the URL to prevent open redirects
-    if (redirectUrl && (
-        redirectUrl.startsWith('/') ||
-        redirectUrl.startsWith(getProxyUrl() || '')
-    )) {
-        return redirectUrl;
+    if (redirectUrl) {
+        // Clean up any relative navigation patterns
+        let cleanUrl = redirectUrl.replace(/^(\.\.?\/)+/, '');
+
+        // If it's a relative URL, add path prefix if needed
+        if (cleanUrl.startsWith('/') && pathPrefix && !cleanUrl.startsWith(pathPrefix)) {
+            cleanUrl = pathPrefix + cleanUrl;
+        }
+
+        // Basic validation for relative URLs
+        if (cleanUrl.startsWith('/')) {
+            return cleanUrl;
+        }
     }
 
-    return defaultUrl;
+    // Apply path prefix to default URL if needed
+    let finalDefaultUrl = defaultUrl;
+    if (pathPrefix && !finalDefaultUrl.startsWith(pathPrefix) && finalDefaultUrl.startsWith('/')) {
+        finalDefaultUrl = pathPrefix + finalDefaultUrl;
+    }
+
+    return finalDefaultUrl;
 };

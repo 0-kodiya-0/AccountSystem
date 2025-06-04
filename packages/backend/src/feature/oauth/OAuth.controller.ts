@@ -111,9 +111,9 @@ export const signup = asyncHandler(async (req: SignUpRequest, res, next) => {
 
     const generatedState = await generateOAuthState(provider as OAuthProviders, AuthType.SIGN_UP, frontendRedirectUrl);
     const authUrls: AuthUrls = {
-        [OAuthProviders.Google]: '../auth/google',
-        [OAuthProviders.Microsoft]: '../auth/microsoft',
-        [OAuthProviders.Facebook]: '../auth/facebook',
+        [OAuthProviders.Google]: '/auth/google',
+        [OAuthProviders.Microsoft]: '/auth/microsoft',
+        [OAuthProviders.Facebook]: '/auth/facebook',
     };
 
     next(new RedirectSuccess({ state: generatedState }, authUrls[provider], 302, "State generated", frontendRedirectUrl));
@@ -157,7 +157,7 @@ export const signin = asyncHandler(async (req: SignInRequest, res, next) => {
 
             // Handle additional scopes
             if (result.needsAdditionalScopes) {
-                const redirectTo = createRedirectUrl(stateDetails.redirectUrl || frontendRedirectUrl, {
+                const redirectTo = createRedirectUrl(req, stateDetails.redirectUrl || frontendRedirectUrl, {
                     type: RedirectType.SUCCESS,
                     data: {
                         accountId: result.userId,
@@ -169,7 +169,7 @@ export const signin = asyncHandler(async (req: SignInRequest, res, next) => {
                     accountId: result.userId,
                     name: result.userName,
                     skipRedirectUrl: redirectTo
-                }, '../auth/permission-confirmation', undefined, undefined, `../oauth/permission/reauthorize?redirectUrl=${redirectTo}`));
+                }, '/auth/permission-confirmation', undefined, undefined, `/oauth/permission/reauthorize?redirectUrl=${redirectTo}`));
             } else {
                 // No additional scopes needed, continue with normal flow
                 const redirectTo = stateDetails.redirectUrl || frontendRedirectUrl;
@@ -189,9 +189,9 @@ export const signin = asyncHandler(async (req: SignInRequest, res, next) => {
 
     const generatedState = await generateOAuthState(provider as OAuthProviders, AuthType.SIGN_IN, frontendRedirectUrl);
     const authUrls: AuthUrls = {
-        [OAuthProviders.Google]: '../auth/google',
-        [OAuthProviders.Microsoft]: '../auth/microsoft',
-        [OAuthProviders.Facebook]: '../auth/facebook',
+        [OAuthProviders.Google]: '/auth/google',
+        [OAuthProviders.Microsoft]: '/auth/microsoft',
+        [OAuthProviders.Facebook]: '/auth/facebook',
     };
 
     next(new RedirectSuccess({ state: generatedState }, authUrls[provider], 302, undefined, frontendRedirectUrl));
@@ -233,12 +233,12 @@ export const handleCallback = asyncHandler(async (req: OAuthCallBackRequest, res
 
             if (result.authType === AuthType.SIGN_UP) {
                 next(new RedirectSuccess({ state: result.state },
-                    `../signup/${provider}`,
+                    `/signup/${provider}`,
                     302,
                     "User authenticated by provider", redirectUrl));
             } else {
                 next(new RedirectSuccess({ state: result.state },
-                    `../signin/${provider}`,
+                    `/signin/${provider}`,
                     302,
                     "User authenticated by provider", redirectUrl));
             }

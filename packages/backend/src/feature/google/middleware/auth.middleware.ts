@@ -1,6 +1,5 @@
 import { NextFunction, Response, Request } from "express";
 import { ApiErrorCode, AuthError, ServerError } from "../../../types/response.types";
-import { getAbsoluteUrl } from "../../../utils/url";
 import { hasScope } from "../services/token";
 import { GoogleApiRequest } from "../types";
 import { asyncHandler } from "../../../utils/response";
@@ -37,11 +36,6 @@ export const authenticateGoogleApi = asyncHandler(async (
     const googleReq = req as GoogleApiRequest;
     googleReq.googleAuth = oauth2Client;
 
-    // Prepare permission info that can be included in error responses if needed
-    googleReq.googlePermissionInfo = {
-        permissionUrl: `${getAbsoluteUrl(req, '/oauth/permission')}`,
-    };
-
     next();
 });
 
@@ -73,8 +67,7 @@ export const requireGoogleScope = (requiredScopeUrl: string) => {
             // Send an error response with permission info
             throw new AuthError('Insufficient scope', 403, ApiErrorCode.INSUFFICIENT_SCOPE, {
                 requiredPermission: {
-                    requiredScope: requiredScopeUrl,
-                    permissionInfo: req.googlePermissionInfo
+                    requiredScope: requiredScopeUrl
                 }
             });
         }
@@ -121,8 +114,7 @@ export const requireGoogleScopes = (requiredScopeUrls: string[]) => {
             throw new AuthError('Insufficient scopes', 403, ApiErrorCode.INSUFFICIENT_SCOPE, {
                 requiredPermission: {
                     requiredScopes: requiredScopeUrls,
-                    missingScopes: missingScopes.map(s => s.scopeUrl),
-                    permissionInfo: req.googlePermissionInfo
+                    missingScopes: missingScopes.map(s => s.scopeUrl)
                 }
             });
         }

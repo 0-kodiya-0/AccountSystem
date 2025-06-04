@@ -42,7 +42,6 @@ const OPTIONAL_ENV_VARS = {
     PORT: '3000',
 
     // Frontend & Proxy URLs
-    FRONTEND_URL: 'http://localhost:5173',
     PROXY_URL: 'http://localhost:8080',
 
     // Database URIs (have hardcoded fallbacks in db.config.ts)
@@ -170,7 +169,6 @@ export const getSessionSecret = (): string => envConfig.get('SESSION_SECRET');
 export const getPort = (): number => parseInt(envConfig.get('PORT'));
 export const getNodeEnv = (): string => envConfig.get('NODE_ENV');
 export const getBaseUrl = (): string => envConfig.get('BASE_URL');
-export const getFrontendUrl = (): string => envConfig.get('FRONTEND_URL');
 export const getProxyUrl = (): string => envConfig.get('PROXY_URL');
 export const getAppName = (): string => envConfig.get('APP_NAME');
 

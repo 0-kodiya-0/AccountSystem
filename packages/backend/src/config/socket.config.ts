@@ -1,6 +1,6 @@
 import { Server as SocketIOServer } from 'socket.io';
 import { Server as HttpServer } from 'http';
-import { getFrontendUrl, getProxyUrl } from './env.config';
+import { getProxyUrl } from './env.config';
 
 let io: SocketIOServer | null = null;
 
@@ -16,8 +16,7 @@ export const initializeSocketIO = (httpServer: HttpServer): SocketIOServer => {
 
     // Define allowed origins - adjust based on your environment
     const allowedOrigins = [
-        getFrontendUrl() || 'http://localhost:5173',
-        getProxyUrl() || 'http://localhost:8080'
+        getProxyUrl()
     ].filter(Boolean); // Remove any undefined values
 
     console.log('Socket.IO initializing with allowed origins:', allowedOrigins);

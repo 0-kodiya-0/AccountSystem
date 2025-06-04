@@ -1,8 +1,7 @@
 import './config/env.config';
-import { getPort, getFrontendUrl, getProxyUrl } from './config/env.config';
+import { getPort } from './config/env.config';
 
 import { createServer } from 'http';
-import cors from 'cors';
 import express from 'express';
 import passport from 'passport';
 import cookieParser from 'cookie-parser';
@@ -29,14 +28,6 @@ app.set('trust proxy', true);
 // Middleware
 app.use(express.json());
 app.use(cookieParser());
-app.use(cors({
-    origin: [
-        getFrontendUrl(),
-        getProxyUrl()
-    ].filter(Boolean),
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
-}));
 
 // Initialize Passport
 app.use(passport.initialize());
