@@ -25,8 +25,9 @@ EXAMPLES:
   asp ./configs/production.json
 
 DOCUMENTATION:
-  Configuration: https://github.com/0-kodiya-0/AccountSystem/blob/main/packages/proxy/CONFIGURATION.md
+  Configuration: https://github.com/0-kodiya-0/AccountSystem/blob/main/packages/proxy/docs/Configuration.md
   Repository:    https://github.com/0-kodiya-0/AccountSystem
+  Examples:      https://github.com/0-kodiya-0/AccountSystem/blob/main/packages/proxy/docs/Examples.md
 `);
 }
 
@@ -55,7 +56,8 @@ function parseArgs(): {
                 result.version = true;
                 break;
             default:
-                if (!arg.startsWith('-') && !result.configPath) {
+                // Only treat as config path if it's not a flag and we don't already have help/version
+                if (!arg.startsWith('-') && !result.configPath && !result.help && !result.version) {
                     result.configPath = arg;
                 }
                 break;
@@ -68,16 +70,18 @@ function parseArgs(): {
 async function main(): Promise<void> {
     const args = parseArgs();
 
-    if (args.version) {
-        showVersion();
-        return;
-    }
-
+    // Handle help and version first, before checking for config
     if (args.help) {
         showHelp();
         return;
     }
 
+    if (args.version) {
+        showVersion();
+        return;
+    }
+
+    // Only check for config file if we're not showing help or version
     if (!args.configPath) {
         console.error('Error: Configuration file path is required');
         console.log('\nUsage: accountsystem-proxy <config-file>');

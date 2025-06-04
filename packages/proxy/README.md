@@ -89,7 +89,7 @@ accountsystem-proxy --version
 
 ## Configuration
 
-For complete configuration options, see [CONFIGURATION.md](CONFIGURATION.md).
+For complete configuration options, see [Configuration.md](/docs/Configuration.md).
 
 ## Common Use Cases
 
@@ -99,7 +99,7 @@ For complete configuration options, see [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Documentation
 
-[Configuration Reference](CONFIGURATION.md) - Complete configuration options
+[Configuration Reference](/docs/Configuration.md) - Complete configuration options
 
 ## Contributing
 

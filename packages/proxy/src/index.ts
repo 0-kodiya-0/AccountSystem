@@ -463,33 +463,3 @@ export async function stopProxy(): Promise<void> {
     state.config = null;
     state.proxies.clear();
 }
-
-// CLI functionality
-async function main() {
-    const configPath = process.argv[2] || 'proxy-config.json';
-
-    // Graceful shutdown
-    process.on('SIGTERM', async () => {
-        console.log('Received SIGTERM, shutting down gracefully...');
-        await stopProxy();
-        process.exit(0);
-    });
-
-    process.on('SIGINT', async () => {
-        console.log('Received SIGINT, shutting down gracefully...');
-        await stopProxy();
-        process.exit(0);
-    });
-
-    try {
-        await startProxy(configPath);
-    } catch (error) {
-        console.error('Failed to start proxy server:', error);
-        process.exit(1);
-    }
-}
-
-// Run if this file is executed directly
-if (require.main === module) {
-    main().catch(console.error);
-}

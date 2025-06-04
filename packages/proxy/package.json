@@ -2,26 +2,25 @@
   "name": "@accountsystem/proxy",
   "version": "1.0.0",
   "description": "A powerful, configurable TypeScript proxy server designed for microservices architectures with JSON configuration, WebSocket support, and flexible routing.",
-  "main": "dist/index.js",
+  "main": "dist/cli.js",
   "types": "dist/index.d.ts",
   "bin": {
     "accountsystem-proxy": "dist/cli.js",
     "asp": "dist/cli.js"
   },
   "scripts": {
-    "build": "npm run clean && npm run build:lib && npm run build:cli",
-    "build:lib": "tsc --project tsconfig.json",
-    "build:cli": "esbuild src/cli.ts --bundle --platform=node --target=node18 --format=cjs --outfile=dist/cli.js --external:express --external:http-proxy-middleware --external:cors --external:https --external:http --external:fs --external:path --banner:js=\"#!/usr/bin/env node\"",
-    "dev": "npm run build -- --watch",
+    "build": "npm run clean && npm run build:types && npm run build:cli",
+    "build:types": "tsc --emitDeclarationOnly",
+    "build:cli": "esbuild src/cli.ts --bundle --platform=node --target=node18 --format=cjs --outfile=dist/cli.js --external:express --external:http-proxy-middleware --external:cors --external:https --external:http --external:fs --external:path",
+    "dev": "npm run build --watch",
     "clean": "node -e \"const fs = require('fs'); if (fs.existsSync('dist')) fs.rmSync('dist', { recursive: true });\"",
     "prepublishOnly": "npm run build",
     "test": "echo \"Tests not implemented yet\" && exit 0",
-    "start": "node dist/cli.js",
+    "start": "node dist/cli.js -h",
     "link": "npm run build && npm link"
   },
   "files": [
     "dist/**/*",
-    "proxy-config.json",
     "docs/**/*",
     "README.md",
     "LICENSE"
