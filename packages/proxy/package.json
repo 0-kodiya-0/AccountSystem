@@ -1,16 +1,35 @@
 {
   "name": "@accountsystem/proxy",
   "version": "1.0.0",
+  "description": "A powerful, configurable TypeScript proxy server designed for microservices architectures with JSON configuration, WebSocket support, and flexible routing.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "accountsystem-proxy": "dist/cli.js",
+    "asp": "dist/cli.js"
+  },
   "scripts": {
-    "build": "npm run clean && tsc",
-    "start": "node dist/index.js",
-    "dev": "npx tsx src/index.ts",
-    "dev:watch": "nodemon --exec ts-node src/index.ts",
+    "build": "npm run clean && npm run build:lib && npm run build:cli",
+    "build:lib": "tsc --project tsconfig.json",
+    "build:cli": "esbuild src/cli.ts --bundle --platform=node --target=node18 --format=cjs --outfile=dist/cli.js --external:express --external:http-proxy-middleware --external:cors --external:https --external:http --external:fs --external:path --banner:js=\"#!/usr/bin/env node\"",
+    "dev": "npm run build -- --watch",
     "clean": "node -e \"const fs = require('fs'); if (fs.existsSync('dist')) fs.rmSync('dist', { recursive: true });\"",
-    "lint": "eslint src/**/*.ts --fix",
-    "test": "echo \"Tests not implemented yet\" && exit 0"
+    "prepublishOnly": "npm run build",
+    "test": "echo \"Tests not implemented yet\" && exit 0",
+    "start": "node dist/cli.js",
+    "link": "npm run build && npm link"
+  },
+  "files": [
+    "dist/**/*",
+    "proxy-config.json",
+    "docs/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0-kodiya-0/AccountSystem.git",
+    "directory": "packages/proxy"
   },
   "keywords": [
     "proxy",
@@ -19,11 +38,23 @@
     "express",
     "websocket",
     "load-balancer",
-    "gateway"
+    "gateway",
+    "reverse-proxy",
+    "api-gateway",
+    "cli"
   ],
+  "bugs": {
+    "url": "https://github.com/0-kodiya-0/AccountSystem/issues"
+  },
+  "homepage": "https://github.com/0-kodiya-0/AccountSystem/tree/main/packages/proxy#readme",
   "author": "0-kodiya-0",
   "license": "MIT",
-  "description": "",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "devDependencies": {
     "@eslint/js": "^9.28.0",
     "@types/cors": "^2.8.18",
