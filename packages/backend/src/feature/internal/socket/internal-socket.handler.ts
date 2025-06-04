@@ -30,17 +30,9 @@ export class InternalNotificationHandler {
                 // Extract service identification from handshake
                 const serviceId = socket.handshake.auth.serviceId || socket.handshake.query.serviceId;
                 const serviceName = socket.handshake.auth.serviceName || socket.handshake.query.serviceName;
-                const serviceSecret = socket.handshake.auth.serviceSecret || socket.handshake.query.serviceSecret;
                 
-                if (!serviceId || !serviceName || !serviceSecret) {
-                    return next(new Error('Internal service credentials required'));
-                }
-                
-                // Validate service credentials
-                const expectedSecret = process.env[`INTERNAL_SERVICE_${serviceId.toUpperCase()}_SECRET`];
-                
-                if (!expectedSecret || serviceSecret !== expectedSecret) {
-                    return next(new Error('Invalid internal service credentials'));
+                if (!serviceId || !serviceName) {
+                    return next(new Error('Internal service identification required'));
                 }
                 
                 // Store service info in socket data

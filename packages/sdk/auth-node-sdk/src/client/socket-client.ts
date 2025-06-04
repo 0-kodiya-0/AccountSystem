@@ -22,8 +22,7 @@ export class AuthSocketClient {
             this.socket = io(socketUrl, {
                 auth: {
                     serviceId: this.config.serviceName.toUpperCase(),
-                    serviceName: this.config.serviceName,
-                    serviceSecret: this.config.serviceSecret
+                    serviceName: this.config.serviceName
                 },
                 transports: ['websocket'],
                 forceNew: true,

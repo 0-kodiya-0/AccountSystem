@@ -26,9 +26,6 @@ export const extractClientCertificateInfo = asyncHandler((req: InternalRequest, 
     try {
         const socket = req.socket as TLSSocket;
 
-        // At this point, if we reach here, the TLS handshake was successful
-        // and the client certificate was already validated by Node.js
-
         // Get client certificate (already validated by TLS layer)
         const cert = socket.getPeerCertificate(true);
 
@@ -63,32 +60,19 @@ export const extractClientCertificateInfo = asyncHandler((req: InternalRequest, 
 });
 
 /**
- * Note: HTTPS enforcement is handled by the TLS server setup.
- * If a request reaches our Express middleware, it's already HTTPS.
- * The HTTPS server configuration with requestCert: true and rejectUnauthorized: true
- * handles all certificate validation automatically.
- */
-
-/**
  * Middleware to validate internal service authentication headers
+ * Since mTLS already provides strong authentication, we just need to verify
+ * that the service provides identification headers
  */
 export const validateInternalService = asyncHandler((req: InternalRequest, res, next) => {
-    // Check for service identification header
+    // Check for service identification headers
     const serviceId = req.get('X-Internal-Service-ID');
     const serviceSecret = req.get('X-Internal-Service-Secret');
 
     if (!serviceId || !serviceSecret) {
         throw new AuthError('Internal service credentials required', 401, ApiErrorCode.AUTH_FAILED);
     }
-
-    // Validate service credentials (stored in environment variables)
-    const expectedSecret = process.env[`INTERNAL_SERVICE_${serviceId.toUpperCase()}_SECRET`];
-
-    if (!expectedSecret || serviceSecret !== expectedSecret) {
-        console.warn(`Invalid service credentials for service: ${serviceId}`);
-        throw new AuthError('Invalid internal service credentials', 403, ApiErrorCode.AUTH_FAILED);
-    }
-
+    
     console.log(`Internal service authenticated: ${serviceId}`);
     next();
 });
