@@ -1,5 +1,5 @@
 {
-  "name": "auth-node-sdk",
+  "name": "@accountsystem/auth-node-sdk",
   "version": "1.0.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -8,23 +8,39 @@
     "build:types": "tsc --emitDeclarationOnly",
     "build:js": "esbuild src/index.ts --bundle --platform=node --target=node18 --format=cjs --outfile=dist/index.js --external:express --external:socket.io-client --external:axios --external:https --external:fs --external:path --external:crypto --external:url",
     "dev": "npm run build -- --watch",
-    "clean": "rm -rf dist",
+    "clean": "node -e \"const fs = require('fs'); if (fs.existsSync('dist')) fs.rmSync('dist', { recursive: true });\"",
     "prepublishOnly": "npm run build",
     "test": "echo \"Tests not implemented yet\" && exit 0",
     "link": "npm run build && npm link"
   },
   "files": [
     "dist/**/*",
-    "README.md"
+    "docs/**/*",
+    "README.md",
+    "LICENSE"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0-kodiya-0/AccountSystem.git",
+    "directory": "packages/sdk/auth-node-sdk"
+  },
   "keywords": [
     "auth",
     "authentication",
     "microservice",
     "sdk",
     "express",
-    "middleware"
+    "middleware",
+    "node",
+    "typescript",
+    "oauth",
+    "jwt",
+    "session"
   ],
+  "bugs": {
+    "url": "https://github.com/0-kodiya-0/AccountSystem/issues"
+  },
+  "homepage": "https://github.com/0-kodiya-0/AccountSystem#readme",
   "author": "0-kodiya-0",
   "license": "MIT",
   "description": "",
@@ -43,5 +59,8 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
