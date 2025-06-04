@@ -1,0 +1,53 @@
+{
+    "port": 8080,
+    "logging": {
+        "enabled": true,
+        "level": "info",
+        "requests": true,
+        "responses": false,
+        "errors": true
+    },
+    "cors": {
+        "origin": [
+            "http://localhost:3000",
+            "https://localhost:8080"
+        ],
+        "credentials": true,
+        "methods": [
+            "GET",
+            "POST",
+            "PUT",
+            "DELETE",
+            "OPTIONS",
+            "PATCH"
+        ]
+    },
+    "services": {
+        "auth-backend": {
+            "target": "http://localhost:3000",
+            "pathPrefix": "/api",
+            "websocket": true,
+            "headers": {
+                "X-Service-Name": "auth-backend",
+                "X-Path-Prefix": "/api"
+            },
+            "cookieConfig": {
+                "pathRewrite": {
+                    "/api/": "/"
+                },
+                "domainRewrite": true
+            }
+        },
+        "auth-internal": {
+            "target": "https://localhost:4443",
+            "pathPrefix": "/internal",
+            "websocket": true,
+            "headers": {
+                "X-Service-Name": "auth-internal",
+                "X-Internal-Service-ID": "PROXY_SERVICE",
+                "X-Internal-Service-Secret": "proxy-service-secret-key-123",
+                "X-Path-Prefix": "/internal"
+            }
+        }
+    }
+}

@@ -1,4 +1,4 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response, NextFunction, Application, RequestHandler, ErrorRequestHandler } from 'express';
 import { createProxyMiddleware as createHttpProxyMiddleware, Options } from 'http-proxy-middleware';
 import fs from 'fs';
 import path from 'path';
@@ -94,7 +94,7 @@ function validateConfig(config: ProxyConfig): void {
 }
 
 // Middleware utilities
-function createRequestLogger(): express.RequestHandler {
+function createRequestLogger(): RequestHandler {
     return (req: Request, res: Response, next: NextFunction) => {
         log('info', `${req.method} ${req.url}`, {
             ip: req.ip,
@@ -104,7 +104,7 @@ function createRequestLogger(): express.RequestHandler {
     };
 }
 
-function createErrorHandler(): express.ErrorRequestHandler {
+function createErrorHandler(): ErrorRequestHandler {
     return (err: any, req: Request, res: Response, next: NextFunction) => {
         log('error', `Proxy error: ${err.message}`, {
             url: req.url,
@@ -122,7 +122,7 @@ function createErrorHandler(): express.ErrorRequestHandler {
     };
 }
 
-function create404Handler(): express.RequestHandler {
+function create404Handler(): RequestHandler {
     return (req: Request, res: Response) => {
         log('warn', `Route not found: ${req.method} ${req.url}`);
         res.status(404).json({
@@ -235,7 +235,7 @@ function createProxyMiddleware(serviceName: string, serviceConfig: ServiceConfig
     return createHttpProxyMiddleware(proxyOptions);
 }
 
-function setupRouteForService(app: express.Application, serviceName: string, serviceConfig: ServiceConfig, route: RouteConfig): void {
+function setupRouteForService(app: Application, serviceName: string, serviceConfig: ServiceConfig, route: RouteConfig): void {
     const fullPath = serviceConfig.pathPrefix
         ? path.posix.join(serviceConfig.pathPrefix, route.path)
         : route.path;
@@ -267,14 +267,8 @@ function setupRouteForService(app: express.Application, serviceName: string, ser
     }
 }
 
-function setupServiceRoutes(app: express.Application, serviceName: string, serviceConfig: ServiceConfig): void {
+function setupServiceRoutes(app: Application, serviceName: string, serviceConfig: ServiceConfig): void {
     log('info', `Setting up routes for service: ${serviceName}`);
-
-    // Setup service-specific CORS if configured
-    if (serviceConfig.cors && serviceConfig.pathPrefix) {
-        const corsMiddleware = cors(serviceConfig.cors);
-        app.use(serviceConfig.pathPrefix, corsMiddleware);
-    }
 
     // Setup specific routes first
     if (serviceConfig.routes) {
@@ -292,7 +286,7 @@ function setupServiceRoutes(app: express.Application, serviceName: string, servi
     }
 }
 
-function setupRoutes(app: express.Application): void {
+function setupRoutes(app: Application): void {
     if (!state.config) {
         throw new Error('Configuration not loaded');
     }
@@ -328,7 +322,7 @@ function setupRoutes(app: express.Application): void {
         }
     } else {
         // 404 handler
-        app.use('*', create404Handler());
+        app.use(create404Handler());
     }
 }
 

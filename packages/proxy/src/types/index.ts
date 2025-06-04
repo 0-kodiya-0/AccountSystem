@@ -20,11 +20,6 @@ export interface ServiceConfig {
     headers?: Record<string, string>;
     routes?: RouteConfig[];
     cookieConfig?: CookieConfig;
-    cors?: {
-        origin?: string | string[] | boolean;
-        credentials?: boolean;
-        methods?: string[];
-    };
 }
 
 export interface SSLConfig {
