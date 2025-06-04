@@ -1,0 +1,47 @@
+{
+  "name": "auth-node-sdk",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "npm run clean && npm run build:types && npm run build:js",
+    "build:types": "tsc --emitDeclarationOnly",
+    "build:js": "esbuild src/index.ts --bundle --platform=node --target=node18 --format=cjs --outfile=dist/index.js --external:express --external:socket.io-client --external:axios --external:https --external:fs --external:path --external:crypto --external:url",
+    "dev": "npm run build -- --watch",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build",
+    "test": "echo \"Tests not implemented yet\" && exit 0",
+    "link": "npm run build && npm link"
+  },
+  "files": [
+    "dist/**/*",
+    "README.md"
+  ],
+  "keywords": [
+    "auth",
+    "authentication",
+    "microservice",
+    "sdk",
+    "express",
+    "middleware"
+  ],
+  "author": "0-kodiya-0",
+  "license": "MIT",
+  "description": "",
+  "devDependencies": {
+    "@types/express": "^5.0.2",
+    "@types/node": "^22.15.29",
+    "esbuild": "0.25.5",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "axios": "^1.9.0",
+    "socket.io-client": "^4.8.1"
+  },
+  "peerDependencies": {
+    "express": "^5.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
