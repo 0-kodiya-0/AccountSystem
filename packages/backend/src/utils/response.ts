@@ -22,6 +22,7 @@ import { MongoError } from "mongodb";
 import { Error as MongooseError } from "mongoose";
 import { GaxiosError } from "gaxios";
 import jwt from "jsonwebtoken";
+import { logger } from "./logger";
 
 export const createSuccessResponse = <T>(data: T): ApiResponse<T> => ({
     success: true,
@@ -68,7 +69,7 @@ export const jwtErrorHandler = (err: any, req: Request, res: Response, next: Nex
         err instanceof jwt.NotBeforeError ||
         (err && (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError' || err.name === 'NotBeforeError'))) {
 
-        console.error('JWT Error:', err);
+        logger.error('JWT Error:', err);
 
         // Handle specific JWT error types
         if (err instanceof jwt.TokenExpiredError || err.name === 'TokenExpiredError') {
@@ -110,7 +111,7 @@ export const mongoErrorHandler = (err: any, req: Request, res: Response, next: N
     if (err instanceof MongoError || err instanceof MongooseError ||
         (err && (err.name === 'MongoError' || err.name === 'MongooseError'))) {
 
-        console.error('Database Error:', err);
+        logger.error('Database Error:', err);
 
         // Handle specific MongoDB error codes
         if (err.code === 11000) {
@@ -198,7 +199,7 @@ export const mongoErrorHandler = (err: any, req: Request, res: Response, next: N
 export const googleApiErrorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
     // Check if error is a Google API error
     if (err instanceof GaxiosError || (err && err.name === 'GaxiosError')) {
-        console.error('Google API Error:', err);
+        logger.error('Google API Error:', err);
 
         const statusCode = err.response?.status || 500;
         const errorMessage = err.response?.data?.error?.message || err.message || 'Google API request failed';
@@ -229,7 +230,7 @@ export const googleApiErrorHandler = (err: any, req: Request, res: Response, nex
 export const apiRequestErrorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
     // Check if error is a generic API request error (axios, fetch, etc.)
     if (err.isAxiosError || (err.response && err.request) || err.name === 'FetchError') {
-        console.error('API Request Error:', err);
+        logger.error('API Request Error:', err);
 
         const statusCode = err.response?.status || 500;
         const errorMessage = err.response?.data?.message || err.message || 'External API request failed';
@@ -269,6 +270,7 @@ export const successHandler = (result: any, req: Request, res: Response, next: N
     // Handle BaseSuccess responses
     if (result instanceof RedirectSuccess) {
         redirectWithSuccess(
+            req,
             res,
             result.redirectPath,
             {
@@ -305,11 +307,12 @@ export const successHandler = (result: any, req: Request, res: Response, next: N
 // Enhanced error handling middleware
 export const errorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
     // Log the error
-    console.error('Error:', err);
+    logger.error('Error:', err);
 
     // Handle different error types
     if (err instanceof RedirectError) {
         redirectWithError(
+            req,
             res,
             err.redirectPath,
             err.code,
@@ -391,7 +394,7 @@ export const applyErrorHandlers = (app: any) => {
 
     // Catch-all for unhandled errors
     app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-        console.error('Unhandled error:', err);
+        logger.error('Unhandled error:', err);
         res.status(500).json(createErrorResponse(
             ApiErrorCode.SERVER_ERROR,
             'A server error occurred'

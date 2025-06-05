@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { logger } from '../utils/logger';
 
 // ES module equivalents
 const __filename = fileURLToPath(import.meta.url);
@@ -122,8 +123,8 @@ class EnvironmentConfig {
 
         // Exit if missing required variables
         if (missingVars.length > 0) {
-            console.error('Missing required environment variables:');
-            missingVars.forEach(varName => console.error(`  - ${varName}`));
+            logger.error('Missing required environment variables:');
+            missingVars.forEach(varName => logger.error(`  - ${varName}`));
             process.exit(1);
         }
 

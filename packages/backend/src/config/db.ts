@@ -2,6 +2,7 @@ import initAccountModel from '../feature/account/Account.model';
 import initNotificationModel from '../feature/notifications/Notification.model';
 import initGooglePermissionsModel from '../feature/google/models/GooglePermissions.model';
 import dbConfig from './db.config';
+import { logger } from '../utils/logger';
 
 // Define model types for type safety
 export type AccountModels = {
@@ -58,11 +59,11 @@ const initializeDB = async (): Promise<DatabaseModels> => {
         };
 
         isInitialized = true;
-        console.log('Database models initialized successfully');
+        logger.info('Database models initialized successfully');
 
         return models;
     } catch (error) {
-        console.error('Failed to initialize database models:', error);
+        logger.error('Failed to initialize database models:', error);
         throw error;
     }
 };

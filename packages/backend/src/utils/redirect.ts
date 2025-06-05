@@ -1,6 +1,7 @@
 import { Response, Request } from "express";
 import { ApiErrorCode } from "../types/response.types";
 import * as path from "path";
+import { logger } from "./logger";
 
 // Redirect types
 export enum RedirectType {
@@ -77,7 +78,7 @@ export const createRedirectUrl = (
                 queryParams.append(key, value);
             });
         } catch (error) {
-            console.error('Error parsing absolute URL:', error);
+            logger.error('Error parsing absolute URL:', error);
             finalUrl = baseUrl;
         }
     } else {

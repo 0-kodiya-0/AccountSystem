@@ -6,6 +6,7 @@ import { getTemplateMetadata, isValidTemplate, getTemplateFilePath } from './Ema
 import { EmailTemplate } from './Email.types';
 import { getAppName, getBaseUrl, getNodeEnv, getProxyUrl, getSenderEmail, getSenderName } from '../../config/env.config';
 import { getTransporter, resetTransporter } from './Email.transporter';
+import { logger } from '../../utils/logger';
 
 // Template cache to avoid reading files repeatedly
 const templateCache = new Map<EmailTemplate, string>();
@@ -25,7 +26,7 @@ async function loadTemplate(template: EmailTemplate): Promise<string> {
         templateCache.set(template, templateContent);
         return templateContent;
     } catch (error) {
-        console.error(`Failed to load email template: ${template}`, error);
+        logger.error(`Failed to load email template: ${template}`, error);
         throw new ServerError(`Email template not found: ${template}`);
     }
 }
@@ -121,10 +122,10 @@ export async function sendCustomEmail(
 
         // Log preview URL for development
         if (getNodeEnv() !== 'production') {
-            console.log('Preview URL: %s', nodemailer.getTestMessageUrl(result));
+            logger.info('Preview URL: %s', nodemailer.getTestMessageUrl(result));
         }
     } catch (error) {
-        console.error('Failed to send email:', error);
+        logger.error('Failed to send email:', error);
 
         // If it's a connection error, reset the transporter for next attempt
         if (error instanceof Error && (
@@ -132,7 +133,7 @@ export async function sendCustomEmail(
             error.message.includes('timeout') ||
             error.message.includes('ECONNRESET')
         )) {
-            console.log('Resetting transporter due to connection error');
+            logger.info('Resetting transporter due to connection error');
             resetTransporter();
         }
 
@@ -256,10 +257,9 @@ export async function sendBulkEmails(
 
         try {
             await Promise.all(promises);
-            console.log(`Sent batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(emails.length / batchSize)}`);
+            logger.info(`Sent batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(emails.length / batchSize)}`);
         } catch (error) {
-            console.error(`Failed to send batch ${Math.floor(i / batchSize) + 1}:`, error);
-            // Continue with next batch
+            logger.error(`Failed to send batch ${Math.floor(i / batchSize) + 1}:`, error);
         }
 
         // Wait between batches (except for the last batch)
@@ -289,7 +289,7 @@ export async function sendTestEmail(to: string): Promise<void> {
  */
 export function clearTemplateCache(): void {
     templateCache.clear();
-    console.log('Email template cache cleared');
+    logger.info('Email template cache cleared');
 }
 
 /**
@@ -298,7 +298,7 @@ export function clearTemplateCache(): void {
 export function clearAllCaches(): void {
     clearTemplateCache();
     resetTransporter();
-    console.log('All email caches cleared and transporter reset');
+    logger.info('All email caches cleared and transporter reset');
 }
 
 /**
@@ -345,7 +345,7 @@ export async function getAvailableTemplates(): Promise<EmailTemplate[]> {
 
         return availableTemplates;
     } catch (error) {
-        console.error('Failed to read templates directory:', error);
+        logger.error('Failed to read templates directory:', error);
         return [];
     }
 }

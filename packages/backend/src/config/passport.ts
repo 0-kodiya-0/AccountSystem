@@ -1,9 +1,9 @@
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
-import refresh from 'passport-oauth2-refresh';
 import { OAuthProviders } from '../feature/account/Account.types';
 import { ProviderResponse } from '../feature/oauth/OAuth.types';
 import { getBaseUrl, getGoogleClientId, getGoogleClientSecret, getProxyUrl } from './env.config';
+import { logger } from '../utils/logger';
 
 /**
  * Sets up passport strategies for OAuth providers
@@ -17,7 +17,7 @@ const setupPassport = () => {
         passReqToCallback: true
     }, async (req, accessToken, refreshToken, profile, done) => {
         try {
-            console.log('Google Auth callback received');
+            logger.info('Google Auth callback received');
 
             // Create the provider response with all user information
             const response: ProviderResponse = {
@@ -31,11 +31,11 @@ const setupPassport = () => {
                 }
             };
 
-            console.log(`Authentication successful for: `, response);
+            logger.info(`Authentication successful for: `, response);
 
             return done(null, response);
         } catch (error) {
-            console.error('Error in Google auth strategy:', error);
+            logger.error('Error in Google auth strategy:', error);
             return done(error as Error);
         }
     });
@@ -49,7 +49,7 @@ const setupPassport = () => {
         skipUserProfile: true
     }, async (req, accessToken, refreshToken, params, done) => {
         try {
-            console.log('Google Permission callback received');
+            logger.info('Google Permission callback received');
 
             // For permission requests, we only care about the tokens
             // We don't need to extract profile information because we already have it
@@ -66,11 +66,11 @@ const setupPassport = () => {
                 }
             };
 
-            console.log(`Permission request successful, received new access token`);
+            logger.info(`Permission request successful, received new access token`);
 
             return done(null, response);
         } catch (error) {
-            console.error('Error in Google permission strategy:', error);
+            logger.error('Error in Google permission strategy:', error);
             return done(error as Error);
         }
     });
@@ -78,9 +78,6 @@ const setupPassport = () => {
     // Register the strategies with different names
     passport.use('google', googleAuthStrategy);
     passport.use('google-permission', googlePermissionStrategy);
-
-    // Register the strategy for refresh token usage
-    refresh.use('google', googleAuthStrategy);
 };
 
 export default setupPassport;

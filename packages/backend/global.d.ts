@@ -1,4 +1,4 @@
-import { AccountDocument } from "./feature/account/Account.model";
+import { AccountDocument } from "./src/feature/account/Account.model";
 
 declare global {
     namespace NodeJS {
@@ -41,6 +41,22 @@ declare global {
             SMTP_APP_PASSWORD?: string;
             SENDER_EMAIL?: string
             SENDER_NAME?: string
+
+            INTERNAL_PORT?: string,
+            INTERNAL_SERVER_ENABLED?: string,
+
+            INTERNAL_SERVER_KEY_PATH?: string,
+            INTERNAL_SERVER_CERT_PATH?: string,
+            INTERNAL_CA_CERT_PATH?: string,
+
+            DISABLE_OAUTH?: string,
+            DISABLE_LOCAL_AUTH?: string,
+            DISABLE_NOTIFICATIONS?: string,
+
+            DEBUG_MODE?: string,
+            LOG_LEVEL?: string,
+            QUIET_MODE?: string,
+            NO_REQUEST_LOGS?: string
         }
     }
     namespace Express {
@@ -50,15 +66,15 @@ declare global {
 
             refreshToken?: string;
             oauthRefreshToken?: string;
-            
+
             googleAuth?: Auth.OAuth2Client;
             googlePermissionRedirectUrl?: string;
-            
+
             workspaceId?: string;
-            
+
             // Unified account property
             account?: AccountDocument;
-            
+
             // Legacy properties for backward compatibility during transition
             oauthAccount?: AccountDocument;
             localAccount?: AccountDocument;

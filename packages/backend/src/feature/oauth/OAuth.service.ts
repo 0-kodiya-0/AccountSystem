@@ -10,6 +10,7 @@ import { validateAccount } from '../account/Account.validation';
 import { getTokenInfo } from '../google/services/token';
 import { findUserByEmail, findUserById } from '../account';
 import { createOAuthJwtToken, createOAuthRefreshToken } from './OAuth.jwt';
+import { logger } from '../../utils/logger';
 
 /**
  * Process sign up with OAuth provider
@@ -213,7 +214,7 @@ async function updateGooglePermissions(accountId: string, accessToken: string): 
             });
         }
     } catch (error) {
-        console.error('Error updating Google permissions:', error);
+        logger.error('Error updating Google permissions:', error);
         // Don't throw error here to avoid breaking auth flow
     }
 }
@@ -247,7 +248,7 @@ async function checkForAdditionalScopes(accountId: string, accessToken: string):
             missingScopes
         };
     } catch (error) {
-        console.error('Error checking for additional scopes:', error);
+        logger.error('Error checking for additional scopes:', error);
         return {
             needsAdditionalScopes: false,
             missingScopes: []
@@ -265,7 +266,7 @@ export async function getAccountScopes(accountId: string): Promise<string[]> {
         
         return permissions ? permissions.scopes : [];
     } catch (error) {
-        console.error('Error getting account scopes:', error);
+        logger.error('Error getting account scopes:', error);
         return [];
     }
 }

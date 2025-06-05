@@ -28,6 +28,7 @@ import {
     removeTwoFactorTempToken
 } from './LocalAuth.cache';
 import { getAppName } from '../../config/env.config';
+import { logger } from '../../utils/logger';
 
 /**
  * Create a new local account
@@ -100,7 +101,7 @@ export async function createLocalAccount(signupData: SignupRequest): Promise<Acc
     
     // Send verification email (async - don't wait for it)
     sendVerificationEmail(signupData.email, signupData.firstName, verificationToken).catch(err => {
-        console.error('Failed to send verification email:', err);
+        logger.error('Failed to send verification email:', err);
     });
     
     return toSafeAccount(newAccount) as Account;
@@ -285,7 +286,7 @@ export async function requestPasswordReset(data: PasswordResetRequest): Promise<
         account.userDetails.firstName || account.userDetails.name.split(' ')[0],
         resetToken
     ).catch(err => {
-        console.error('Failed to send password reset email:', err);
+        logger.error('Failed to send password reset email:', err);
     });
     
     return true;
@@ -348,7 +349,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
         account.userDetails.email as string,
         account.userDetails.firstName || account.userDetails.name.split(' ')[0]
     ).catch(err => {
-        console.error('Failed to send password change notification:', err);
+        logger.error('Failed to send password change notification:', err);
     });
     
     return true;
@@ -403,7 +404,7 @@ export async function changePassword(accountId: string, data: PasswordChangeRequ
         account.userDetails.email as string,
         account.userDetails.firstName || account.userDetails.name.split(' ')[0]
     ).catch(err => {
-        console.error('Failed to send password change notification:', err);
+        logger.error('Failed to send password change notification:', err);
     });
     
     return true;

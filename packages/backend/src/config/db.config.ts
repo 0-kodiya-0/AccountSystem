@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { getAccountsDbUri, getMongodbPassword, getMongodbUsername } from './env.config';
+import { logger } from '../utils/logger';
 
 // Create separate connections for accounts and auth
 const connections = {
@@ -19,21 +20,21 @@ export const connectAccountsDB = async (): Promise<mongoose.Connection> => {
     // Create a new connection
     if (!connections.accounts) {
       connections.accounts = mongoose.createConnection(accountsURI);
-      console.log('Accounts database connected successfully');
+      logger.info('Accounts database connected successfully');
 
       // Setup connection error handlers
       connections.accounts.on('error', (err) => {
-        console.error('Accounts database connection error:', err);
+        logger.error('Accounts database connection error:', err);
       });
 
       connections.accounts.on('disconnected', () => {
-        console.warn('Accounts database disconnected');
+        logger.warn('Accounts database disconnected');
       });
     }
 
     return connections.accounts;
   } catch (error) {
-    console.error('Accounts database connection error:', error);
+    logger.error('Accounts database connection error:', error);
     process.exit(1);
   }
 };
@@ -45,7 +46,7 @@ export const connectAllDatabases = async (): Promise<void> => {
   await Promise.all([
     connectAccountsDB()
   ]);
-  console.log('All database connections established');
+  logger.info('All database connections established');
 };
 
 /**
@@ -55,7 +56,7 @@ export const closeAllConnections = async (): Promise<void> => {
   await Promise.all([
     connections.accounts?.close()
   ]);
-  console.log('All database connections closed');
+  logger.info('All database connections closed');
 };
 
 export default {

@@ -29,6 +29,7 @@ import QRCode from 'qrcode';
 import { ValidationUtils } from '../../utils/validation';
 import { createLocalJwtToken, createLocalRefreshToken } from './LocalAuth.jwt';
 import { findUserById } from '../account';
+import { logger } from '../../utils/logger';
 
 /**
  * Sign up (register) with email and password
@@ -250,7 +251,7 @@ export const setupTwoFactor = asyncHandler(async (req, res, next) => {
                     account.userDetails.email,
                     account.userDetails.firstName || account.userDetails.name.split(' ')[0]
                 ).catch(err => {
-                    console.error('Failed to send 2FA enabled notification:', err);
+                    logger.error('Failed to send 2FA enabled notification:', err);
                 });
             }
 
@@ -261,7 +262,7 @@ export const setupTwoFactor = asyncHandler(async (req, res, next) => {
                 backupCodes
             }));
         } catch (error) {
-            console.error('Failed to generate QR code:', error);
+            logger.error('Failed to generate QR code:', error);
             throw new BadRequestError('Failed to generate QR code', 500, ApiErrorCode.SERVER_ERROR);
         }
     } else {

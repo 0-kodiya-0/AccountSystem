@@ -3,6 +3,7 @@ import { ProviderValidationError } from '../../../../types/response.types';
 import { OAuthProviders } from '../../../account/Account.types';
 import db from '../../../../config/db';
 import { getGoogleClientId, getGoogleClientSecret } from '../../../../config/env.config';
+import { logger } from '../../../../utils/logger';
 
 /**
 * Get detailed token information from Google
@@ -17,7 +18,7 @@ export async function getTokenInfo(accessToken: string) {
 
         return tokenInfoResult.data;
     } catch (error) {
-        console.error('Error getting token info:', error);
+        logger.error('Error getting token info:', error);
         throw new ProviderValidationError(OAuthProviders.Google, 'Error getting token info');
     }
 }
@@ -37,7 +38,7 @@ export async function getTokenScopes(accessToken: string): Promise<string[]> {
         // Parse and return granted scopes
         return tokenInfoResult.data.scope ? tokenInfoResult.data.scope.split(' ') : [];
     } catch (error) {
-        console.error('Error getting token scopes:', error);
+        logger.error('Error getting token scopes:', error);
         throw new ProviderValidationError(OAuthProviders.Google, 'Failed to get token scopes');
     }
 }
@@ -88,7 +89,7 @@ export async function updateAccountScopes(accountId: string, accessToken: string
 
         return grantedScopes;
     } catch (error) {
-        console.error('Error updating account scopes:', error);
+        logger.error('Error updating account scopes:', error);
         throw new ProviderValidationError(OAuthProviders.Google, 'Failed to update account scopes');
     }
 }
@@ -111,7 +112,7 @@ export async function getAccountScopes(accountId: string): Promise<string[]> {
 
         return permissions.scopes;
     } catch (error) {
-        console.error('Error getting account scopes:', error);
+        logger.error('Error getting account scopes:', error);
         return [];
     }
 }
@@ -140,7 +141,7 @@ export async function refreshGoogleToken(refreshToken: string) {
 
         return credentials;
     } catch (error) {
-        console.error('Error refreshing access token:', error);
+        logger.error('Error refreshing access token:', error);
 
         // Avoid wrapping the same error again
         if (error instanceof ProviderValidationError) {
@@ -177,7 +178,7 @@ export async function revokeTokens(accessToken: string, refreshToken?: string) {
             await oAuth2Client.revokeToken(accessToken);
             results.accessTokenRevoked = true;
         } catch (error) {
-            console.error('Error revoking access token:', error);
+            logger.error('Error revoking access token:', error);
         }
 
         // Revoke refresh token if provided
@@ -186,7 +187,7 @@ export async function revokeTokens(accessToken: string, refreshToken?: string) {
                 await oAuth2Client.revokeToken(refreshToken);
                 results.refreshTokenRevoked = true;
             } catch (error) {
-                console.error('Error revoking refresh token:', error);
+                logger.error('Error revoking refresh token:', error);
             }
         }
 
@@ -200,7 +201,7 @@ export async function revokeTokens(accessToken: string, refreshToken?: string) {
 
         return results;
     } catch (error) {
-        console.error('Error during token revocation:', error);
+        logger.error('Error during token revocation:', error);
         
         // Avoid wrapping the same error again
         if (error instanceof ProviderValidationError) {
@@ -225,7 +226,7 @@ export async function hasScope(accessToken: string, requiredScope: string): Prom
         const grantedScopes = tokenInfo.scope ? tokenInfo.scope.split(' ') : [];
         return grantedScopes.includes(requiredScope);
     } catch (error) {
-        console.error('Error checking token scope:', error);
+        logger.error('Error checking token scope:', error);
         return false;
     }
 }
@@ -332,7 +333,7 @@ export async function verifyTokenOwnership(
 
         return { isValid: true };
     } catch (error) {
-        console.error('Error verifying token ownership:', error);
+        logger.error('Error verifying token ownership:', error);
         return { isValid: false, reason: 'Error verifying token ownership' };
     }
 }

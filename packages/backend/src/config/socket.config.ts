@@ -1,6 +1,7 @@
 import { Server as SocketIOServer } from 'socket.io';
 import { Server as HttpServer } from 'http';
 import { getProxyUrl } from './env.config';
+import { logger } from '../utils/logger';
 
 let io: SocketIOServer | null = null;
 
@@ -19,7 +20,7 @@ export const initializeSocketIO = (httpServer: HttpServer): SocketIOServer => {
         getProxyUrl()
     ].filter(Boolean); // Remove any undefined values
 
-    console.log('Socket.IO initializing with allowed origins:', allowedOrigins);
+    logger.info('Socket.IO initializing with allowed origins:', allowedOrigins);
 
     io = new SocketIOServer(httpServer, {
         cors: {
@@ -49,21 +50,21 @@ export const initializeSocketIO = (httpServer: HttpServer): SocketIOServer => {
 
     // Enhanced connection error logging
     io.engine.on("connection_error", (err) => {
-        console.log(`Socket.IO connection error: ${err.code} - ${err.message}`);
-        console.log("Error context:", err.context);
+        logger.info(`Socket.IO connection error: ${err.code} - ${err.message}`);
+        logger.info("Error context:", err.context);
     });
 
     // Listen for connections
     io.on('connection', (socket) => {
-        console.log(`Client connected: ${socket.id}, transport: ${socket.conn.transport.name}`);
-        console.log(`Client handshake: ${socket.handshake.address} from origin: ${socket.handshake.headers.origin}`);
+        logger.info(`Client connected: ${socket.id}, transport: ${socket.conn.transport.name}`);
+        logger.info(`Client handshake: ${socket.handshake.address} from origin: ${socket.handshake.headers.origin}`);
 
         socket.on('disconnect', (reason) => {
-            console.log(`Client disconnected: ${socket.id}, reason: ${reason}`);
+            logger.info(`Client disconnected: ${socket.id}, reason: ${reason}`);
         });
     });
 
-    console.log('Socket.IO initialized');
+    logger.info('Socket.IO initialized');
     return io;
 };
 

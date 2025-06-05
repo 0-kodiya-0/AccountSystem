@@ -34,6 +34,7 @@ import { SignUpRequest, SignInRequest, OAuthCallBackRequest } from './OAuth.dto'
 import { ValidationUtils } from '../../utils/validation';
 import { buildGoogleScopeUrls, validateScopeNames } from '../google/config';
 import { asyncHandler } from '../../utils/response';
+import { logger } from '../../utils/logger';
 
 /**
  * Initiate Google authentication
@@ -104,7 +105,7 @@ export const signup = asyncHandler(async (req: SignUpRequest, res, next) => {
 
             return;
         } catch (error) {
-            console.log(error);
+            logger.error(error);
             throw new RedirectError(ApiErrorCode.SERVER_ERROR, frontendRedirectUrl, 'Database operation failed');
         }
     }
@@ -182,7 +183,7 @@ export const signin = asyncHandler(async (req: SignInRequest, res, next) => {
 
             return;
         } catch (error) {
-            console.log(error);
+            logger.error(error);
             throw new RedirectError(ApiErrorCode.DATABASE_ERROR, frontendRedirectUrl, 'Failed to validate state');
         }
     }
@@ -243,7 +244,7 @@ export const handleCallback = asyncHandler(async (req: OAuthCallBackRequest, res
                     "User authenticated by provider", redirectUrl));
             }
         } catch (error) {
-            console.error(error);
+            logger.error(error);
             next(new RedirectError(ApiErrorCode.SERVER_ERROR, redirectUrl, 'Failed to process authentication'));
         }
     })(req, res, next);
@@ -273,7 +274,7 @@ export const handlePermissionCallback = asyncHandler(async (req, res, next) => {
     passport.authenticate(`${provider}-permission`, { session: false }, async (err: Error | null, result: ProviderResponse) => {
         try {
             if (err) {
-                console.error('Permission token exchange error:', err);
+                logger.error('Permission token exchange error:', err);
                 return next(new RedirectError(ApiErrorCode.AUTH_FAILED, redirectUrl, 'Permission token exchange failed'));
             }
 
@@ -287,13 +288,13 @@ export const handlePermissionCallback = asyncHandler(async (req, res, next) => {
                 return next(new RedirectError(ApiErrorCode.USER_NOT_FOUND, redirectUrl, 'User record not found in database'));
             }
 
-            console.log(`Processing permission callback for account ${accountId}, service ${service}, scope ${scopeLevel}`);
+            logger.info(`Processing permission callback for account ${accountId}, service ${service}, scope ${scopeLevel}`);
 
             // Verify that the token belongs to the correct user account
             const token = await verifyTokenOwnership(result.tokenDetails.accessToken, accountId);
 
             if (!token.isValid) {
-                console.error('Token ownership verification failed:', token.reason);
+                logger.error('Token ownership verification failed:', token.reason);
                 return next(new RedirectError(ApiErrorCode.AUTH_FAILED, redirectUrl, 'Permission was granted with an incorrect account. Please try again and ensure you use the correct Google account.'));
             }
 
@@ -334,7 +335,7 @@ export const handlePermissionCallback = asyncHandler(async (req, res, next) => {
                 setRefreshTokenCookie(res, accountId, jwtRefreshToken); // Our JWT refresh token
             }
 
-            console.log(`Token updated for ${service} ${scopeLevel}. Redirecting to ${redirectUrl}`);
+            logger.info(`Token updated for ${service} ${scopeLevel}. Redirecting to ${redirectUrl}`);
 
             next(new RedirectSuccess({
                 accountId,
@@ -342,7 +343,7 @@ export const handlePermissionCallback = asyncHandler(async (req, res, next) => {
                 scopeLevel,
             }, redirectUrl));
         } catch (error) {
-            console.error('Error updating token:', error);
+            logger.error('Error updating token:', error);
             next(new RedirectError(ApiErrorCode.SERVER_ERROR, redirectUrl, 'Failed to update token'));
         }
     })(req, res, next);
@@ -414,9 +415,9 @@ export const requestPermission = asyncHandler(async (req, res, next) => {
         includeGrantedScopes: true
     };
 
-    console.log(`Initiating permission request for scope names: ${scopeNames.join(', ')}`);
-    console.log(`Converted to scope URLs: ${scopes.join(', ')}`);
-    console.log(`Account: ${userEmail}`);
+    logger.info(`Initiating permission request for scope names: ${scopeNames.join(', ')}`);
+    logger.info(`Converted to scope URLs: ${scopes.join(', ')}`);
+    logger.info(`Account: ${userEmail}`);
 
     // Redirect to Google authorization page - Google will validate the scopes
     passport.authenticate('google-permission', authOptions)(req, res, next);
@@ -466,7 +467,7 @@ export const reauthorizePermissions = asyncHandler(async (req, res, next) => {
         includeGrantedScopes: true
     };
 
-    console.log(`Re-requesting scopes for account ${accountId}:`, storedScopes);
+    logger.info(`Re-requesting scopes for account ${accountId}:`, storedScopes);
 
     // Redirect to Google authorization page
     passport.authenticate('google-permission', authOptions)(req, res, next);

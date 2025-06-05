@@ -9,6 +9,7 @@ import {
     getSmtpPort, 
     getSmtpSecure 
 } from '../../config/env.config';
+import { logger } from '../../utils/logger';
 
 // Singleton transporter instance
 let transporterInstance: Transporter<SMTPTransport.SentMessageInfo> | null = null;
@@ -51,12 +52,12 @@ export const getTransporter = async (): Promise<Transporter<SMTPTransport.SentMe
         if (!isTransporterVerified) {
             await transporterInstance.verify();
             isTransporterVerified = true;
-            console.log('SMTP connection verified successfully');
+            logger.info('SMTP connection verified successfully');
         }
 
         return transporterInstance;
     } catch (error) {
-        console.error('Failed to create email transporter:', error);
+        logger.error('Failed to create email transporter:', error);
         // Reset state on error
         transporterInstance = null;
         isTransporterVerified = false;
@@ -73,7 +74,7 @@ export const resetTransporter = (): void => {
     }
     transporterInstance = null;
     isTransporterVerified = false;
-    console.log('Email transporter reset');
+    logger.info('Email transporter reset');
 };
 
 /**
@@ -94,7 +95,7 @@ export const closeTransporter = async (): Promise<void> => {
         transporterInstance.close();
         transporterInstance = null;
         isTransporterVerified = false;
-        console.log('Email transporter closed gracefully');
+        logger.info('Email transporter closed gracefully');
     }
 };
 
@@ -104,10 +105,10 @@ export const closeTransporter = async (): Promise<void> => {
 export const testEmailConfiguration = async (): Promise<boolean> => {
     try {
         await getTransporter();
-        console.log('✅ Email configuration test passed');
+        logger.info('✅ Email configuration test passed');
         return true;
     } catch (error) {
-        console.error('❌ Email configuration test failed:', error);
+        logger.error('❌ Email configuration test failed:', error);
         return false;
     }
 };

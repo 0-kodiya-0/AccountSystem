@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { TLSSocket, PeerCertificate } from 'tls';
 import { ApiErrorCode, AuthError } from '../types/response.types';
 import { asyncHandler } from '../utils/response';
+import { logger } from '../utils/logger';
 
 export interface InternalRequest extends Request {
     clientCertificate?: {
@@ -46,15 +47,15 @@ export const extractClientCertificateInfo = asyncHandler((req: InternalRequest, 
                 signedBySameCA: true // Already validated by TLS layer
             };
 
-            console.log(`Internal request authenticated with certificate: ${fingerprint}`);
-            console.log(`Certificate subject: ${JSON.stringify(cert.subject)}`);
+            logger.info(`Internal request authenticated with certificate: ${fingerprint}`);
+            logger.info(`Certificate subject: ${JSON.stringify(cert.subject)}`);
         }
 
         req.isInternalRequest = true;
         next();
 
     } catch (error) {
-        console.error('Error extracting certificate information:', error);
+        logger.error('Error extracting certificate information:', error);
         throw new AuthError('Certificate processing failed', 500, ApiErrorCode.SERVER_ERROR);
     }
 });
@@ -73,7 +74,7 @@ export const validateInternalService = asyncHandler((req: InternalRequest, res, 
         throw new AuthError('Internal service credentials required', 401, ApiErrorCode.AUTH_FAILED);
     }
     
-    console.log(`Internal service authenticated: ${serviceId}`);
+    logger.info(`Internal service authenticated: ${serviceId}`);
     next();
 });
 

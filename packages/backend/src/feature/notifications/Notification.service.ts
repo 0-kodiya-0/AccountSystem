@@ -8,6 +8,7 @@ import {
 } from './Notification.model';
 import { getIO } from '../../config/socket.config';
 import { ServerError, NotFoundError, ApiErrorCode } from '../../types/response.types';
+import { logger } from '../../utils/logger';
 
 /**
  * Add a new notification for a user
@@ -40,12 +41,12 @@ export async function addUserNotification(data: CreateNotificationRequest): Prom
             const io = getIO();
             io.to(`account-${data.accountId}`).emit('notification:new', notification);
         } catch (error) {
-            console.error('Failed to emit socket event for notification:', error);
+            logger.error('Failed to emit socket event for notification:', error);
         }
         
         return notification;
     } catch (error) {
-        console.error('Failed to add notification:', error);
+        logger.error('Failed to add notification:', error);
         throw new ServerError('Failed to add notification');
     }
 }
@@ -99,7 +100,7 @@ export async function getUserNotifications(params: GetNotificationsParams): Prom
             unreadCount
         };
     } catch (error) {
-        console.error('Failed to get notifications:', error);
+        logger.error('Failed to get notifications:', error);
         throw new ServerError('Failed to get notifications');
     }
 }
@@ -130,7 +131,7 @@ export async function markNotificationAsRead(accountId: string, notificationId: 
             const io = getIO();
             io.to(`account-${accountId}`).emit('notification:updated', notificationResponse);
         } catch (error) {
-            console.error('Failed to emit socket event for notification update:', error);
+            logger.error('Failed to emit socket event for notification update:', error);
         }
         
         return notificationResponse;
@@ -138,7 +139,7 @@ export async function markNotificationAsRead(accountId: string, notificationId: 
         if (error instanceof NotFoundError) {
             throw error;
         }
-        console.error('Failed to mark notification as read:', error);
+        logger.error('Failed to mark notification as read:', error);
         throw new ServerError('Failed to mark notification as read');
     }
 }
@@ -161,12 +162,12 @@ export async function markAllNotificationsAsRead(accountId: string): Promise<num
             const io = getIO();
             io.to(`account-${accountId}`).emit('notification:all-read');
         } catch (error) {
-            console.error('Failed to emit socket event for notifications update:', error);
+            logger.error('Failed to emit socket event for notifications update:', error);
         }
         
         return result.modifiedCount;
     } catch (error) {
-        console.error('Failed to mark all notifications as read:', error);
+        logger.error('Failed to mark all notifications as read:', error);
         throw new ServerError('Failed to mark all notifications as read');
     }
 }
@@ -201,7 +202,7 @@ export async function updateNotification(
             const io = getIO();
             io.to(`account-${accountId}`).emit('notification:updated', notificationResponse);
         } catch (error) {
-            console.error('Failed to emit socket event for notification update:', error);
+            logger.error('Failed to emit socket event for notification update:', error);
         }
         
         return notificationResponse;
@@ -209,7 +210,7 @@ export async function updateNotification(
         if (error instanceof NotFoundError) {
             throw error;
         }
-        console.error('Failed to update notification:', error);
+        logger.error('Failed to update notification:', error);
         throw new ServerError('Failed to update notification');
     }
 }
@@ -236,7 +237,7 @@ export async function deleteNotification(accountId: string, notificationId: stri
             const io = getIO();
             io.to(`account-${accountId}`).emit('notification:deleted', notificationId);
         } catch (error) {
-            console.error('Failed to emit socket event for notification deletion:', error);
+            logger.error('Failed to emit socket event for notification deletion:', error);
         }
         
         return true;
@@ -244,7 +245,7 @@ export async function deleteNotification(accountId: string, notificationId: stri
         if (error instanceof NotFoundError) {
             throw error;
         }
-        console.error('Failed to delete notification:', error);
+        logger.error('Failed to delete notification:', error);
         throw new ServerError('Failed to delete notification');
     }
 }
@@ -264,12 +265,12 @@ export async function deleteAllNotifications(accountId: string): Promise<number>
             const io = getIO();
             io.to(`account-${accountId}`).emit('notification:all-deleted');
         } catch (error) {
-            console.error('Failed to emit socket event for notifications deletion:', error);
+            logger.error('Failed to emit socket event for notifications deletion:', error);
         }
         
         return result.deletedCount || 0;
     } catch (error) {
-        console.error('Failed to delete all notifications:', error);
+        logger.error('Failed to delete all notifications:', error);
         throw new ServerError('Failed to delete all notifications');
     }
 }

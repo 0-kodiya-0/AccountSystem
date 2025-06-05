@@ -1,4 +1,5 @@
 import { Server, Socket } from 'socket.io';
+import { logger } from '../../../utils/logger';
 
 export interface InternalSocketData {
     serviceId: string;
@@ -42,7 +43,7 @@ export class InternalNotificationHandler {
                     serviceName
                 };
                 
-                console.log(`Internal service connected to notifications: ${serviceName} (${serviceId})`);
+                logger.info(`Internal service connected to notifications: ${serviceName} (${serviceId})`);
                 next();
                 
             } catch {
@@ -59,7 +60,7 @@ export class InternalNotificationHandler {
     private handleInternalConnection(socket: InternalSocket): void {
         const { serviceId, serviceName } = socket.data;
         
-        console.log(`Internal notification socket connected: ${socket.id} for service ${serviceName}`);
+        logger.info(`Internal notification socket connected: ${socket.id} for service ${serviceName}`);
         
         // Join service-specific room
         socket.join(`service-${serviceId}`);
@@ -75,7 +76,7 @@ export class InternalNotificationHandler {
             socket.join(`account-${data.accountId}`);
             socket.emit('subscribed', { accountId: data.accountId, serviceId });
             
-            console.log(`Service ${serviceName} subscribed to notifications for account ${data.accountId}`);
+            logger.info(`Service ${serviceName} subscribed to notifications for account ${data.accountId}`);
         });
         
         // Listen for unsubscription requests
@@ -88,7 +89,7 @@ export class InternalNotificationHandler {
             socket.leave(`account-${data.accountId}`);
             socket.emit('unsubscribed', { accountId: data.accountId, serviceId });
             
-            console.log(`Service ${serviceName} unsubscribed from notifications for account ${data.accountId}`);
+            logger.info(`Service ${serviceName} unsubscribed from notifications for account ${data.accountId}`);
         });
         
         // Listen for bulk subscription requests
@@ -108,7 +109,7 @@ export class InternalNotificationHandler {
                 count: data.accountIds.length 
             });
             
-            console.log(`Service ${serviceName} subscribed to ${data.accountIds.length} account notifications`);
+            logger.info(`Service ${serviceName} subscribed to ${data.accountIds.length} account notifications`);
         });
         
         // Health check
@@ -122,7 +123,7 @@ export class InternalNotificationHandler {
         
         // Disconnect event
         socket.on('disconnect', (reason) => {
-            console.log(`Internal notification socket disconnected: ${socket.id} (${serviceName}) - ${reason}`);
+            logger.info(`Internal notification socket disconnected: ${socket.id} (${serviceName}) - ${reason}`);
         });
     }
     

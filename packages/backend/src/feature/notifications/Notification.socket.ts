@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { getJwtSecret } from '../../config/env.config';
+import { logger } from '../../utils/logger';
 
 // Environment variables
 const JWT_SECRET = getJwtSecret();
@@ -77,7 +78,7 @@ export class NotificationSocketHandler {
     private handleConnection(socket: Socket): void {
         const accountId = (socket as any).accountId;
         
-        console.log(`Notification socket connected: ${socket.id} for account ${accountId}`);
+        logger.info(`Notification socket connected: ${socket.id} for account ${accountId}`);
         
         // Join account-specific room
         socket.join(`account-${accountId}`);
@@ -95,7 +96,7 @@ export class NotificationSocketHandler {
         
         // Disconnect event
         socket.on('disconnect', () => {
-            console.log(`Notification socket disconnected: ${socket.id}`);
+            logger.info(`Notification socket disconnected: ${socket.id}`);
         });
     }
 }
