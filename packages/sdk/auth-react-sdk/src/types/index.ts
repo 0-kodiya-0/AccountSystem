@@ -220,3 +220,115 @@ export interface OAuthCallbackParams {
     error?: string;
     redirectUrl?: string;
 }
+
+// Socket connection states
+export enum SocketConnectionState {
+    DISCONNECTED = 'disconnected',
+    CONNECTING = 'connecting',
+    CONNECTED = 'connected',
+    RECONNECTING = 'reconnecting',
+    ERROR = 'error'
+}
+
+// Socket configuration
+export interface SocketConfig {
+    url: string;
+    path?: string;
+    reconnect?: boolean;
+    maxReconnectAttempts?: number;
+    reconnectDelay?: number;
+    timeout?: number;
+    forceNew?: boolean;
+    transports?: ('websocket' | 'polling')[];
+}
+
+// Socket events for notifications
+export enum NotificationSocketEvents {
+    // Client to server
+    SUBSCRIBE = 'notification:subscribe',
+    UNSUBSCRIBE = 'notification:unsubscribe',
+    PING = 'ping',
+
+    // Server to client
+    NEW_NOTIFICATION = 'notification:new',
+    UPDATED_NOTIFICATION = 'notification:updated',
+    DELETED_NOTIFICATION = 'notification:deleted',
+    ALL_READ = 'notification:all-read',
+    SUBSCRIBED = 'notification:subscribed',
+    UNSUBSCRIBED = 'notification:unsubscribed',
+    PONG = 'pong',
+    ERROR = 'error'
+}
+
+// Socket event payloads
+export interface SocketEventPayloads {
+    [NotificationSocketEvents.SUBSCRIBE]: { accountId: string };
+    [NotificationSocketEvents.UNSUBSCRIBE]: { accountId: string };
+    [NotificationSocketEvents.PING]: undefined;
+
+    [NotificationSocketEvents.NEW_NOTIFICATION]: Notification;
+    [NotificationSocketEvents.UPDATED_NOTIFICATION]: Notification;
+    [NotificationSocketEvents.DELETED_NOTIFICATION]: string; // notification ID
+    [NotificationSocketEvents.ALL_READ]: { accountId: string };
+    [NotificationSocketEvents.SUBSCRIBED]: { accountId: string };
+    [NotificationSocketEvents.UNSUBSCRIBED]: { accountId: string };
+    [NotificationSocketEvents.PONG]: { timestamp: string };
+    [NotificationSocketEvents.ERROR]: { message: string; code?: string };
+}
+
+// Connection info
+export interface SocketConnectionInfo {
+    state: SocketConnectionState;
+    connectedAt?: Date;
+    reconnectAttempts: number;
+    lastError?: string;
+    latency?: number;
+}
+
+// Socket event listener
+export type SocketEventListener<T = any> = (data: T) => void;
+
+// Socket event emitter interface
+export interface SocketEventEmitter {
+    on<K extends keyof SocketEventPayloads>(
+        event: K,
+        listener: SocketEventListener<SocketEventPayloads[K]>
+    ): void;
+
+    off<K extends keyof SocketEventPayloads>(
+        event: K,
+        listener?: SocketEventListener<SocketEventPayloads[K]>
+    ): void;
+
+    emit<K extends keyof SocketEventPayloads>(
+        event: K,
+        data: SocketEventPayloads[K]
+    ): void;
+}
+
+// Real-time notification update
+export interface RealtimeNotificationUpdate {
+    type: 'new' | 'updated' | 'deleted' | 'all_read';
+    notification?: Notification;
+    notificationId?: string;
+    accountId: string;
+    timestamp: number;
+}
+
+// Socket hook state
+export interface SocketState {
+    connection: SocketConnectionInfo;
+    subscriptions: Set<string>; // account IDs
+    isSupported: boolean;
+}
+
+// Socket manager interface
+export interface SocketManager {
+    connect(): Promise<void>;
+    disconnect(): void;
+    subscribe(accountId: string): Promise<void>;
+    unsubscribe(accountId: string): Promise<void>;
+    getConnectionState(): SocketConnectionState;
+    getLatency(): number | null;
+    isConnected(): boolean;
+}
