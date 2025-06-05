@@ -1,4 +1,4 @@
-import { AccountDocument } from "./src/feature/account/Account.model";
+import { AccountDocument } from "./feature/account/Account.model";
 
 declare global {
     namespace NodeJS {

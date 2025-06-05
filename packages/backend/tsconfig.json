@@ -5,25 +5,27 @@
         "lib": [
             "ES2020"
         ],
-        "moduleResolution": "node",
+        "declaration": true,
+        "outDir": "./dist",
+        "rootDir": "./src",
+        "strict": true,
         "esModuleInterop": true,
         "allowSyntheticDefaultImports": true,
-        "strict": true,
-        "sourceMap": true,
-        "outDir": "dist",
-        "resolveJsonModule": true,
         "skipLibCheck": true,
-        "forceConsistentCasingInFileNames": true
+        "forceConsistentCasingInFileNames": true,
+        "moduleResolution": "node",
+        "resolveJsonModule": true,
+        "declarationMap": true,
+        "sourceMap": false
     },
     "include": [
         "src/**/*",
-        "src/app.ts",
-        "src/app-internal.ts",
-        "global.d.ts",
-        "cli.ts"
+        "src/global.d.ts",
+        "src/cli.ts"
     ],
     "exclude": [
         "node_modules",
-        "dist"
+        "dist",
+        "**/*.test.ts"
     ]
 }

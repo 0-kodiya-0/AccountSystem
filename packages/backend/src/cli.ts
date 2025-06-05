@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
-import { startServer, stopServer } from './src/index';
+import { startServer, stopServer } from './index';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
+import { pathToFileURL } from 'url';
 
 const VERSION = '1.0.0';
 
@@ -459,7 +460,7 @@ async function main(): Promise<void> {
 }
 
 // Run the CLI
-if (require.main === module) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     main().catch((error) => {
         console.error(`Unexpected error: ${error instanceof Error ? error.message : 'Unknown error'}`);
         process.exit(1);

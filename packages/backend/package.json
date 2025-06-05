@@ -4,6 +4,7 @@
   "description": "AccountSystem authentication microservice - A secure, production-ready backend server for user authentication with OAuth, local auth, 2FA, and real-time notifications.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "type": "module",
   "bin": {
     "accountsystem-backend": "dist/cli.js",
     "abs": "dist/cli.js"
@@ -11,8 +12,8 @@
   "scripts": {
     "build": "npm run clean && npm run build:types && npm run build:cli && npm run build:server",
     "build:types": "tsc --emitDeclarationOnly",
-    "build:cli": "esbuild src/cli.ts --bundle --platform=node --target=node18 --format=cjs --outfile=dist/cli.js --external:express --external:mongoose --external:passport --external:socket.io --external:nodemailer --external:bcrypt --external:jsonwebtoken --external:googleapis --external:qrcode --external:otplib --external:lru-cache --external:cookie-parser --external:dotenv",
-    "build:server": "esbuild src/index.ts --bundle --platform=node --target=node18 --format=cjs --outfile=dist/index.js --external:express --external:mongoose --external:passport --external:socket.io --external:nodemailer --external:bcrypt --external:jsonwebtoken --external:googleapis --external:qrcode --external:otplib --external:lru-cache --external:cookie-parser --external:dotenv",
+    "build:cli": "esbuild src/cli.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/cli.js --packages=external",
+    "build:server": "esbuild src/index.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/index.js --packages=external",
     "dev:build": "npm run build --watch",
     "dev:nodemon": "nodemon",
     "clean": "node -e \"const fs = require('fs'); if (fs.existsSync('dist')) fs.rmSync('dist', { recursive: true });\"",
