@@ -1,10 +1,9 @@
 import mongoose from 'mongoose';
-import { getAccountsDbUri, getChatDbUri, getMongodbPassword, getMongodbUsername } from './env.config';
+import { getAccountsDbUri, getMongodbPassword, getMongodbUsername } from './env.config';
 
 // Create separate connections for accounts and auth
 const connections = {
-  accounts: null as mongoose.Connection | null,
-  chat: null as mongoose.Connection | null
+  accounts: null as mongoose.Connection | null
 };
 
 const username = encodeURIComponent(getMongodbUsername());
@@ -40,42 +39,11 @@ export const connectAccountsDB = async (): Promise<mongoose.Connection> => {
 };
 
 /**
- * Connect to the chat database
- */
-export const connectChatDB = async (): Promise<mongoose.Connection> => {
-  try {
-    const chatURI = getChatDbUri() || `mongodb+srv://${username}:${password}@fusion-space.vb7xt.mongodb.net/chat-db?retryWrites=true&w=majority&appName=Fusion-space`;
-
-    // Create a new connection
-    if (!connections.chat) {
-      connections.chat = mongoose.createConnection(chatURI);
-      console.log('Chat database connected successfully');
-
-      // Setup connection error handlers
-      connections.chat.on('error', (err) => {
-        console.error('Chat database connection error:', err);
-      });
-
-      connections.chat.on('disconnected', () => {
-        console.warn('Chat database disconnected');
-      });
-    }
-
-    return connections.chat;
-  } catch (error) {
-    console.error('Chat database connection error:', error);
-    process.exit(1);
-  }
-};
-
-
-/**
  * Connect to both databases
  */
 export const connectAllDatabases = async (): Promise<void> => {
   await Promise.all([
-    connectAccountsDB(),
-    connectChatDB()
+    connectAccountsDB()
   ]);
   console.log('All database connections established');
 };
@@ -85,15 +53,13 @@ export const connectAllDatabases = async (): Promise<void> => {
  */
 export const closeAllConnections = async (): Promise<void> => {
   await Promise.all([
-    connections.accounts?.close(),
-    connections.chat?.close()
+    connections.accounts?.close()
   ]);
   console.log('All database connections closed');
 };
 
 export default {
   connectAccountsDB,
-  connectChatDB,
   connectAllDatabases,
   closeAllConnections,
   connections

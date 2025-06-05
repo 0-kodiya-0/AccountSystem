@@ -46,7 +46,6 @@ const OPTIONAL_ENV_VARS = {
 
     // Database URIs (have hardcoded fallbacks in db.config.ts)
     ACCOUNTS_DB_URI: '',
-    CHAT_DB_URI: '',
 
     // Token Expiry
     ACCESS_TOKEN_EXPIRY: '1h',
@@ -174,7 +173,6 @@ export const getAppName = (): string => envConfig.get('APP_NAME');
 
 // Database URIs
 export const getAccountsDbUri = (): string => envConfig.get('ACCOUNTS_DB_URI');
-export const getChatDbUri = (): string => envConfig.get('CHAT_DB_URI');
 
 // Google OAuth
 export const getGoogleClientId = (): string => envConfig.get('GOOGLE_CLIENT_ID');
