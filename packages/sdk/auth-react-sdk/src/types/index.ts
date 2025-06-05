@@ -48,7 +48,7 @@ export interface Account {
 }
 
 // API Response Types
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
     success: boolean;
     data?: T;
     error?: {
@@ -159,7 +159,7 @@ export interface Notification {
     link?: string;
     timestamp: number;
     expiresAt?: number;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
 }
 
 export interface CreateNotificationRequest {
@@ -168,7 +168,7 @@ export interface CreateNotificationRequest {
     type: NotificationType;
     link?: string;
     expiresAt?: number;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
 }
 
 export interface NotificationListResponse {
@@ -190,7 +190,8 @@ export class AuthSDKError extends Error {
         message: string,
         public code: string,
         public statusCode?: number,
-        public data?: any
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        public data?: Record<string, any>
     ) {
         super(message);
         this.name = 'AuthSDKError';
@@ -286,6 +287,7 @@ export interface SocketConnectionInfo {
 }
 
 // Socket event listener
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type SocketEventListener<T = any> = (data: T) => void;
 
 // Socket event emitter interface

@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { AuthSDKError } from '../types';
+import { AuthSDKError, TokenCheckResponse } from '../types';
 import { useAuth } from '../context/auth-context';
 import { useCurrentAccount } from '../store/account-store';
 
@@ -13,7 +13,7 @@ export const useGooglePermissions = (accountId?: string) => {
     
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [scopeChecks, setScopeChecks] = useState<Record<string, any>>({});
+    const [scopeChecks, setScopeChecks] = useState<Record<string, TokenCheckResponse>>({});
 
     const checkScopes = useCallback(async (scopeNames: string[]) => {
         if (!targetAccountId) return null;

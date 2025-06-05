@@ -231,7 +231,7 @@ export class SocketClient implements SocketManager {
         }
 
         // Handle pong for latency calculation
-        this.socket.on(NotificationSocketEvents.PONG, (data: SocketEventPayloads[NotificationSocketEvents.PONG]) => {
+        this.socket.on(NotificationSocketEvents.PONG, () => {
             const latency = Date.now() - this.lastPingTime;
             this.connectionInfo.latency = latency;
         });
@@ -273,6 +273,25 @@ export class SocketClient implements SocketManager {
                 this.subscriptions.delete(accountId);
             }
         }
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ping(): Promise<any> {
+        if (!this.socket?.connected) {
+            throw new Error('Socket not connected');
+        }
+
+        return new Promise((resolve, reject) => {
+            this.socket!.emit(NotificationSocketEvents.PING);
+
+            this.socket!.once(NotificationSocketEvents.PONG, (data) => {
+                resolve(data);
+            });
+
+            setTimeout(() => {
+                reject(new Error('Ping timeout'));
+            }, 5000);
+        });
     }
 
     private startPingMonitoring(): void {

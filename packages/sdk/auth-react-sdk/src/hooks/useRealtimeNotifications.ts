@@ -169,13 +169,12 @@ export const useRealtimeNotifications = (
         checkPermission();
     }, [enableBrowserNotifications]);
 
-    // Initialize notification sound
     useEffect(() => {
         if (!soundEnabled) return;
 
         // Create a subtle notification sound using Web Audio API
         try {
-            const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
 
             const createNotificationSound = () => {
                 const oscillator = audioContext.createOscillator();
@@ -194,8 +193,9 @@ export const useRealtimeNotifications = (
                 oscillator.stop(audioContext.currentTime + 0.3);
             };
 
-            audioRef.current = { play: createNotificationSound } as any;
+            audioRef.current = { play: createNotificationSound } as HTMLAudioElement;
         } catch (error) {
+            // Silently fail if audio context creation fails
             console.warn('Failed to initialize notification sound:', error);
         }
     }, [soundEnabled]);
@@ -349,8 +349,8 @@ export const useRealtimeNotifications = (
             // Stop any ongoing audio context
             if (audioRef.current && typeof audioRef.current === 'object' && 'stop' in audioRef.current) {
                 try {
-                    (audioRef.current as any).stop();
-                } catch (error) {
+                    (audioRef.current as unknown as AudioContext).close?.();
+                } catch {
                     // Ignore cleanup errors
                 }
             }

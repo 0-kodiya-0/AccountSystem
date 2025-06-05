@@ -6,14 +6,14 @@ interface AccountState {
     // Current accounts
     accounts: Account[];
     currentAccountId: string | null;
-    
+
     // Loading states
     isLoading: boolean;
     isAuthenticating: boolean;
-    
+
     // Error state
     error: string | null;
-    
+
     // OAuth state
     oauthState: {
         isInProgress: boolean;
@@ -30,24 +30,24 @@ interface AccountActions {
     updateAccount: (accountId: string, updates: Partial<Account>) => void;
     removeAccount: (accountId: string) => void;
     clearAccounts: () => void;
-    
+
     // Current account
     setCurrentAccount: (accountId: string | null) => void;
     getCurrentAccount: () => Account | null;
-    
+
     // Loading states
     setLoading: (loading: boolean) => void;
     setAuthenticating: (authenticating: boolean) => void;
-    
+
     // Error handling
     setError: (error: string | null) => void;
     clearError: () => void;
-    
+
     // OAuth state management
     setOAuthInProgress: (provider: OAuthProviders, redirectUrl?: string) => void;
     setOAuthTempToken: (tempToken: string) => void;
     clearOAuthState: () => void;
-    
+
     // Utilities
     hasAccounts: () => boolean;
     isAuthenticated: () => boolean;
@@ -76,7 +76,7 @@ export const useAccountStore = create<AccountStore>()(
 
             // Account management
             setAccounts: (accounts) => set({ accounts }),
-            
+
             addAccount: (account) => set((state) => {
                 const existingIndex = state.accounts.findIndex(a => a.id === account.id);
                 if (existingIndex >= 0) {
@@ -89,25 +89,25 @@ export const useAccountStore = create<AccountStore>()(
                     return { accounts: [...state.accounts, account] };
                 }
             }),
-            
+
             updateAccount: (accountId, updates) => set((state) => ({
                 accounts: state.accounts.map(account =>
                     account.id === accountId ? { ...account, ...updates } : account
                 )
             })),
-            
+
             removeAccount: (accountId) => set((state) => {
                 const newAccounts = state.accounts.filter(a => a.id !== accountId);
-                const newCurrentAccountId = state.currentAccountId === accountId 
+                const newCurrentAccountId = state.currentAccountId === accountId
                     ? (newAccounts.length > 0 ? newAccounts[0].id : null)
                     : state.currentAccountId;
-                    
+
                 return {
                     accounts: newAccounts,
                     currentAccountId: newCurrentAccountId
                 };
             }),
-            
+
             clearAccounts: () => set({
                 accounts: [],
                 currentAccountId: null,
@@ -116,10 +116,10 @@ export const useAccountStore = create<AccountStore>()(
 
             // Current account
             setCurrentAccount: (accountId) => set({ currentAccountId: accountId }),
-            
+
             getCurrentAccount: () => {
                 const state = get();
-                return state.currentAccountId 
+                return state.currentAccountId
                     ? state.accounts.find(a => a.id === state.currentAccountId) || null
                     : null;
             },
@@ -141,14 +141,14 @@ export const useAccountStore = create<AccountStore>()(
                     tempToken: null
                 }
             }),
-            
+
             setOAuthTempToken: (tempToken) => set((state) => ({
                 oauthState: {
                     ...state.oauthState,
                     tempToken
                 }
             })),
-            
+
             clearOAuthState: () => set({
                 oauthState: {
                     isInProgress: false,
@@ -160,32 +160,32 @@ export const useAccountStore = create<AccountStore>()(
 
             // Utilities
             hasAccounts: () => get().accounts.length > 0,
-            
+
             isAuthenticated: () => get().accounts.length > 0,
-            
+
             getAccountById: (accountId) => {
                 return get().accounts.find(a => a.id === accountId) || null;
             },
-            
+
             getAccountsByType: (type) => {
                 return get().accounts.filter(a => a.accountType === type);
             },
-            
+
             getPreferredAccount: () => {
                 const state = get();
-                
+
                 // Return current account if set
                 if (state.currentAccountId) {
                     const current = state.accounts.find(a => a.id === state.currentAccountId);
                     if (current) return current;
                 }
-                
+
                 // Return first account if available
                 return state.accounts.length > 0 ? state.accounts[0] : null;
             }
         }),
         {
-            name: 'accountsystem-auth-storage',
+            name: 'account-system-auth-storage',
             storage: createJSONStorage(() => localStorage),
             partialize: (state) => ({
                 // Only persist essential data
@@ -194,12 +194,12 @@ export const useAccountStore = create<AccountStore>()(
                 // Don't persist loading states, errors, or OAuth state
             }),
             version: 1,
-            migrate: (persistedState: any, version: number) => {
+            migrate: (persistedState: unknown, version: number) => {
                 // Handle migrations if needed in the future
                 if (version === 0) {
                     // Migration from version 0 to 1
                     return {
-                        ...persistedState,
+                        ...(persistedState as object),
                         currentAccountId: null
                     };
                 }

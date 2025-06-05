@@ -3,7 +3,6 @@ import {
     SocketConfig,
     SocketConnectionState,
     SocketConnectionInfo,
-    NotificationSocketEvents,
     SocketEventPayloads,
     SocketEventListener
 } from '../types';
@@ -131,11 +130,11 @@ export const useSocket = (
         return clientRef.current.getLatency();
     }, [isSupported]);
 
-    const ping = useCallback(() => {
+    const ping = useCallback(async () => {
         if (!clientRef.current || !isSupported) return;
-        const client = clientRef.current as any;
-        if (client.socket?.connected) {
-            client.socket.emit(NotificationSocketEvents.PING);
+        const client = clientRef.current as SocketClient;
+        if (client.isConnected()) {
+            await client.ping();
         }
     }, [isSupported]);
 

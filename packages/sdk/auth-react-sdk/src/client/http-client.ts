@@ -17,7 +17,9 @@ import {
     NotificationListResponse,
     TokenCheckResponse,
     AuthSDKError,
-    ErrorCode
+    ErrorCode,
+    SecuritySettings,
+    GoogleTokenInfo
 } from '../types';
 
 export class AuthClient {
@@ -90,7 +92,7 @@ export class AuthClient {
         return response.data;
     }
 
-    async updateAccountSecurity(accountId: string, security: any): Promise<Account> {
+    async updateAccountSecurity(accountId: string, security: Partial<SecuritySettings>): Promise<Account> {
         const response = await this.http.patch(`/${accountId}/account/security`, security);
         return response.data;
     }
@@ -98,7 +100,7 @@ export class AuthClient {
     async refreshToken(accountId: string, redirectUrl?: string): Promise<void> {
         const params = new URLSearchParams();
         if (redirectUrl) params.append('redirectUrl', redirectUrl);
-        
+
         window.location.href = `/${accountId}/account/refreshToken?${params.toString()}`;
     }
 
@@ -116,7 +118,7 @@ export class AuthClient {
     async logoutAll(accountIds: string[]): Promise<void> {
         const params = new URLSearchParams();
         accountIds.forEach(id => params.append('accountIds', id));
-        
+
         await this.http.get(`/account/logout/all?${params.toString()}`);
     }
 
@@ -174,14 +176,14 @@ export class AuthClient {
     redirectToOAuthSignup(provider: string, redirectUrl?: string): void {
         const params = new URLSearchParams();
         if (redirectUrl) params.append('redirectUrl', redirectUrl);
-        
+
         window.location.href = `/oauth/signup/${provider}?${params.toString()}`;
     }
 
     redirectToOAuthSignin(provider: string, redirectUrl?: string): void {
         const params = new URLSearchParams();
         if (redirectUrl) params.append('redirectUrl', redirectUrl);
-        
+
         window.location.href = `/oauth/signin/${provider}?${params.toString()}`;
     }
 
@@ -189,7 +191,7 @@ export class AuthClient {
         const params = new URLSearchParams();
         params.append('accountId', accountId);
         if (redirectUrl) params.append('redirectUrl', redirectUrl);
-        
+
         const scopes = Array.isArray(scopeNames) ? scopeNames.join(',') : scopeNames;
         window.location.href = `/oauth/permission/${scopes}?${params.toString()}`;
     }
@@ -198,12 +200,12 @@ export class AuthClient {
         const params = new URLSearchParams();
         params.append('accountId', accountId);
         if (redirectUrl) params.append('redirectUrl', redirectUrl);
-        
+
         window.location.href = `/oauth/permission/reauthorize?${params.toString()}`;
     }
 
     // Google API
-    async getGoogleTokenInfo(accountId: string): Promise<any> {
+    async getGoogleTokenInfo(accountId: string): Promise<GoogleTokenInfo> {
         const response = await this.http.get(`/${accountId}/google/token`);
         return response.data;
     }
@@ -211,14 +213,14 @@ export class AuthClient {
     async checkGoogleScopes(accountId: string, scopeNames: string[]): Promise<TokenCheckResponse> {
         const params = new URLSearchParams();
         params.append('scopes', JSON.stringify(scopeNames));
-        
+
         const response = await this.http.get(`/${accountId}/google/token/check?${params.toString()}`);
         return response.data;
     }
 
     // Notifications
     async getNotifications(
-        accountId: string, 
+        accountId: string,
         options?: {
             read?: boolean;
             type?: string;
@@ -231,7 +233,7 @@ export class AuthClient {
         if (options?.type) params.append('type', options.type);
         if (options?.limit) params.append('limit', options.limit.toString());
         if (options?.offset) params.append('offset', options.offset.toString());
-        
+
         const response = await this.http.get(`/${accountId}/notifications?${params.toString()}`);
         return response.data;
     }
@@ -257,8 +259,8 @@ export class AuthClient {
     }
 
     async updateNotification(
-        accountId: string, 
-        notificationId: string, 
+        accountId: string,
+        notificationId: string,
         updates: Partial<Notification>
     ): Promise<Notification> {
         const response = await this.http.patch(`/${accountId}/notifications/${notificationId}`, updates);

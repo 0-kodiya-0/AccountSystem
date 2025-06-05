@@ -130,6 +130,9 @@ export const NotificationsProvider: React.FC<NotificationsProviderProps> = ({
 
         try {
             const created = await createNotificationBase(notification);
+            if (!created) {
+                throw new Error('Failed to create notification - no data returned');
+            }
 
             // If real-time is not connected, manually refetch to update local state
             if (!isConnected) {
@@ -215,6 +218,9 @@ export const NotificationsProvider: React.FC<NotificationsProviderProps> = ({
         try {
             // Call the base hook's updateNotification method
             const updated = await updateNotificationBase(notificationId, updates);
+            if (!updated) {
+                throw new Error('Failed to update notification - no data returned');
+            }
 
             // If real-time is not connected, manually refetch
             if (!isConnected) {

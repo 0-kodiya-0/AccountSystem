@@ -76,10 +76,10 @@ export const validatePasswordStrength = (password: string): {
         errors.push('Password must contain at least one number');
     }
     
-    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+    if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) {
         errors.push('Password must contain at least one special character');
     }
-    
+
     const isValid = errors.length === 0;
     let strength: 'weak' | 'fair' | 'strong' = 'weak';
     
@@ -142,101 +142,5 @@ export const formatNotificationTime = (timestamp: number): string => {
         return `${days}d ago`;
     } else {
         return new Date(timestamp).toLocaleDateString();
-    }
-};
-
-/**
- * Extract query parameters from URL
- */
-export const getQueryParams = (url?: string): Record<string, string> => {
-    const searchParams = new URLSearchParams(url ? new URL(url).search : window.location.search);
-    const params: Record<string, string> = {};
-    
-    for (const [key, value] of searchParams.entries()) {
-        params[key] = value;
-    }
-    
-    return params;
-};
-
-/**
- * Build URL with query parameters
- */
-export const buildUrl = (baseUrl: string, params: Record<string, string | number | boolean>): string => {
-    const url = new URL(baseUrl, window.location.origin);
-    
-    Object.entries(params).forEach(([key, value]) => {
-        url.searchParams.set(key, String(value));
-    });
-    
-    return url.toString();
-};
-
-/**
- * Check if code is running in browser environment
- */
-export const isBrowser = (): boolean => {
-    return typeof window !== 'undefined' && typeof document !== 'undefined';
-};
-
-/**
- * Safe JSON parse
- */
-export const safeJsonParse = <T>(json: string, fallback: T): T => {
-    try {
-        return JSON.parse(json);
-    } catch {
-        return fallback;
-    }
-};
-
-/**
- * Debounce function
- */
-export const debounce = <T extends (...args: any[]) => any>(
-    func: T,
-    delay: number
-): ((...args: Parameters<T>) => void) => {
-    let timeoutId: NodeJS.Timeout;
-    
-    return (...args: Parameters<T>) => {
-        clearTimeout(timeoutId);
-        timeoutId = setTimeout(() => func(...args), delay);
-    };
-};
-
-/**
- * Local storage helpers with fallbacks
- */
-export const storage = {
-    get: (key: string, fallback: any = null): any => {
-        if (!isBrowser()) return fallback;
-        
-        try {
-            const item = localStorage.getItem(key);
-            return item ? JSON.parse(item) : fallback;
-        } catch {
-            return fallback;
-        }
-    },
-    
-    set: (key: string, value: any): void => {
-        if (!isBrowser()) return;
-        
-        try {
-            localStorage.setItem(key, JSON.stringify(value));
-        } catch (error) {
-            console.warn('Failed to save to localStorage:', error);
-        }
-    },
-    
-    remove: (key: string): void => {
-        if (!isBrowser()) return;
-        
-        try {
-            localStorage.removeItem(key);
-        } catch (error) {
-            console.warn('Failed to remove from localStorage:', error);
-        }
     }
 };

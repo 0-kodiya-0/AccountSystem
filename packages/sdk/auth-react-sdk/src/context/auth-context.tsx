@@ -11,7 +11,9 @@ import {
     PasswordChangeRequest,
     TwoFactorSetupRequest,
     OAuthProviders,
-    AuthSDKError
+    AuthSDKError,
+    TokenCheckResponse,
+    TwoFactorSetupResponse
 } from '../types';
 
 interface AuthContextValue {
@@ -48,14 +50,14 @@ interface AuthContextValue {
     fetchAccount: (accountId: string) => Promise<Account>;
     updateAccount: (accountId: string, updates: Partial<Account>) => Promise<Account>;
     changePassword: (accountId: string, data: PasswordChangeRequest) => Promise<void>;
-    setupTwoFactor: (accountId: string, data: TwoFactorSetupRequest) => Promise<any>;
+    setupTwoFactor: (accountId: string, data: TwoFactorSetupRequest) => Promise<TwoFactorSetupResponse>;
     switchAccount: (accountId: string) => void;
     logout: (accountId?: string) => Promise<void>;
     logoutAll: () => Promise<void>;
 
     // Google Permissions
     requestGooglePermission: (accountId: string, scopes: string[], redirectUrl?: string) => void;
-    checkGoogleScopes: (accountId: string, scopes: string[]) => Promise<any>;
+    checkGoogleScopes: (accountId: string, scopes: string[]) => Promise<TokenCheckResponse>;
 
     // Utilities
     clearError: () => void;

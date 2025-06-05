@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Notification, AuthSDKError } from '../types';
+import { Notification, AuthSDKError, CreateNotificationRequest } from '../types';
 import { useAuth } from '../context/auth-context';
 import { useCurrentAccount } from '../store/account-store';
 
@@ -125,7 +125,7 @@ export const useNotifications = (accountId?: string) => {
         }
     }, [client, targetAccountId, notifications]);
 
-    const createNotification = useCallback(async (notification: any) => {
+    const createNotification = useCallback(async (notification: CreateNotificationRequest) => {
         if (!targetAccountId) return;
 
         try {
