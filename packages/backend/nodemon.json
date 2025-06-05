@@ -8,5 +8,5 @@
         "dist",
         "node_modules"
     ],
-    "exec": "npx tsx index.ts"
+    "exec": "npx tsx cli.ts"
 }

@@ -1,19 +1,67 @@
 {
-  "name": "backend",
+  "name": "@accountsystem/backend-server",
   "version": "1.0.0",
-  "main": "app.js",
-  "scripts": {
-    "start": "node dist/index.js",
-    "dev": "nodemon",
-    "build": "tsc",
-    "lint": "eslint \"src/**/*.{js,ts}\" --fix",
-    "test": "echo \"No test specified\" && exit 1"
+  "description": "AccountSystem authentication microservice - A secure, production-ready backend server for user authentication with OAuth, local auth, 2FA, and real-time notifications.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "accountsystem-backend": "dist/cli.js",
+    "abs": "dist/cli.js"
   },
-  "type": "module",
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "scripts": {
+    "build": "npm run clean && npm run build:types && npm run build:cli && npm run build:server",
+    "build:types": "tsc --emitDeclarationOnly",
+    "build:cli": "esbuild src/cli.ts --bundle --platform=node --target=node18 --format=cjs --outfile=dist/cli.js --external:express --external:mongoose --external:passport --external:socket.io --external:nodemailer --external:bcrypt --external:jsonwebtoken --external:googleapis --external:qrcode --external:otplib --external:lru-cache --external:cookie-parser --external:dotenv",
+    "build:server": "esbuild src/index.ts --bundle --platform=node --target=node18 --format=cjs --outfile=dist/index.js --external:express --external:mongoose --external:passport --external:socket.io --external:nodemailer --external:bcrypt --external:jsonwebtoken --external:googleapis --external:qrcode --external:otplib --external:lru-cache --external:cookie-parser --external:dotenv",
+    "dev:build": "npm run build --watch",
+    "dev:nodemon": "nodemon",
+    "clean": "node -e \"const fs = require('fs'); if (fs.existsSync('dist')) fs.rmSync('dist', { recursive: true });\"",
+    "prepublishOnly": "npm run build",
+    "test": "echo \"Tests not implemented yet\" && exit 0",
+    "start": "node dist/cli.js",
+    "link": "npm run build && npm link"
+  },
+  "files": [
+    "dist/**/*",
+    "docs/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0-kodiya-0/AccountSystem.git",
+    "directory": "packages/backend"
+  },
+  "keywords": [
+    "authentication",
+    "microservice",
+    "oauth",
+    "jwt",
+    "express",
+    "backend",
+    "server",
+    "2fa",
+    "security",
+    "mongodb",
+    "google-auth",
+    "local-auth",
+    "notifications",
+    "typescript",
+    "rest-api",
+    "cli"
+  ],
+  "bugs": {
+    "url": "https://github.com/0-kodiya-0/AccountSystem/issues"
+  },
+  "homepage": "https://github.com/0-kodiya-0/AccountSystem/tree/main/packages/backend#readme",
+  "author": "0-kodiya-0",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "devDependencies": {
     "@eslint/js": "^9.20.0",
     "@types/bcrypt": "^5.0.2",
