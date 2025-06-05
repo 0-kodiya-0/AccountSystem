@@ -22,7 +22,7 @@ import {
     GoogleTokenInfo
 } from '../types';
 
-export class AuthClient {
+export class HttpClient {
     private http: AxiosInstance;
 
     constructor(config: SDKConfig) {

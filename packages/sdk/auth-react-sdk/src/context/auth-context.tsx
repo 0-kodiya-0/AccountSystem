@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useCallback, ReactNode } from 'react';
-import { AuthClient } from '../client/http-client';
+import { HttpClient } from '../client/http-client';
 import { useAccountStore } from '../store/account-store';
 import {
     Account,
@@ -18,7 +18,7 @@ import {
 
 interface AuthContextValue {
     // Client instance
-    client: AuthClient;
+    client: HttpClient;
 
     // Store selectors
     accounts: Account[];
@@ -68,7 +68,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 interface AuthProviderProps {
     children: ReactNode;
-    client: AuthClient;
+    client: HttpClient;
     autoRefreshAccount?: boolean;
 }
 
