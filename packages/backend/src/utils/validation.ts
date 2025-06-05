@@ -277,36 +277,6 @@ export class ValidationUtils {
     }
 
     /**
-     * Validate file upload
-     */
-    static validateFileUpload(
-        file: Express.Multer.File | undefined,
-        allowedMimeTypes: string[],
-        maxSizeBytes: number
-    ): void {
-        if (!file) {
-            throw new BadRequestError('File is required');
-        }
-
-        if (!allowedMimeTypes.includes(file.mimetype)) {
-            throw new ValidationError(
-                `Invalid file type. Allowed types: ${allowedMimeTypes.join(', ')}`,
-                400,
-                ApiErrorCode.VALIDATION_ERROR
-            );
-        }
-
-        if (file.size > maxSizeBytes) {
-            const maxSizeMB = maxSizeBytes / (1024 * 1024);
-            throw new ValidationError(
-                `File size exceeds limit of ${maxSizeMB}MB`,
-                400,
-                ApiErrorCode.VALIDATION_ERROR
-            );
-        }
-    }
-
-    /**
      * Sanitize and validate search query
      */
     static validateSearchQuery(query: string, maxLength: number = 100): string {
