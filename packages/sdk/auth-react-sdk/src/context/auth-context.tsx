@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useCallback, ReactNode } from 'react';
-import { AuthClient } from '../client/auth-client';
+import { AuthClient } from '../client/http-client';
 import { useAccountStore } from '../store/account-store';
 import {
     Account,
@@ -17,7 +17,7 @@ import {
 interface AuthContextValue {
     // Client instance
     client: AuthClient;
-    
+
     // Store selectors
     accounts: Account[];
     currentAccount: Account | null;
@@ -31,19 +31,19 @@ interface AuthContextValue {
         redirectUrl: string | null;
         tempToken: string | null;
     };
-    
+
     // Local Authentication
     localSignup: (data: LocalSignupRequest) => Promise<{ accountId: string }>;
     localLogin: (data: LocalLoginRequest) => Promise<LocalLoginResponse>;
     verifyTwoFactor: (data: TwoFactorVerifyRequest) => Promise<LocalLoginResponse>;
     requestPasswordReset: (email: string) => Promise<void>;
     resetPassword: (token: string, data: ResetPasswordRequest) => Promise<void>;
-    
+
     // OAuth Authentication
     startOAuthSignup: (provider: OAuthProviders, redirectUrl?: string) => void;
     startOAuthSignin: (provider: OAuthProviders, redirectUrl?: string) => void;
     handleOAuthCallback: (params: URLSearchParams) => Promise<void>;
-    
+
     // Account Management
     fetchAccount: (accountId: string) => Promise<Account>;
     updateAccount: (accountId: string, updates: Partial<Account>) => Promise<Account>;
@@ -52,11 +52,11 @@ interface AuthContextValue {
     switchAccount: (accountId: string) => void;
     logout: (accountId?: string) => Promise<void>;
     logoutAll: () => Promise<void>;
-    
+
     // Google Permissions
     requestGooglePermission: (accountId: string, scopes: string[], redirectUrl?: string) => void;
     checkGoogleScopes: (accountId: string, scopes: string[]) => Promise<any>;
-    
+
     // Utilities
     clearError: () => void;
     refreshCurrentAccount: () => Promise<void>;
@@ -70,10 +70,10 @@ interface AuthProviderProps {
     autoRefreshAccount?: boolean;
 }
 
-export const AuthProvider: React.FC<AuthProviderProps> = ({ 
-    children, 
-    client, 
-    autoRefreshAccount = true 
+export const AuthProvider: React.FC<AuthProviderProps> = ({
+    children,
+    client,
+    autoRefreshAccount = true
 }) => {
     const {
         // State
@@ -82,7 +82,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         isAuthenticating,
         error,
         oauthState,
-        
+
         addAccount,
         updateAccount: updateAccountInStore,
         removeAccount,
@@ -102,33 +102,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
 
     const currentAccount = getCurrentAccount();
 
-    // Auto-refresh current account on mount
-    useEffect(() => {
-        if (autoRefreshAccount && currentAccount && !isLoading) {
-            refreshCurrentAccount();
-        }
-    }, [currentAccount?.id]);
-
-    // Handle OAuth callback on mount
-    useEffect(() => {
-        const handleOAuthCallbackOnMount = async () => {
-            const params = new URLSearchParams(window.location.search);
-            if (params.has('state') || params.has('code')) {
-                await handleOAuthCallback(params);
-            }
-        };
-
-        handleOAuthCallbackOnMount();
-    }, []);
-
     // Local Authentication Methods
     const localSignup = useCallback(async (data: LocalSignupRequest) => {
         try {
             setAuthenticating(true);
             clearError();
-            
+
             const result = await client.localSignup(data);
-            
+
             // Note: Account is created but not automatically logged in
             // User needs to verify email first
             return result;
@@ -145,9 +126,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         try {
             setAuthenticating(true);
             clearError();
-            
+
             const result = await client.localLogin(data);
-            
+
             if (result.requiresTwoFactor) {
                 // Set temp token for 2FA flow
                 setOAuthTempToken(result.tempToken!);
@@ -158,7 +139,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
                 addAccount(account);
                 setCurrentAccount(result.accountId);
             }
-            
+
             return result;
         } catch (error) {
             const message = error instanceof AuthSDKError ? error.message : 'Login failed';
@@ -173,9 +154,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         try {
             setAuthenticating(true);
             clearError();
-            
+
             const result = await client.verifyTwoFactor(data);
-            
+
             if (result.accountId) {
                 // Fetch account details and add to store
                 const account = await client.getAccount(result.accountId);
@@ -183,7 +164,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
                 setCurrentAccount(result.accountId);
                 clearOAuthState(); // Clear temp token
             }
-            
+
             return result;
         } catch (error) {
             const message = error instanceof AuthSDKError ? error.message : '2FA verification failed';
@@ -237,35 +218,35 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         try {
             setAuthenticating(true);
             clearError();
-            
+
             const state = params.get('state');
             const code = params.get('code');
             const error = params.get('error');
-            
+
             if (error) {
                 throw new Error(`OAuth error: ${error}`);
             }
-            
+
             if (!state || !code) {
                 throw new Error('Invalid OAuth callback parameters');
             }
-            
+
             // The backend should handle the OAuth callback and set cookies
             // We need to determine which account was authenticated
-            
+
             // Check for success parameters in URL
             const accountId = params.get('accountId');
             if (accountId) {
                 const account = await client.getAccount(accountId);
                 addAccount(account);
                 setCurrentAccount(accountId);
-                
+
                 // Clean up URL
                 const url = new URL(window.location.href);
                 url.search = '';
                 window.history.replaceState({}, '', url.toString());
             }
-            
+
             clearOAuthState();
         } catch (error) {
             const message = error instanceof Error ? error.message : 'OAuth callback failed';
@@ -347,7 +328,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         try {
             setLoading(true);
             const targetAccountId = accountId || currentAccount?.id;
-            
+
             if (targetAccountId) {
                 await client.logout(targetAccountId);
                 removeAccount(targetAccountId);
@@ -399,10 +380,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         }
     }, [currentAccount?.id, fetchAccount]);
 
+    // Auto-refresh current account on mount
+    useEffect(() => {
+        if (autoRefreshAccount && currentAccount && !isLoading) {
+            refreshCurrentAccount();
+        }
+    }, [currentAccount?.id]);
+
+    // Handle OAuth callback on mount
+    useEffect(() => {
+        const handleOAuthCallbackOnMount = async () => {
+            const params = new URLSearchParams(window.location.search);
+            if (params.has('state') || params.has('code')) {
+                await handleOAuthCallback(params);
+            }
+        };
+
+        handleOAuthCallbackOnMount();
+    }, []);
+
     const contextValue: AuthContextValue = {
         // Client
         client,
-        
+
         // State
         accounts,
         currentAccount,
@@ -411,19 +411,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         error,
         isAuthenticated: isAuthenticated(),
         oauthState,
-        
+
         // Local Auth
         localSignup,
         localLogin,
         verifyTwoFactor,
         requestPasswordReset,
         resetPassword,
-        
+
         // OAuth Auth
         startOAuthSignup,
         startOAuthSignin,
         handleOAuthCallback,
-        
+
         // Account Management
         fetchAccount,
         updateAccount,
@@ -432,11 +432,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         switchAccount,
         logout,
         logoutAll,
-        
+
         // Google Permissions
         requestGooglePermission,
         checkGoogleScopes,
-        
+
         // Utilities
         clearError,
         refreshCurrentAccount

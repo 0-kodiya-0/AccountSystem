@@ -81,6 +81,50 @@ export const useNotifications = (accountId?: string) => {
         }
     }, [client, targetAccountId, notifications]);
 
+    const deleteAllNotifications = useCallback(async () => {
+        if (!targetAccountId) return;
+
+        try {
+            const result = await client.deleteAllNotifications(targetAccountId);
+            setNotifications([]);
+            setUnreadCount(0);
+            return result;
+        } catch (err) {
+            const message = err instanceof AuthSDKError ? err.message : 'Failed to delete all notifications';
+            setError(message);
+            throw err;
+        }
+    }, [client, targetAccountId]);
+
+    const updateNotification = useCallback(async (notificationId: string, updates: Partial<Notification>) => {
+        if (!targetAccountId) return;
+
+        try {
+            const updated = await client.updateNotification(targetAccountId, notificationId, updates);
+            setNotifications(prev =>
+                prev.map(n => n.id === notificationId ? updated : n)
+            );
+            
+            // Update unread count if read status changed
+            const originalNotification = notifications.find(n => n.id === notificationId);
+            if (originalNotification && updates.read !== undefined) {
+                if (!originalNotification.read && updates.read) {
+                    // Notification was marked as read
+                    setUnreadCount(prev => Math.max(0, prev - 1));
+                } else if (originalNotification.read && !updates.read) {
+                    // Notification was marked as unread
+                    setUnreadCount(prev => prev + 1);
+                }
+            }
+            
+            return updated;
+        } catch (err) {
+            const message = err instanceof AuthSDKError ? err.message : 'Failed to update notification';
+            setError(message);
+            throw err;
+        }
+    }, [client, targetAccountId, notifications]);
+
     const createNotification = useCallback(async (notification: any) => {
         if (!targetAccountId) return;
 
@@ -111,6 +155,8 @@ export const useNotifications = (accountId?: string) => {
         markAsRead,
         markAllAsRead,
         deleteNotification,
+        deleteAllNotifications,
+        updateNotification,
         createNotification,
         clearError: () => setError(null)
     };

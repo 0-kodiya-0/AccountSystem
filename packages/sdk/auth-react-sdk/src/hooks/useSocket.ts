@@ -72,6 +72,73 @@ export const useSocket = (
             typeof window.WebSocket !== 'undefined';
     });
 
+    // Connection control methods
+    const connect = useCallback(async () => {
+        if (!clientRef.current || !isSupported) {
+            throw new Error('Socket client not available');
+        }
+        await clientRef.current.connect();
+    }, [isSupported]);
+
+    const disconnect = useCallback(() => {
+        if (!clientRef.current) return;
+        clientRef.current.disconnect();
+    }, []);
+
+    const reconnect = useCallback(async () => {
+        if (!clientRef.current || !isSupported) {
+            throw new Error('Socket client not available');
+        }
+        clientRef.current.disconnect();
+        await clientRef.current.connect();
+    }, [isSupported]);
+
+    // Subscription methods
+    const subscribe = useCallback(async (targetAccountId: string) => {
+        if (!clientRef.current || !isSupported) {
+            throw new Error('Socket client not available');
+        }
+        await clientRef.current.subscribe(targetAccountId);
+    }, [isSupported]);
+
+    const unsubscribe = useCallback(async (targetAccountId: string) => {
+        if (!clientRef.current || !isSupported) {
+            throw new Error('Socket client not available');
+        }
+        await clientRef.current.unsubscribe(targetAccountId);
+    }, [isSupported]);
+
+    // Event listener methods
+    const on = useCallback(<K extends keyof SocketEventPayloads>(
+        event: K,
+        listener: SocketEventListener<SocketEventPayloads[K]>
+    ) => {
+        if (!clientRef.current || !isSupported) return;
+        clientRef.current.on(event, listener);
+    }, [isSupported]);
+
+    const off = useCallback(<K extends keyof SocketEventPayloads>(
+        event: K,
+        listener?: SocketEventListener<SocketEventPayloads[K]>
+    ) => {
+        if (!clientRef.current || !isSupported) return;
+        clientRef.current.off(event, listener);
+    }, [isSupported]);
+
+    // Utility methods
+    const getLatency = useCallback(() => {
+        if (!clientRef.current || !isSupported) return null;
+        return clientRef.current.getLatency();
+    }, [isSupported]);
+
+    const ping = useCallback(() => {
+        if (!clientRef.current || !isSupported) return;
+        const client = clientRef.current as any;
+        if (client.socket?.connected) {
+            client.socket.emit(NotificationSocketEvents.PING);
+        }
+    }, [isSupported]);
+
     // Initialize client
     useEffect(() => {
         if (!isSupported) return;
@@ -140,73 +207,6 @@ export const useSocket = (
 
         subscribeToAccount();
     }, [autoSubscribe, accountId, connectionState, isSupported]);
-
-    // Connection control methods
-    const connect = useCallback(async () => {
-        if (!clientRef.current || !isSupported) {
-            throw new Error('Socket client not available');
-        }
-        await clientRef.current.connect();
-    }, [isSupported]);
-
-    const disconnect = useCallback(() => {
-        if (!clientRef.current) return;
-        clientRef.current.disconnect();
-    }, []);
-
-    const reconnect = useCallback(async () => {
-        if (!clientRef.current || !isSupported) {
-            throw new Error('Socket client not available');
-        }
-        clientRef.current.disconnect();
-        await clientRef.current.connect();
-    }, [isSupported]);
-
-    // Subscription methods
-    const subscribe = useCallback(async (targetAccountId: string) => {
-        if (!clientRef.current || !isSupported) {
-            throw new Error('Socket client not available');
-        }
-        await clientRef.current.subscribe(targetAccountId);
-    }, [isSupported]);
-
-    const unsubscribe = useCallback(async (targetAccountId: string) => {
-        if (!clientRef.current || !isSupported) {
-            throw new Error('Socket client not available');
-        }
-        await clientRef.current.unsubscribe(targetAccountId);
-    }, [isSupported]);
-
-    // Event listener methods
-    const on = useCallback(<K extends keyof SocketEventPayloads>(
-        event: K,
-        listener: SocketEventListener<SocketEventPayloads[K]>
-    ) => {
-        if (!clientRef.current || !isSupported) return;
-        clientRef.current.on(event, listener);
-    }, [isSupported]);
-
-    const off = useCallback(<K extends keyof SocketEventPayloads>(
-        event: K,
-        listener?: SocketEventListener<SocketEventPayloads[K]>
-    ) => {
-        if (!clientRef.current || !isSupported) return;
-        clientRef.current.off(event, listener);
-    }, [isSupported]);
-
-    // Utility methods
-    const getLatency = useCallback(() => {
-        if (!clientRef.current || !isSupported) return null;
-        return clientRef.current.getLatency();
-    }, [isSupported]);
-
-    const ping = useCallback(() => {
-        if (!clientRef.current || !isSupported) return;
-        const client = clientRef.current as any;
-        if (client.socket?.connected) {
-            client.socket.emit(NotificationSocketEvents.PING);
-        }
-    }, [isSupported]);
 
     return {
         // Connection state

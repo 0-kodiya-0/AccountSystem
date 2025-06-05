@@ -11,18 +11,6 @@ export const useOAuth = () => {
     const oauthState = useOAuthState();
     const { isAuthenticating, error } = useAuthState();
 
-    // Handle OAuth callback when component mounts
-    useEffect(() => {
-        const handleCallback = async () => {
-            const params = new URLSearchParams(window.location.search);
-            if (params.has('state') && params.has('code')) {
-                await handleOAuthCallback(params);
-            }
-        };
-
-        handleCallback();
-    }, []);
-
     const signupWithProvider = useCallback((provider: OAuthProviders, redirectUrl?: string) => {
         startOAuthSignup(provider, redirectUrl);
     }, [startOAuthSignup]);
@@ -36,17 +24,29 @@ export const useOAuth = () => {
         return params.has('state') && (params.has('code') || params.has('error'));
     }, []);
 
+    // Handle OAuth callback when component mounts
+    useEffect(() => {
+        const handleCallback = async () => {
+            const params = new URLSearchParams(window.location.search);
+            if (params.has('state') && params.has('code')) {
+                await handleOAuthCallback(params);
+            }
+        };
+
+        handleCallback();
+    }, []);
+
     return {
         // State
         isInProgress: oauthState.isInProgress,
         provider: oauthState.provider,
         isAuthenticating,
         error,
-        
+
         // Actions
         signupWithProvider,
         signinWithProvider,
-        
+
         // Utilities
         isOAuthCallback
     };
