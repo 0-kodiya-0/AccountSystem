@@ -29,7 +29,6 @@ interface AuthContextValue {
     isAuthenticating: boolean;
     error: string | null;
     isAuthenticated: boolean;
-    hasActiveAccounts: () => boolean;
     oauthState: {
         isInProgress: boolean;
         provider: OAuthProviders | null;
@@ -506,7 +505,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         isAuthenticating,
         error,
         isAuthenticated: isAuthenticated(),
-        hasActiveAccounts,
         oauthState,
 
         // Local Auth

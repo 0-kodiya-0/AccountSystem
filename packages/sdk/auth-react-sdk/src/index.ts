@@ -29,7 +29,6 @@ export { useNotifications } from "./hooks/useNotifications";
 export { useRealtimeNotifications } from "./hooks/useRealtimeNotifications";
 export { useSocket } from "./hooks/useSocket";
 export { useAccount } from "./hooks/useAccount";
-export { useCurrentAccount } from "./hooks/useCurrentAccount";
 
 // Version export
 export const version = '1.0.0';

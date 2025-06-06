@@ -73,6 +73,7 @@ interface AccountActions {
     // Utilities
     hasAccounts: () => boolean;
     hasActiveAccounts: () => boolean;
+    hasDisabledAccounts: () => boolean;
     isAuthenticated: () => boolean;
     hasAccountData: (accountId: string) => boolean;
     needsAccountData: (accountId: string) => boolean;
@@ -285,6 +286,8 @@ export const useAccountStore = create<AccountStore>()(
             hasAccounts: () => get().accountIds.length > 0,
 
             hasActiveAccounts: () => get().getActiveAccountIds().length > 0,
+
+            hasDisabledAccounts: () => get().getDisabledAccountIds().length > 0,
 
             isAuthenticated: () => get().hasActiveAccounts(),
 
