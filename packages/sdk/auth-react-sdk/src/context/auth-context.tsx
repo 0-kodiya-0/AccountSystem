@@ -22,11 +22,14 @@ interface AuthContextValue {
 
     // Store selectors
     accounts: Account[];
+    allAccounts: Account[];
+    disabledAccounts: Account[];
     currentAccount: Account | null;
     isLoading: boolean;
     isAuthenticating: boolean;
     error: string | null;
     isAuthenticated: boolean;
+    hasActiveAccounts: () => boolean;
     oauthState: {
         isInProgress: boolean;
         provider: OAuthProviders | null;
@@ -52,8 +55,14 @@ interface AuthContextValue {
     changePassword: (accountId: string, data: PasswordChangeRequest) => Promise<void>;
     setupTwoFactor: (accountId: string, data: TwoFactorSetupRequest) => Promise<TwoFactorSetupResponse>;
     switchAccount: (accountId: string) => void;
-    logout: (accountId?: string) => Promise<void>;
+    logout: (accountId?: string, clearClientAccountState?: boolean) => Promise<void>;
     logoutAll: () => Promise<void>;
+
+    // Account State Management
+    disableAccount: (accountId: string) => void;
+    enableAccount: (accountId: string) => void;
+    removeAccount: (accountId: string) => void;
+    isAccountDisabled: (accountId: string) => boolean;
 
     // Google Permissions
     requestGooglePermission: (accountId: string, scopes: string[], redirectUrl?: string) => void;
@@ -79,12 +88,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
 }) => {
     const {
         // State
-        accounts,
+        accounts: activeAccounts,
         isLoading,
         isAuthenticating,
         error,
         oauthState,
+        hasActiveAccounts,
 
+        getDisabledAccounts,
+        accounts: allAccountsFromStore,
+
+        // Actions
         addAccount,
         updateAccount: updateAccountInStore,
         removeAccount,
@@ -99,10 +113,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         setOAuthTempToken,
         clearOAuthState,
         isAuthenticated,
-        getAccountById
+        getAccountById,
+        
+        // Account state management
+        disableAccount,
+        enableAccount,
+        isAccountDisabled
     } = useAccountStore();
 
     const currentAccount = getCurrentAccount();
+    const allAccounts = allAccountsFromStore;
+    const disabledAccounts = getDisabledAccounts();
 
     // Local Authentication Methods
     const localSignup = useCallback(async (data: LocalSignupRequest) => {
@@ -321,19 +342,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
 
     const switchAccount = useCallback((accountId: string) => {
         const account = getAccountById(accountId);
-        if (account) {
+        if (account && !isAccountDisabled(accountId)) {
             setCurrentAccount(accountId);
         }
-    }, [getAccountById]);
+    }, [getAccountById, isAccountDisabled]);
 
-    const logout = useCallback(async (accountId?: string) => {
+    const logout = useCallback(async (accountId?: string, clearClientAccountState: boolean = true) => {
         try {
             setLoading(true);
             const targetAccountId = accountId || currentAccount?.id;
 
             if (targetAccountId) {
+                // Always call backend logout
                 await client.logout(targetAccountId);
-                removeAccount(targetAccountId);
+
+                if (clearClientAccountState) {
+                    // Remove account completely from client state
+                    removeAccount(targetAccountId);
+                } else {
+                    // Just disable the account, keep it in state for manual removal
+                    disableAccount(targetAccountId);
+                }
             }
         } catch (error) {
             const message = error instanceof AuthSDKError ? error.message : 'Logout failed';
@@ -341,12 +370,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         } finally {
             setLoading(false);
         }
-    }, [client, currentAccount?.id]);
+    }, [client, currentAccount?.id, removeAccount, disableAccount]);
 
     const logoutAll = useCallback(async () => {
         try {
             setLoading(true);
-            const accountIds = accounts.map(a => a.id);
+            const accountIds = allAccounts.map(a => a.id);
             await client.logoutAll(accountIds);
             clearAccounts();
         } catch (error) {
@@ -355,7 +384,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         } finally {
             setLoading(false);
         }
-    }, [client, accounts]);
+    }, [client, allAccounts, clearAccounts]);
 
     // Google Permissions
     const requestGooglePermission = useCallback((accountId: string, scopes: string[], redirectUrl?: string) => {
@@ -382,6 +411,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         }
     }, [currentAccount?.id, fetchAccount]);
 
+    // Handle URL parameters for clearClientAccountState
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const clearClientAccountState = params.get('clearClientAccountState');
+        const accountId = params.get('accountId');
+
+        if (clearClientAccountState === 'false' && accountId) {
+            // Disable the account instead of removing it
+            disableAccount(accountId);
+            
+            // Clean up URL parameters
+            const url = new URL(window.location.href);
+            url.searchParams.delete('clearClientAccountState');
+            url.searchParams.delete('accountId');
+            window.history.replaceState({}, '', url.toString());
+        }
+    }, []);
+
     // Auto-refresh current account on mount
     useEffect(() => {
         if (autoRefreshAccount && currentAccount && !isLoading) {
@@ -406,12 +453,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         client,
 
         // State
-        accounts,
+        accounts: activeAccounts,
+        allAccounts,
+        disabledAccounts,
         currentAccount,
         isLoading,
         isAuthenticating,
         error,
         isAuthenticated: isAuthenticated(),
+        hasActiveAccounts,
         oauthState,
 
         // Local Auth
@@ -434,6 +484,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         switchAccount,
         logout,
         logoutAll,
+
+        // Account State Management
+        disableAccount,
+        enableAccount,
+        removeAccount,
+        isAccountDisabled,
 
         // Google Permissions
         requestGooglePermission,

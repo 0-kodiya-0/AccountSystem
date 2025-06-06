@@ -1,5 +1,3 @@
-// packages/sdk/auth-frontend-sdk/src/types/index.ts
-
 // Core Data Types
 export enum AccountStatus {
     Active = 'active',
@@ -45,6 +43,13 @@ export interface Account {
     userDetails: UserDetails;
     security: SecuritySettings;
     provider?: OAuthProviders;
+    
+    // Client-side properties (not from backend)
+    clientStatus?: {
+        isDisabled?: boolean; // Locally disabled due to logout with clearClientAccountState=false
+        disabledAt?: string; // When it was disabled
+        reason?: 'logout' | 'token_expired' | 'manual'; // Why it was disabled
+    };
 }
 
 // API Response Types

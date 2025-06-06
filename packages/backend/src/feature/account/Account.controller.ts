@@ -31,12 +31,12 @@ export const logoutAll = (req: Request, res: Response, next: NextFunction) => {
  * Logout single account
  */
 export const logout = (req: Request, res: Response, next: NextFunction) => {
-    const { accountId } = req.query;
+    const { accountId, clearClientAccountState } = req.query;
 
     const validatedAccountId = AccountService.validateSingleAccountId(accountId as string);
     AccountService.clearSingleAccountSession(res, validatedAccountId);
 
-    next(new RedirectSuccess(null, "/", undefined));
+    next(new RedirectSuccess({ clearClientAccountState: clearClientAccountState === "false" ? false : true }, "/", undefined));
 };
 
 /**
