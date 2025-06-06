@@ -1,0 +1,59 @@
+import { useAuth } from "@accountsystem/auth-react-sdk"
+import {
+    LocalSignupRequest,
+    LocalLoginRequest,
+    LocalLoginResponse,
+    ResetPasswordRequest
+} from "@accountsystem/auth-react-sdk"
+
+export function useLocalAuth() {
+    const {
+        localSignup,
+        localLogin,
+        verifyTwoFactor,
+        requestPasswordReset,
+        resetPassword,
+        isAuthenticating,
+        error,
+        oauthState
+    } = useAuth()
+
+    const signup = async (data: LocalSignupRequest) => {
+        return await localSignup(data)
+    }
+
+    const login = async (data: LocalLoginRequest): Promise<LocalLoginResponse> => {
+        return await localLogin(data)
+    }
+
+    const verify2FA = async (token: string): Promise<LocalLoginResponse> => {
+        const tempToken = oauthState.tempToken
+        if (!tempToken) {
+            throw new Error("No temporary token available")
+        }
+
+        return await verifyTwoFactor({
+            token,
+            tempToken
+        })
+    }
+
+    const requestReset = async (email: string) => {
+        return await requestPasswordReset(email)
+    }
+
+    const resetPass = async (token: string, data: ResetPasswordRequest) => {
+        return await resetPassword(token, data)
+    }
+
+    return {
+        signup,
+        login,
+        verify2FA,
+        requestPasswordReset: requestReset,
+        resetPassword: resetPass,
+        isAuthenticating,
+        error,
+        requires2FA: !!oauthState.tempToken
+    }
+}

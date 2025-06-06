@@ -2,7 +2,7 @@
 
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@accountsystem/auth-react-sdk"
+import { useAuth, useAccount, useAccountStore } from "@accountsystem/auth-react-sdk"
 
 interface AuthGuardProps {
   children: React.ReactNode
@@ -15,8 +15,22 @@ export function AuthGuard({
   fallback = null,
   requireAccount = true
 }: AuthGuardProps) {
-  const router = useRouter()
-  const { isAuthenticated, hasActiveAccounts, currentAccount, isLoading } = useAuth()
+  const router = useRouter();
+
+  const hasActiveAccounts = useAccountStore(state => state.hasActiveAccounts);
+
+  const { isAuthenticated, currentAccount: currentAccountFromStore, isLoading: authLoading } = useAuth()
+
+  // Use useAccount hook to get current account data if we have an account ID
+  const { account: currentAccount, isLoading: accountLoading } = useAccount(
+    currentAccountFromStore?.id,
+    {
+      autoFetch: true,
+      refreshOnMount: false
+    }
+  )
+
+  const isLoading = authLoading || (currentAccountFromStore && accountLoading)
 
   useEffect(() => {
     if (isLoading) return // Wait for auth state to load
@@ -27,12 +41,28 @@ export function AuthGuard({
       return
     }
 
-    if (requireAccount && !currentAccount) {
-      // Authentication exists but no current account selected
-      router.replace("/accounts")
-      return
+    if (requireAccount) {
+      if (!currentAccountFromStore) {
+        // Authentication exists but no current account selected
+        router.replace("/accounts")
+        return
+      }
+
+      if (!currentAccount && !accountLoading) {
+        // Account ID exists but failed to load account data
+        router.replace("/accounts")
+        return
+      }
     }
-  }, [isAuthenticated, currentAccount, isLoading, requireAccount, router])
+  }, [
+    isAuthenticated,
+    currentAccountFromStore,
+    currentAccount,
+    isLoading,
+    accountLoading,
+    requireAccount,
+    router
+  ])
 
   // Show loading state while checking auth
   if (isLoading) {
@@ -47,7 +77,11 @@ export function AuthGuard({
   }
 
   // Show fallback while redirecting or if auth fails
-  if (!isAuthenticated || !hasActiveAccounts() || (requireAccount && !currentAccount)) {
+  if (
+    !isAuthenticated ||
+    !hasActiveAccounts() ||
+    (requireAccount && (!currentAccountFromStore || (!currentAccount && !accountLoading)))
+  ) {
     return fallback || (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center space-y-4">

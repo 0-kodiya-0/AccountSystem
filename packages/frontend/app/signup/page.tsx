@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { Eye, EyeOff, Chrome, Check } from "lucide-react"
+import { Eye, EyeOff, Chrome } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,7 +15,9 @@ import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
 import { AuthLayout } from "@/components/layout/auth-layout"
 import { PasswordStrengthIndicator } from "@/components/auth/password-strength-indicator"
-import { useLocalAuth, useOAuth } from "@accountsystem/auth-react-sdk"
+import { OAuthProviders } from "@accountsystem/auth-react-sdk"
+import { useLocalAuth } from "@/hooks/useLocalAuth"
+import { useOAuth } from "@/hooks/useOAuth"
 import { getEnvironmentConfig, validatePasswordStrength } from "@/lib/utils"
 
 const signupSchema = z.object({
@@ -72,23 +74,23 @@ export default function SignupPage() {
             // Redirect to check email page
             router.push("/check-email")
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             toast({
                 title: "Sign up failed",
-                description: error.message || "Please check your information and try again.",
+                description: error instanceof Error ? error.message : "Please check your information and try again.",
                 variant: "destructive",
             })
         }
     }
 
-    const handleOAuthSignup = (provider: "google" | "microsoft" | "facebook") => {
+    const handleOAuthSignup = (provider: OAuthProviders) => {
         try {
             const redirectUrl = config.homeUrl || "/dashboard"
             signupWithProvider(provider, redirectUrl)
-        } catch (error: any) {
+        } catch (error: unknown) {
             toast({
                 title: "OAuth sign up failed",
-                description: error.message || "Unable to start OAuth sign up process.",
+                description: error instanceof Error ? error.message : "Unable to start OAuth sign up process.",
                 variant: "destructive",
             })
         }
@@ -108,7 +110,7 @@ export default function SignupPage() {
                             type="button"
                             variant="outline"
                             className="w-full"
-                            onClick={() => handleOAuthSignup("google")}
+                            onClick={() => handleOAuthSignup(OAuthProviders.Google)}
                             disabled={isSubmitting || isAuthenticating}
                         >
                             <Chrome className="mr-2 h-4 w-4" />

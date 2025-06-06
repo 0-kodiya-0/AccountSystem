@@ -14,14 +14,16 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
 import { AuthLayout } from "@/components/layout/auth-layout"
-import { OAuthProviders, useLocalAuth, useOAuth } from "@accountsystem/auth-react-sdk"
+import { OAuthProviders } from "@accountsystem/auth-react-sdk" // cSpell:ignore accountsystem
+import { useLocalAuth } from "@/hooks/useLocalAuth"
+import { useOAuth } from "@/hooks/useOAuth"
 import { getEnvironmentConfig } from "@/lib/utils"
 
 const loginSchema = z.object({
     email: z.string().email("Please enter a valid email address").optional(),
     username: z.string().min(1, "Username is required").optional(),
     password: z.string().min(1, "Password is required"),
-    rememberMe: z.boolean().default(false),
+    rememberMe: z.boolean(),
 }).refine((data) => data.email || data.username, {
     message: "Either email or username is required",
     path: ["email"]
@@ -35,26 +37,22 @@ export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false)
     const [useEmail, setUseEmail] = useState(true)
 
-    const { login, isAuthenticating, error: authError } = useLocalAuth()
-    const { signupWithProvider, signinWithProvider } = useOAuth()
+    const { login, isAuthenticating } = useLocalAuth()
+    const { signinWithProvider } = useOAuth()
     const config = getEnvironmentConfig()
 
     const {
         register,
         handleSubmit,
         formState: { errors, isSubmitting },
-        watch,
-        setError,
     } = useForm<LoginFormData>({
         resolver: zodResolver(loginSchema),
         defaultValues: {
-            rememberMe: false
+            rememberMe: false,
+            email: "",
+            username: ""
         }
     })
-
-    // Watch form values for conditional validation
-    const watchedEmail = watch("email")
-    const watchedUsername = watch("username")
 
     const onSubmit = async (data: LoginFormData) => {
         try {
@@ -62,7 +60,7 @@ export default function LoginPage() {
                 email: useEmail ? data.email : undefined,
                 username: !useEmail ? data.username : undefined,
                 password: data.password,
-                rememberMe: data.rememberMe,
+                rememberMe: data.rememberMe ?? false,
             }
 
             const result = await login(loginData)
@@ -84,10 +82,11 @@ export default function LoginPage() {
             const redirectUrl = config.homeUrl || "/dashboard"
             router.push(redirectUrl)
 
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : "Please check your credentials and try again."
             toast({
                 title: "Sign in failed",
-                description: error.message || "Please check your credentials and try again.",
+                description: errorMessage,
                 variant: "destructive",
             })
         }
@@ -97,10 +96,11 @@ export default function LoginPage() {
         try {
             const redirectUrl = config.homeUrl || "/dashboard"
             signinWithProvider(provider, redirectUrl)
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : "Unable to start OAuth sign in process."
             toast({
                 title: "OAuth sign in failed",
-                description: error.message || "Unable to start OAuth sign in process.",
+                description: errorMessage,
                 variant: "destructive",
             })
         }

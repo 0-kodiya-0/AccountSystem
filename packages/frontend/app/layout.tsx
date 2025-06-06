@@ -5,7 +5,7 @@ import "./globals.css"
 import { ThemeProvider } from "@/components/theme/theme-provider"
 import { ToastProvider, ToastViewport } from "@/components/ui/toast"
 import { AuthProvider } from "@accountsystem/auth-react-sdk"
-import { authClient, socketConfig } from "@/lib/auth"
+import { authClient } from "@/lib/auth"
 import { getEnvironmentConfig } from "@/lib/utils"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -52,7 +52,13 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <AuthProvider client={authClient} autoRefreshAccount>
+          {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
+          {/* @ts-ignore - AuthProvider types issue with Next.js 13+ */}
+          <AuthProvider
+            client={authClient}
+            autoFetchAccountData={true}
+            prefetchOnMount={true}
+          >
             <ToastProvider>
               {children}
               <ToastViewport />

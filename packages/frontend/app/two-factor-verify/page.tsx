@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
 import { AuthLayout } from "@/components/layout/auth-layout"
-import { useLocalAuth } from "@accountsystem/auth-react-sdk"
+import { useLocalAuth } from "@/hooks/useLocalAuth"
 import { getEnvironmentConfig } from "@/lib/utils"
 
 const twoFactorSchema = z.object({
@@ -71,10 +71,10 @@ export default function TwoFactorVerifyPage() {
             const redirectUrl = config.homeUrl || "/dashboard"
             router.push(redirectUrl)
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             toast({
                 title: "Verification failed",
-                description: error.message || "Please check your code and try again.",
+                description: error instanceof Error ? error.message : "Please check your code and try again.",
                 variant: "destructive",
             })
         }

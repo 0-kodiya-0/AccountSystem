@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
 import { AuthLayout } from "@/components/layout/auth-layout"
-import { useLocalAuth } from "@accountsystem/auth-react-sdk"
+import { useLocalAuth } from "@/hooks/useLocalAuth"
 import { getEnvironmentConfig } from "@/lib/utils"
 
 const forgotPasswordSchema = z.object({
@@ -49,10 +49,11 @@ export default function ForgotPasswordPage() {
                 variant: "success",
             })
 
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : "Please try again later."
             toast({
                 title: "Failed to send reset email",
-                description: error.message || "Please try again later.",
+                description: errorMessage,
                 variant: "destructive",
             })
         }

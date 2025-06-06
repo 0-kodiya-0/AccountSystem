@@ -22,28 +22,46 @@ export default function AccountSettingsPage() {
     const { toast } = useToast()
     const accountId = params.accountId as string
 
-    const { account, loading, error } = useAccount(accountId)
+    // Use useAccount hook to get account data
+    const { account, isLoading, error, refresh } = useAccount(accountId, {
+        autoFetch: true,
+        refreshOnMount: true // Force refresh on mount for settings page
+    })
+
     const { removeAccount } = useAuth()
     const config = getEnvironmentConfig()
 
     const [deleteConfirm, setDeleteConfirm] = useState(false)
 
-    if (loading) {
+    // Show loading state
+    if (isLoading) {
         return (
             <div className="min-h-screen flex items-center justify-center">
-                <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                <div className="text-center space-y-4">
+                    <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+                    <p className="text-sm text-muted-foreground">Loading account settings...</p>
+                </div>
             </div>
         )
     }
 
+    // Show error state
     if (error || !account) {
         return (
             <div className="min-h-screen flex items-center justify-center">
                 <div className="text-center space-y-4">
                     <h1 className="text-2xl font-bold">Account not found</h1>
-                    <Button onClick={() => router.push("/accounts")}>
-                        Back to Accounts
-                    </Button>
+                    <p className="text-muted-foreground">
+                        {error || "Unable to load account data"}
+                    </p>
+                    <div className="space-x-2">
+                        <Button onClick={() => refresh()} variant="outline">
+                            Try Again
+                        </Button>
+                        <Button onClick={() => router.push("/accounts")}>
+                            Back to Accounts
+                        </Button>
+                    </div>
                 </div>
             </div>
         )
@@ -69,10 +87,10 @@ export default function AccountSettingsPage() {
                 variant: "success",
             })
             router.push("/accounts")
-        } catch (error: any) {
+        } catch (error: unknown) {
             toast({
                 title: "Failed to remove account",
-                description: error.message || "Please try again.",
+                description: error instanceof Error ? error.message : "Please try again.",
                 variant: "destructive",
             })
         }

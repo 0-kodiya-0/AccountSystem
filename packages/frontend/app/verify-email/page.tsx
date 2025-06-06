@@ -42,13 +42,13 @@ export default function EmailVerificationPage() {
                     router.push("/login")
                 }, 3000)
 
-            } catch (error: any) {
+            } catch (error: unknown) {
                 setStatus("error")
-                setErrorMessage(error.message || "Failed to verify email address")
+                setErrorMessage(error instanceof Error ? error.message : "Failed to verify email address")
 
                 toast({
                     title: "Verification failed",
-                    description: error.message || "The verification link may be invalid or expired.",
+                    description: error instanceof Error ? error.message : "The verification link may be invalid or expired.",
                     variant: "destructive",
                 })
             }
