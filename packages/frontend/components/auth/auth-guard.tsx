@@ -32,7 +32,7 @@ export function AuthGuard({
       router.replace("/accounts")
       return
     }
-  }, [isAuthenticated, hasActiveAccounts, currentAccount, isLoading, requireAccount, router])
+  }, [isAuthenticated, currentAccount, isLoading, requireAccount, router])
 
   // Show loading state while checking auth
   if (isLoading) {
