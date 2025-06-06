@@ -50,7 +50,7 @@ interface AuthContextValue {
     handleOAuthCallback: (params: URLSearchParams) => Promise<void>;
 
     // Account Management
-    fetchAccount: (accountId: string) => Promise<Account>;
+    fetchAccount: (accountId: string, force?: boolean) => Promise<Account>;
     updateAccount: (accountId: string, updates: Partial<Account>) => Promise<Account>;
     changePassword: (accountId: string, data: PasswordChangeRequest) => Promise<void>;
     setupTwoFactor: (accountId: string, data: TwoFactorSetupRequest) => Promise<TwoFactorSetupResponse>;
@@ -68,6 +68,11 @@ interface AuthContextValue {
     requestGooglePermission: (accountId: string, scopes: string[], redirectUrl?: string) => void;
     checkGoogleScopes: (accountId: string, scopes: string[]) => Promise<TokenCheckResponse>;
 
+    // Data Management
+    ensureAccountData: (accountId: string) => Promise<Account>;
+    refreshAccountData: (accountId: string) => Promise<Account>;
+    prefetchAccountsData: () => Promise<void>;
+
     // Utilities
     clearError: () => void;
     refreshCurrentAccount: () => Promise<void>;
@@ -78,33 +83,40 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 interface AuthProviderProps {
     children: ReactNode;
     client: HttpClient;
-    autoRefreshAccount?: boolean;
+    autoFetchAccountData?: boolean;
+    prefetchOnMount?: boolean;
 }
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({
     children,
     client,
-    autoRefreshAccount = true
+    autoFetchAccountData = true,
+    prefetchOnMount = true
 }) => {
     const {
-        // State
-        accounts: activeAccounts,
+        // State selectors
+        getActiveAccounts,
+        getAccounts,
+        getDisabledAccounts,
+        getCurrentAccount,
         isLoading,
         isAuthenticating,
         error,
         oauthState,
         hasActiveAccounts,
-
-        getDisabledAccounts,
-        accounts: allAccountsFromStore,
+        isAuthenticated,
+        getAccountById,
+        hasAccountData,
+        needsAccountData,
+        getActiveAccountIds,
 
         // Actions
         addAccount,
+        setAccountData,
         updateAccount: updateAccountInStore,
         removeAccount,
         clearAccounts,
         setCurrentAccount,
-        getCurrentAccount,
         setLoading,
         setAuthenticating,
         setError,
@@ -112,8 +124,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         setOAuthInProgress,
         setOAuthTempToken,
         clearOAuthState,
-        isAuthenticated,
-        getAccountById,
 
         // Account state management
         disableAccount,
@@ -121,9 +131,69 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         isAccountDisabled
     } = useAccountStore();
 
+    // Get current data
     const currentAccount = getCurrentAccount();
-    const allAccounts = allAccountsFromStore;
+    const accounts = getActiveAccounts();
+    const allAccounts = getAccounts();
     const disabledAccounts = getDisabledAccounts();
+
+    // Smart account data fetching
+    const ensureAccountData = useCallback(async (accountId: string): Promise<Account> => {
+        // If we already have the data, return it
+        if (hasAccountData(accountId)) {
+            return getAccountById(accountId)!;
+        }
+
+        // Otherwise fetch it
+        try {
+            const account = await client.getAccount(accountId);
+            setAccountData(accountId, account);
+            return account;
+        } catch (error) {
+            const message = error instanceof AuthSDKError ? error.message : 'Failed to fetch account data';
+            setError(message);
+            throw error;
+        }
+    }, [client, hasAccountData, getAccountById, setAccountData, setError]);
+
+    const refreshAccountData = useCallback(async (accountId: string): Promise<Account> => {
+        try {
+            const account = await client.getAccount(accountId);
+            setAccountData(accountId, account);
+            return account;
+        } catch (error) {
+            const message = error instanceof AuthSDKError ? error.message : 'Failed to refresh account data';
+            setError(message);
+            throw error;
+        }
+    }, [client, setAccountData, setError]);
+
+    const fetchAccount = useCallback(async (accountId: string, force: boolean = false): Promise<Account> => {
+        if (force) {
+            return refreshAccountData(accountId);
+        } else {
+            return ensureAccountData(accountId);
+        }
+    }, [ensureAccountData, refreshAccountData]);
+
+    const prefetchAccountsData = useCallback(async () => {
+        const activeAccountIds = getActiveAccountIds();
+        const missingDataIds = activeAccountIds.filter(id => needsAccountData(id));
+
+        if (missingDataIds.length === 0) return;
+
+        try {
+            setLoading(true);
+            await Promise.all(
+                missingDataIds.map(id => ensureAccountData(id))
+            );
+        } catch (error) {
+            // Individual account fetches will handle their own errors
+            console.warn('Some account data could not be prefetched:', error);
+        } finally {
+            setLoading(false);
+        }
+    }, [getActiveAccountIds, needsAccountData, ensureAccountData, setLoading]);
 
     // Local Authentication Methods
     const localSignup = useCallback(async (data: LocalSignupRequest) => {
@@ -132,9 +202,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
             clearError();
 
             const result = await client.localSignup(data);
-
-            // Note: Account is created but not automatically logged in
-            // User needs to verify email first
             return result;
         } catch (error) {
             const message = error instanceof AuthSDKError ? error.message : 'Signup failed';
@@ -143,7 +210,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         } finally {
             setAuthenticating(false);
         }
-    }, [client]);
+    }, [client, setAuthenticating, clearError, setError]);
 
     const localLogin = useCallback(async (data: LocalLoginRequest) => {
         try {
@@ -153,11 +220,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
             const result = await client.localLogin(data);
 
             if (result.requiresTwoFactor) {
-                // Set temp token for 2FA flow
                 setOAuthTempToken(result.tempToken!);
                 return result;
             } else if (result.accountId) {
-                // Fetch account details and add to store
+                // Add account ID and fetch data
                 const account = await client.getAccount(result.accountId);
                 addAccount(account);
                 setCurrentAccount(result.accountId);
@@ -171,7 +237,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         } finally {
             setAuthenticating(false);
         }
-    }, [client]);
+    }, [client, setAuthenticating, clearError, setError, setOAuthTempToken, addAccount, setCurrentAccount]);
 
     const verifyTwoFactor = useCallback(async (data: TwoFactorVerifyRequest) => {
         try {
@@ -181,11 +247,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
             const result = await client.verifyTwoFactor(data);
 
             if (result.accountId) {
-                // Fetch account details and add to store
                 const account = await client.getAccount(result.accountId);
                 addAccount(account);
                 setCurrentAccount(result.accountId);
-                clearOAuthState(); // Clear temp token
+                clearOAuthState();
             }
 
             return result;
@@ -196,7 +261,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         } finally {
             setAuthenticating(false);
         }
-    }, [client]);
+    }, [client, setAuthenticating, clearError, setError, addAccount, setCurrentAccount, clearOAuthState]);
 
     const requestPasswordReset = useCallback(async (email: string) => {
         try {
@@ -210,7 +275,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         } finally {
             setLoading(false);
         }
-    }, [client]);
+    }, [client, setLoading, clearError, setError]);
 
     const resetPassword = useCallback(async (token: string, data: ResetPasswordRequest) => {
         try {
@@ -224,18 +289,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         } finally {
             setLoading(false);
         }
-    }, [client]);
+    }, [client, setLoading, clearError, setError]);
 
     // OAuth Authentication Methods
     const startOAuthSignup = useCallback((provider: OAuthProviders, redirectUrl?: string) => {
         setOAuthInProgress(provider, redirectUrl);
         client.redirectToOAuthSignup(provider, redirectUrl);
-    }, [client]);
+    }, [client, setOAuthInProgress]);
 
     const startOAuthSignin = useCallback((provider: OAuthProviders, redirectUrl?: string) => {
         setOAuthInProgress(provider, redirectUrl);
         client.redirectToOAuthSignin(provider, redirectUrl);
-    }, [client]);
+    }, [client, setOAuthInProgress]);
 
     const handleOAuthCallback = useCallback(async (params: URLSearchParams) => {
         try {
@@ -254,10 +319,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
                 throw new Error('Invalid OAuth callback parameters');
             }
 
-            // The backend should handle the OAuth callback and set cookies
-            // We need to determine which account was authenticated
-
-            // Check for success parameters in URL
             const accountId = params.get('accountId');
             if (accountId) {
                 const account = await client.getAccount(accountId);
@@ -278,24 +339,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         } finally {
             setAuthenticating(false);
         }
-    }, [client]);
+    }, [client, setAuthenticating, clearError, setError, addAccount, setCurrentAccount, clearOAuthState]);
 
     // Account Management Methods
-    const fetchAccount = useCallback(async (accountId: string): Promise<Account> => {
-        try {
-            setLoading(true);
-            const account = await client.getAccount(accountId);
-            updateAccountInStore(accountId, account);
-            return account;
-        } catch (error) {
-            const message = error instanceof AuthSDKError ? error.message : 'Failed to fetch account';
-            setError(message);
-            throw error;
-        } finally {
-            setLoading(false);
-        }
-    }, [client]);
-
     const updateAccount = useCallback(async (accountId: string, updates: Partial<Account>): Promise<Account> => {
         try {
             setLoading(true);
@@ -309,7 +355,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         } finally {
             setLoading(false);
         }
-    }, [client]);
+    }, [client, updateAccountInStore, setLoading, setError]);
 
     const changePassword = useCallback(async (accountId: string, data: PasswordChangeRequest) => {
         try {
@@ -322,14 +368,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         } finally {
             setLoading(false);
         }
-    }, [client]);
+    }, [client, setLoading, setError]);
 
     const setupTwoFactor = useCallback(async (accountId: string, data: TwoFactorSetupRequest) => {
         try {
             setLoading(true);
             const result = await client.setupTwoFactor(accountId, data);
             // Refresh account to get updated security settings
-            await fetchAccount(accountId);
+            await refreshAccountData(accountId);
             return result;
         } catch (error) {
             const message = error instanceof AuthSDKError ? error.message : '2FA setup failed';
@@ -338,14 +384,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         } finally {
             setLoading(false);
         }
-    }, [client]);
+    }, [client, refreshAccountData, setLoading, setError]);
 
-    const switchAccount = useCallback((accountId: string) => {
-        const account = getAccountById(accountId);
-        if (account && !isAccountDisabled(accountId)) {
-            setCurrentAccount(accountId);
+    const switchAccount = useCallback(async (accountId: string) => {
+        if (isAccountDisabled(accountId)) return;
+
+        setCurrentAccount(accountId);
+
+        // Ensure we have the account data
+        if (autoFetchAccountData && needsAccountData(accountId)) {
+            try {
+                await ensureAccountData(accountId);
+            } catch (error) {
+                console.warn('Failed to fetch account data when switching:', error);
+            }
         }
-    }, [getAccountById, isAccountDisabled]);
+    }, [isAccountDisabled, setCurrentAccount, autoFetchAccountData, needsAccountData, ensureAccountData]);
 
     const logout = useCallback(async (accountId?: string, clearClientAccountState: boolean = true) => {
         try {
@@ -353,14 +407,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
             const targetAccountId = accountId || currentAccount?.id;
 
             if (targetAccountId) {
-                // Always call backend logout
                 await client.logout(targetAccountId);
 
                 if (clearClientAccountState) {
-                    // Remove account completely from client state
                     removeAccount(targetAccountId);
                 } else {
-                    // Just disable the account, keep it in state for manual removal
                     disableAccount(targetAccountId);
                 }
             }
@@ -370,12 +421,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         } finally {
             setLoading(false);
         }
-    }, [client, currentAccount?.id, removeAccount, disableAccount]);
+    }, [client, currentAccount?.id, removeAccount, disableAccount, setLoading, setError]);
 
     const logoutAll = useCallback(async () => {
         try {
             setLoading(true);
-            const accountIds = allAccounts.map(a => a.id);
+            const accountIds = getActiveAccountIds();
             await client.logoutAll(accountIds);
             clearAccounts();
         } catch (error) {
@@ -384,7 +435,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         } finally {
             setLoading(false);
         }
-    }, [client, allAccounts, clearAccounts]);
+    }, [client, getActiveAccountIds, clearAccounts, setLoading, setError]);
 
     // Google Permissions
     const requestGooglePermission = useCallback((accountId: string, scopes: string[], redirectUrl?: string) => {
@@ -402,14 +453,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         } finally {
             setLoading(false);
         }
-    }, [client]);
+    }, [client, setLoading, setError]);
 
     // Utilities
     const refreshCurrentAccount = useCallback(async () => {
         if (currentAccount) {
-            await fetchAccount(currentAccount.id);
+            await refreshAccountData(currentAccount.id);
         }
-    }, [currentAccount?.id, fetchAccount]);
+    }, [currentAccount?.id, refreshAccountData]);
+
+    // Auto-prefetch account data on mount
+    useEffect(() => {
+        if (prefetchOnMount && hasActiveAccounts()) {
+            prefetchAccountsData();
+        }
+    }, []); // Only run on mount
+
+    // Auto-fetch current account data if missing
+    useEffect(() => {
+        if (autoFetchAccountData && currentAccount && needsAccountData(currentAccount.id)) {
+            ensureAccountData(currentAccount.id);
+        }
+    }, [currentAccount?.id, autoFetchAccountData]);
 
     // Handle URL parameters for clearClientAccountState
     useEffect(() => {
@@ -418,7 +483,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         const accountId = params.get('accountId');
 
         if (clearClientAccountState === 'false' && accountId) {
-            // Disable the account instead of removing it
             disableAccount(accountId);
 
             // Clean up URL parameters
@@ -429,27 +493,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         }
     }, []);
 
-    // Auto-refresh current account on mount
-    useEffect(() => {
-        if (autoRefreshAccount && currentAccount && !isLoading) {
-            refreshCurrentAccount();
-        }
-    }, [currentAccount?.id]);
-
-    // Handle OAuth callback on mount
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        if (params.has('state') || params.has('code')) {
-            handleOAuthCallback(params);
-        }
-    }, []);
-
     const contextValue: AuthContextValue = {
         // Client
         client,
 
         // State
-        accounts: activeAccounts,
+        accounts,
         allAccounts,
         disabledAccounts,
         currentAccount,
@@ -490,6 +539,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         // Google Permissions
         requestGooglePermission,
         checkGoogleScopes,
+
+        // Data Management
+        ensureAccountData,
+        refreshAccountData,
+        prefetchAccountsData,
 
         // Utilities
         clearError,

@@ -332,3 +332,36 @@ export interface SocketManager {
     getLatency(): number | null;
     isConnected(): boolean;
 }
+
+export interface UseAccountOptions {
+    /**
+     * Whether to automatically fetch account data if missing
+     * @default true
+     */
+    autoFetch?: boolean;
+
+    /**
+     * Whether to refresh data on mount even if it exists
+     * @default false
+     */
+    refreshOnMount?: boolean;
+
+    /**
+     * Interval to refresh account data (in milliseconds)
+     * Set to 0 to disable auto-refresh
+     * @default 0
+     */
+    refreshInterval?: number;
+}
+
+export interface UseAccountResult {
+    account: Account | null;
+    isLoading: boolean;
+    error: string | null;
+    hasData: boolean;
+    needsData: boolean;
+
+    // Actions
+    refresh: () => Promise<Account | null>;
+    clearError: () => void;
+}

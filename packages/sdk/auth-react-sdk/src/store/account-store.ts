@@ -2,13 +2,17 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Account, AccountType, OAuthProviders } from '../types';
 
-interface AccountState {
-    // Current accounts
-    accounts: Account[];
+// Only persist essential identifiers
+interface PersistedAccountState {
+    accountIds: string[];
     currentAccountId: string | null;
-    
-    // Disabled accounts (logged out but kept for manual removal)
-    disabledAccountIds: Set<string>;
+    disabledAccountIds: string[];
+}
+
+// Full state includes runtime data
+interface AccountState extends PersistedAccountState {
+    // Runtime account data (not persisted)
+    accountsData: Map<string, Account>;
 
     // Loading states
     isLoading: boolean;
@@ -22,24 +26,22 @@ interface AccountState {
         isInProgress: boolean;
         provider: OAuthProviders | null;
         redirectUrl: string | null;
-        tempToken: string | null; // For 2FA flows
+        tempToken: string | null;
     };
 }
 
 interface AccountActions {
     // Account management
-    setAccounts: (accounts: Account[]) => void;
     addAccount: (account: Account) => void;
     updateAccount: (accountId: string, updates: Partial<Account>) => void;
     removeAccount: (accountId: string) => void;
     clearAccounts: () => void;
+    setAccountData: (accountId: string, account: Account) => void;
 
     // Account state management
     disableAccount: (accountId: string) => void;
     enableAccount: (accountId: string) => void;
     isAccountDisabled: (accountId: string) => boolean;
-    getActiveAccounts: () => Account[];
-    getDisabledAccounts: () => Account[];
 
     // Current account
     setCurrentAccount: (accountId: string | null) => void;
@@ -58,13 +60,22 @@ interface AccountActions {
     setOAuthTempToken: (tempToken: string) => void;
     clearOAuthState: () => void;
 
+    // Getters
+    getAccountIds: () => string[];
+    getActiveAccountIds: () => string[];
+    getDisabledAccountIds: () => string[];
+    getAccounts: () => Account[];
+    getActiveAccounts: () => Account[];
+    getDisabledAccounts: () => Account[];
+    getAccountById: (accountId: string) => Account | null;
+    getAccountsByType: (type: AccountType) => Account[];
+
     // Utilities
     hasAccounts: () => boolean;
     hasActiveAccounts: () => boolean;
     isAuthenticated: () => boolean;
-    getAccountById: (accountId: string) => Account | null;
-    getAccountsByType: (type: AccountType) => Account[];
-    getPreferredAccount: () => Account | null;
+    hasAccountData: (accountId: string) => boolean;
+    needsAccountData: (accountId: string) => boolean;
 }
 
 type AccountStore = AccountState & AccountActions;
@@ -73,9 +84,12 @@ export const useAccountStore = create<AccountStore>()(
     persist(
         (set, get) => ({
             // Initial state
-            accounts: [],
+            accountIds: [],
             currentAccountId: null,
-            disabledAccountIds: new Set<string>(),
+            disabledAccountIds: [],
+
+            // Runtime data (not persisted)
+            accountsData: new Map<string, Account>(),
             isLoading: false,
             isAuthenticating: false,
             error: null,
@@ -87,98 +101,95 @@ export const useAccountStore = create<AccountStore>()(
             },
 
             // Account management
-            setAccounts: (accounts) => set({ accounts }),
-
             addAccount: (account) => set((state) => {
-                const existingIndex = state.accounts.findIndex(a => a.id === account.id);
-                const newDisabledIds = new Set(state.disabledAccountIds);
-                
-                // Re-enable account if it was disabled
-                newDisabledIds.delete(account.id);
-                
-                if (existingIndex >= 0) {
-                    // Update existing account
-                    const updatedAccounts = [...state.accounts];
-                    updatedAccounts[existingIndex] = account;
-                    return { 
-                        accounts: updatedAccounts,
-                        disabledAccountIds: newDisabledIds
-                    };
-                } else {
-                    // Add new account
-                    return { 
-                        accounts: [...state.accounts, account],
-                        disabledAccountIds: newDisabledIds
-                    };
-                }
+                const newAccountsData = new Map(state.accountsData);
+                newAccountsData.set(account.id, account);
+
+                const newAccountIds = state.accountIds.includes(account.id)
+                    ? state.accountIds
+                    : [...state.accountIds, account.id];
+
+                const newDisabledAccountIds = state.disabledAccountIds.filter(id => id !== account.id);
+
+                return {
+                    accountIds: newAccountIds,
+                    disabledAccountIds: newDisabledAccountIds,
+                    accountsData: newAccountsData
+                };
             }),
 
-            updateAccount: (accountId, updates) => set((state) => ({
-                accounts: state.accounts.map(account =>
-                    account.id === accountId ? { ...account, ...updates } : account
-                )
-            })),
+            updateAccount: (accountId, updates) => set((state) => {
+                const newAccountsData = new Map(state.accountsData);
+                const existingAccount = newAccountsData.get(accountId);
+
+                if (existingAccount) {
+                    newAccountsData.set(accountId, { ...existingAccount, ...updates });
+                }
+
+                return { accountsData: newAccountsData };
+            }),
 
             removeAccount: (accountId) => set((state) => {
-                const newAccounts = state.accounts.filter(a => a.id !== accountId);
-                const newDisabledIds = new Set(state.disabledAccountIds);
-                newDisabledIds.delete(accountId);
-                
+                const newAccountsData = new Map(state.accountsData);
+                newAccountsData.delete(accountId);
+
+                const newAccountIds = state.accountIds.filter(id => id !== accountId);
+                const newDisabledAccountIds = state.disabledAccountIds.filter(id => id !== accountId);
+
                 // If removing current account, switch to next active account
-                const activeAccounts = newAccounts.filter(a => !newDisabledIds.has(a.id));
+                const activeAccountIds = newAccountIds.filter(id => !newDisabledAccountIds.includes(id));
                 const newCurrentAccountId = state.currentAccountId === accountId
-                    ? (activeAccounts.length > 0 ? activeAccounts[0].id : null)
+                    ? (activeAccountIds.length > 0 ? activeAccountIds[0] : null)
                     : state.currentAccountId;
 
                 return {
-                    accounts: newAccounts,
+                    accountIds: newAccountIds,
+                    disabledAccountIds: newDisabledAccountIds,
                     currentAccountId: newCurrentAccountId,
-                    disabledAccountIds: newDisabledIds
+                    accountsData: newAccountsData
                 };
             }),
 
             clearAccounts: () => set({
-                accounts: [],
+                accountIds: [],
                 currentAccountId: null,
-                disabledAccountIds: new Set<string>(),
+                disabledAccountIds: [],
+                accountsData: new Map(),
                 error: null
+            }),
+
+            setAccountData: (accountId, account) => set((state) => {
+                const newAccountsData = new Map(state.accountsData);
+                newAccountsData.set(accountId, account);
+                return { accountsData: newAccountsData };
             }),
 
             // Account state management
             disableAccount: (accountId) => set((state) => {
-                const newDisabledIds = new Set(state.disabledAccountIds);
-                newDisabledIds.add(accountId);
-                
+                if (!state.accountIds.includes(accountId)) return state;
+
+                const newDisabledAccountIds = state.disabledAccountIds.includes(accountId)
+                    ? state.disabledAccountIds
+                    : [...state.disabledAccountIds, accountId];
+
                 // If disabling current account, switch to next active account
-                const activeAccounts = state.accounts.filter(a => a.id !== accountId && !newDisabledIds.has(a.id));
+                const activeAccountIds = state.accountIds.filter(id => !newDisabledAccountIds.includes(id));
                 const newCurrentAccountId = state.currentAccountId === accountId
-                    ? (activeAccounts.length > 0 ? activeAccounts[0].id : null)
+                    ? (activeAccountIds.length > 0 ? activeAccountIds[0] : null)
                     : state.currentAccountId;
 
                 return {
-                    disabledAccountIds: newDisabledIds,
+                    disabledAccountIds: newDisabledAccountIds,
                     currentAccountId: newCurrentAccountId
                 };
             }),
 
-            enableAccount: (accountId) => set((state) => {
-                const newDisabledIds = new Set(state.disabledAccountIds);
-                newDisabledIds.delete(accountId);
-                return { disabledAccountIds: newDisabledIds };
-            }),
+            enableAccount: (accountId) => set((state) => ({
+                disabledAccountIds: state.disabledAccountIds.filter(id => id !== accountId)
+            })),
 
             isAccountDisabled: (accountId) => {
-                return get().disabledAccountIds.has(accountId);
-            },
-
-            getActiveAccounts: () => {
-                const state = get();
-                return state.accounts.filter(a => !state.disabledAccountIds.has(a.id));
-            },
-
-            getDisabledAccounts: () => {
-                const state = get();
-                return state.accounts.filter(a => state.disabledAccountIds.has(a.id));
+                return get().disabledAccountIds.includes(accountId);
             },
 
             // Current account
@@ -187,13 +198,13 @@ export const useAccountStore = create<AccountStore>()(
             getCurrentAccount: () => {
                 const state = get();
                 if (!state.currentAccountId) return null;
-                
-                const account = state.accounts.find(a => a.id === state.currentAccountId);
+
                 // Return null if account is disabled
-                if (account && state.disabledAccountIds.has(account.id)) {
+                if (state.disabledAccountIds.includes(state.currentAccountId)) {
                     return null;
                 }
-                return account || null;
+
+                return state.accountsData.get(state.currentAccountId) || null;
             },
 
             // Loading states
@@ -230,75 +241,79 @@ export const useAccountStore = create<AccountStore>()(
                 }
             }),
 
-            // Utilities
-            hasAccounts: () => get().accounts.length > 0,
+            // Getters
+            getAccountIds: () => get().accountIds,
 
-            hasActiveAccounts: () => get().getActiveAccounts().length > 0,
+            getActiveAccountIds: () => {
+                const state = get();
+                return state.accountIds.filter(id => !state.disabledAccountIds.includes(id));
+            },
 
-            isAuthenticated: () => get().getActiveAccounts().length > 0,
+            getDisabledAccountIds: () => get().disabledAccountIds,
+
+            getAccounts: () => {
+                const state = get();
+                return state.accountIds
+                    .map(id => state.accountsData.get(id))
+                    .filter((account): account is Account => account !== undefined);
+            },
+
+            getActiveAccounts: () => {
+                const state = get();
+                return state.getActiveAccountIds()
+                    .map(id => state.accountsData.get(id))
+                    .filter((account): account is Account => account !== undefined);
+            },
+
+            getDisabledAccounts: () => {
+                const state = get();
+                return state.disabledAccountIds
+                    .map(id => state.accountsData.get(id))
+                    .filter((account): account is Account => account !== undefined);
+            },
 
             getAccountById: (accountId) => {
-                return get().accounts.find(a => a.id === accountId) || null;
+                return get().accountsData.get(accountId) || null;
             },
 
             getAccountsByType: (type) => {
                 const state = get();
-                return state.accounts.filter(a => 
-                    a.accountType === type && !state.disabledAccountIds.has(a.id)
-                );
+                return state.getActiveAccounts().filter(account => account.accountType === type);
             },
 
-            getPreferredAccount: () => {
+            // Utilities
+            hasAccounts: () => get().accountIds.length > 0,
+
+            hasActiveAccounts: () => get().getActiveAccountIds().length > 0,
+
+            isAuthenticated: () => get().hasActiveAccounts(),
+
+            hasAccountData: (accountId) => get().accountsData.has(accountId),
+
+            needsAccountData: (accountId) => {
                 const state = get();
-
-                // Return current account if set and active
-                if (state.currentAccountId) {
-                    const current = state.accounts.find(a => a.id === state.currentAccountId);
-                    if (current && !state.disabledAccountIds.has(current.id)) {
-                        return current;
-                    }
-                }
-
-                // Return first active account if available
-                const activeAccounts = state.getActiveAccounts();
-                return activeAccounts.length > 0 ? activeAccounts[0] : null;
+                return state.accountIds.includes(accountId) && !state.accountsData.has(accountId);
             }
         }),
         {
             name: 'account-system-auth-storage',
             storage: createJSONStorage(() => localStorage),
             partialize: (state) => ({
-                // Persist essential data including disabled account IDs
-                accounts: state.accounts,
+                // Only persist essential identifiers
+                accountIds: state.accountIds,
                 currentAccountId: state.currentAccountId,
-                disabledAccountIds: Array.from(state.disabledAccountIds) // Convert Set to Array for serialization
+                disabledAccountIds: state.disabledAccountIds
+                // accountsData is NOT persisted - it's runtime only
             }),
-            version: 2, // Increment version for migration
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            migrate: (persistedState: any, version: number) => {
-                if (version === 0 || version === 1) {
-                    // Migration from version 0/1 to 2 - add disabledAccountIds
-                    return {
-                        ...persistedState,
-                        disabledAccountIds: new Set() // Initialize as empty Set
-                    };
-                }
-                
-                // Convert disabledAccountIds from Array back to Set
-                if (persistedState && Array.isArray(persistedState.disabledAccountIds)) {
-                    persistedState.disabledAccountIds = new Set(persistedState.disabledAccountIds);
-                }
-                
-                return persistedState;
-            }
+            version: 1, // Increment version for migration
         }
     )
 );
 
-// Selector hooks for specific data
+// Enhanced selector hooks that handle data fetching
 export const useCurrentAccount = () => useAccountStore(state => state.getCurrentAccount());
-export const useAccounts = () => useAccountStore(state => state.getActiveAccounts()); // Only return active accounts by default
-export const useAllAccounts = () => useAccountStore(state => state.accounts); // Return all accounts including disabled
+export const useAccounts = () => useAccountStore(state => state.getActiveAccounts());
+export const useAllAccounts = () => useAccountStore(state => state.getAccounts());
 export const useDisabledAccounts = () => useAccountStore(state => state.getDisabledAccounts());
 
 export const useAuthState = () => useAccountStore(state => ({
@@ -310,3 +325,19 @@ export const useAuthState = () => useAccountStore(state => ({
 }));
 
 export const useOAuthState = () => useAccountStore(state => state.oauthState);
+
+// New hooks for account data management
+export const useAccountDataStatus = (accountId?: string) => useAccountStore(state => {
+    if (!accountId) return { hasData: false, needsData: false };
+
+    return {
+        hasData: state.hasAccountData(accountId),
+        needsData: state.needsAccountData(accountId)
+    };
+});
+
+export const useAccountIds = () => useAccountStore(state => ({
+    all: state.getAccountIds(),
+    active: state.getActiveAccountIds(),
+    disabled: state.getDisabledAccountIds()
+}));

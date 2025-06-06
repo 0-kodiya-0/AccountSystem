@@ -9,10 +9,14 @@ export { NotificationsProvider, useNotificationsContext } from './context/notifi
 // Store exports
 export { 
     useAccountStore, 
-    useCurrentAccount, 
-    useAccounts, 
+    useCurrentAccount as useCurrentAccountFromStore, // Rename to avoid confusion with hook
+    useAccounts as useAccountsFromStore, // Rename to avoid confusion with hook
+    useAllAccounts,
+    useDisabledAccounts,
     useAuthState, 
-    useOAuthState 
+    useOAuthState,
+    useAccountDataStatus,
+    useAccountIds
 } from './store/account-store';
 
 // Type exports
@@ -24,6 +28,8 @@ export * from './utils';
 export { useNotifications } from "./hooks/useNotifications";
 export { useRealtimeNotifications } from "./hooks/useRealtimeNotifications";
 export { useSocket } from "./hooks/useSocket";
+export { useAccount } from "./hooks/useAccount";
+export { useCurrentAccount } from "./hooks/useCurrentAccount";
 
 // Version export
 export const version = '1.0.0';
