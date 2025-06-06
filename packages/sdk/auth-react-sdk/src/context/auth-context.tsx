@@ -114,7 +114,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         clearOAuthState,
         isAuthenticated,
         getAccountById,
-        
+
         // Account state management
         disableAccount,
         enableAccount,
@@ -420,7 +420,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         if (clearClientAccountState === 'false' && accountId) {
             // Disable the account instead of removing it
             disableAccount(accountId);
-            
+
             // Clean up URL parameters
             const url = new URL(window.location.href);
             url.searchParams.delete('clearClientAccountState');
@@ -438,14 +438,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
 
     // Handle OAuth callback on mount
     useEffect(() => {
-        const handleOAuthCallbackOnMount = async () => {
-            const params = new URLSearchParams(window.location.search);
-            if (params.has('state') || params.has('code')) {
-                await handleOAuthCallback(params);
-            }
-        };
-
-        handleOAuthCallbackOnMount();
+        const params = new URLSearchParams(window.location.search);
+        if (params.has('state') || params.has('code')) {
+            handleOAuthCallback(params);
+        }
     }, []);
 
     const contextValue: AuthContextValue = {

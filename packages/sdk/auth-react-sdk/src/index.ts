@@ -21,16 +21,7 @@ export * from './types';
 // Utility exports
 export * from './utils';
 
-export { useAccount } from "./hooks/useAccount";
-export { useAccountSwitcher } from "./hooks/useAccountSwitcher";
-export { useGooglePermissions } from "./hooks/useGooglePermissions";
-export { useLocalAuth } from "./hooks/useLocalAuth";
-export { useNotificationAlerts } from "./hooks/useNotificationAlerts";
-export { useNotificationSettings } from "./hooks/useNotificationSettings";
 export { useNotifications } from "./hooks/useNotifications";
-export { useNotificationsBadge } from "./hooks/useNotificationsBadge";
-export { useNotificationsFeed } from "./hooks/useNotificationsFeed";
-export { useOAuth } from "./hooks/useOAuth";
 export { useRealtimeNotifications } from "./hooks/useRealtimeNotifications";
 export { useSocket } from "./hooks/useSocket";
 
