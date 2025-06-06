@@ -38,7 +38,7 @@ export default function CheckEmailPage() {
                     <div className="space-y-2">
                         <h3 className="text-xl font-semibold">Verify your email address</h3>
                         <p className="text-muted-foreground">
-                            We've sent a verification link to your email address.
+                            We&apos;ve sent a verification link to your email address.
                             Click the link to activate your account and complete the signup process.
                         </p>
                     </div>
@@ -50,8 +50,8 @@ export default function CheckEmailPage() {
                     <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
                         <li>Check your email inbox (and spam/junk folder)</li>
                         <li>Find the email from {config.appName}</li>
-                        <li>Click the "Verify Email Address" button in the email</li>
-                        <li>You'll be redirected to sign in to your account</li>
+                        <li>Click the &quot;Verify Email Address&quot; button in the email</li>
+                        <li>You&apos;ll be redirected to sign in to your account</li>
                     </ol>
                 </div>
 
@@ -67,7 +67,7 @@ export default function CheckEmailPage() {
                             </p>
                             <p className="text-xs text-yellow-700 dark:text-yellow-300">
                                 The verification link will expire in 24 hours for security reasons.
-                                If you don't verify within this time, you'll need to sign up again.
+                                If you don&apos;t verify within this time, you&apos;ll need to sign up again.
                             </p>
                         </div>
                     </div>
@@ -96,7 +96,7 @@ export default function CheckEmailPage() {
                 {/* Help */}
                 <div className="text-center">
                     <p className="text-xs text-muted-foreground">
-                        Didn't receive the email?{" "}
+                        Didn&apos;t receive the email?{" "}
                         {config.supportEmail ? (
                             <Link
                                 href={`mailto:${config.supportEmail}`}

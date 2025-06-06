@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
 import { AuthLayout } from "@/components/layout/auth-layout"
-import { useLocalAuth, useOAuth } from "@accountsystem/auth-react-sdk"
+import { OAuthProviders, useLocalAuth, useOAuth } from "@accountsystem/auth-react-sdk"
 import { getEnvironmentConfig } from "@/lib/utils"
 
 const loginSchema = z.object({
@@ -93,7 +93,7 @@ export default function LoginPage() {
         }
     }
 
-    const handleOAuthLogin = (provider: "google" | "microsoft" | "facebook") => {
+    const handleOAuthLogin = (provider: OAuthProviders) => {
         try {
             const redirectUrl = config.homeUrl || "/dashboard"
             signinWithProvider(provider, redirectUrl)
@@ -120,7 +120,7 @@ export default function LoginPage() {
                             type="button"
                             variant="outline"
                             className="w-full"
-                            onClick={() => handleOAuthLogin("google")}
+                            onClick={() => handleOAuthLogin(OAuthProviders.Google)}
                             disabled={isSubmitting || isAuthenticating}
                         >
                             <Chrome className="mr-2 h-4 w-4" />
@@ -260,7 +260,7 @@ export default function LoginPage() {
 
             {/* Sign Up Link */}
             <div className="text-center text-sm">
-                <span className="text-muted-foreground">Don't have an account? </span>
+                <span className="text-muted-foreground">Don&apos;t have an account? </span>
                 <Link href="/signup" className="text-primary hover:underline font-medium">
                     Sign up
                 </Link>

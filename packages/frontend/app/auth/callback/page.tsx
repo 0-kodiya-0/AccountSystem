@@ -64,7 +64,7 @@ export default function AuthCallbackPage() {
             // No parameters, redirect to login
             router.replace("/login")
         }
-    }, [searchParams, handleOAuthCallback, router, toast])
+    }, [searchParams, handleOAuthCallback, router]);
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-background">

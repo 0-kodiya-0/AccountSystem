@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/components/ui/use-toast"
 import { UserAvatar } from "@/components/auth/user-avatar"
 import { ThemeToggle } from "@/components/theme/theme-toggle"
-import { useAccountSwitcher, useAuth } from "@accountsystem/auth-react-sdk"
+import { OAuthProviders, useAccountSwitcher, useAuth } from "@accountsystem/auth-react-sdk"
 import { getEnvironmentConfig, formatAccountName } from "@/lib/utils"
 
 export default function AccountSelectionPage() {
@@ -126,7 +126,7 @@ export default function AccountSelectionPage() {
         }
     }
 
-    const handleAddOAuthAccount = (provider: "google" | "microsoft" | "facebook") => {
+    const handleAddOAuthAccount = (provider: OAuthProviders) => {
         const redirectUrl = "/accounts"
         startOAuthSignin(provider, redirectUrl)
     }
@@ -420,7 +420,7 @@ export default function AccountSelectionPage() {
                                         <Button
                                             className="w-full"
                                             variant="outline"
-                                            onClick={() => handleAddOAuthAccount("google")}
+                                            onClick={() => handleAddOAuthAccount(OAuthProviders.Google)}
                                             disabled={switching}
                                         >
                                             <Plus className="w-4 h-4 mr-2" />

@@ -3,7 +3,6 @@
 import * as React from "react"
 import { useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -24,7 +23,6 @@ const forgotPasswordSchema = z.object({
 type ForgotPasswordFormData = z.infer<typeof forgotPasswordSchema>
 
 export default function ForgotPasswordPage() {
-    const router = useRouter()
     const { toast } = useToast()
     const [isSubmitted, setIsSubmitted] = useState(false)
 
@@ -82,7 +80,7 @@ export default function ForgotPasswordPage() {
                         <div className="space-y-2">
                             <h3 className="text-lg font-medium">Password reset email sent</h3>
                             <p className="text-sm text-muted-foreground">
-                                We've sent a password reset link to <strong>{getValues("email")}</strong>.
+                                We&apos;ve sent a password reset link to <strong>{getValues("email")}</strong>.
                                 Click the link in the email to reset your password.
                             </p>
                         </div>
@@ -149,7 +147,7 @@ export default function ForgotPasswordPage() {
                         <p className="text-sm text-destructive">{errors.email.message}</p>
                     )}
                     <p className="text-xs text-muted-foreground">
-                        We'll send reset instructions to this email address
+                        We&apos;ll send reset instructions to this email address
                     </p>
                 </div>
 
