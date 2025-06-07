@@ -1,10 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     output: 'standalone',
-    experimental: {
-        // Enable server components
-        serverComponentsExternalPackages: []
-    },
     env: {
         // Expose environment variables to the client
         NEXT_PUBLIC_BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL,

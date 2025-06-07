@@ -1,3 +1,5 @@
+"use client"
+
 import { HttpClient } from '@accountsystem/auth-react-sdk'
 import { getEnvironmentConfig } from './utils'
 
