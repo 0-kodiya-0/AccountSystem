@@ -8,6 +8,6 @@
     "dist",
     "node_modules"
   ],
-  "exec": "npx tsx src/index.ts proxy-config.json",
+  "exec": "npx tsx src/cli.ts proxy-config.json",
   "delay": 1000
 }
