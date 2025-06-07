@@ -1,6 +1,7 @@
 {
     "watch": [
         "src",
+        ".env",
         "index.ts"
     ],
     "ext": "ts,json",
