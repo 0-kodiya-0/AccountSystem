@@ -5,9 +5,10 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "npm run clean && npm run build:types && npm run build:cjs",
+    "build": "npm run clean && npm run build:types && npm run build:esm",
     "build:types": "tsc --emitDeclarationOnly",
-    "build:cjs": "esbuild src/index.ts --bundle --platform=node --target=es2020 --format=cjs --outfile=dist/index.js",
+    "build:esm": "esbuild src/index.ts --bundle --platform=browser --target=es2020 --format=esm --outfile=dist/index.js --external:react --external:react-dom --external:react/jsx-runtime --external:react/jsx-dev-runtime --external:scheduler --external:react-reconciler --external:axios --external:socket.io-client --external:zustand --banner:js='\"use client\"'",
+    
     "dev": "npm run build --watch",
     "clean": "node -e \"const fs = require('fs'); if (fs.existsSync('dist')) fs.rmSync('dist', { recursive: true });\"",
     "prepublishOnly": "npm run build",
