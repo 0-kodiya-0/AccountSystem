@@ -30,7 +30,7 @@ Override the server port.
 
 ```bash
 accountsystem-backend --port 4000
-accountsystem-backend -p 8080
+accountsystem-backend -p 7000
 ```
 
 **Default**: 3000 (or PORT environment variable)

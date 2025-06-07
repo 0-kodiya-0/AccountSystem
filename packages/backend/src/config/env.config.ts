@@ -43,7 +43,7 @@ const OPTIONAL_ENV_VARS = {
     PORT: '3000',
 
     // Frontend & Proxy URLs
-    PROXY_URL: 'http://localhost:8080',
+    PROXY_URL: 'http://localhost:7000',
 
     // Database URIs (have hardcoded fallbacks in db.config.ts)
     ACCOUNTS_DB_URI: '',

@@ -14,7 +14,7 @@ Create a configuration file `proxy-config.json`:
 
 ```json
 {
-  "port": 8080,
+  "port": 7000,
   "services": {
     "backend": {
       "target": "http://localhost:3000",
@@ -35,7 +35,7 @@ Start the proxy:
 accountsystem-proxy proxy-config.json
 ```
 
-Your proxy server is now running on `http://localhost:8080`.
+Your proxy server is now running on `http://localhost:7000`.
 
 ## Installation
 

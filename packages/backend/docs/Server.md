@@ -140,7 +140,7 @@ MONGODB_PASSWORD=your-database-password
 # Server Settings
 PORT=3000
 NODE_ENV=development
-PROXY_URL=http://localhost:8080
+PROXY_URL=http://localhost:7000
 
 # Database
 ACCOUNTS_DB_URI=mongodb://localhost:27017/accounts

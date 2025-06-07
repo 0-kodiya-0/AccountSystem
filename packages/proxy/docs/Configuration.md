@@ -6,7 +6,7 @@ This document describes the complete configuration options for the AccountSystem
 
 ```json
 {
-  "port": 8080,
+  "port": 7000,
   "ssl": { ... },
   "logging": { ... },
   "cors": { ... },
@@ -21,11 +21,11 @@ This document describes the complete configuration options for the AccountSystem
 
 - **Type**: `number`
 - **Description**: The port number on which the proxy server will listen
-- **Example**: `8080`, `3000`, `80`
+- **Example**: `7000`, `3000`, `80`
 
 ```json
 {
-  "port": 8080
+  "port": 7000
 }
 ```
 
@@ -348,7 +348,7 @@ Configure how cookies are rewritten when proxying:
 
 ```json
 {
-  "port": 8080,
+  "port": 7000,
   "ssl": {
     "enabled": false
   },

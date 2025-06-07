@@ -1,5 +1,5 @@
 {
-    "port": 8080,
+    "port": 7000,
     "logging": {
         "enabled": true,
         "level": "info",
@@ -10,7 +10,8 @@
     "cors": {
         "origin": [
             "http://localhost:3000",
-            "https://localhost:8080"
+            "http://localhost:3001",
+            "http://localhost:7000"
         ],
         "credentials": true,
         "methods": [
@@ -25,28 +26,24 @@
     "services": {
         "auth-backend": {
             "target": "http://localhost:3000",
-            "pathPrefix": "/api",
+            "pathPrefix": "/api/v1",
             "websocket": true,
             "headers": {
                 "X-Service-Name": "auth-backend",
-                "X-Path-Prefix": "/api"
+                "X-Path-Prefix": "/api/v1"
             },
             "cookieConfig": {
                 "pathRewrite": {
-                    "/api/": "/"
+                    "/api/v1/": "/"
                 },
                 "domainRewrite": true
             }
         },
-        "auth-internal": {
-            "target": "https://localhost:4443",
-            "pathPrefix": "/internal",
-            "websocket": true,
+        "auth-frontend": {
+            "target": "http://localhost:3001",
+            "pathPrefix": "/",
             "headers": {
-                "X-Service-Name": "auth-internal",
-                "X-Internal-Service-ID": "PROXY_SERVICE",
-                "X-Internal-Service-Secret": "proxy-service-secret-key-123",
-                "X-Path-Prefix": "/internal"
+                "X-Service-Name": "auth-frontend"
             }
         }
     }

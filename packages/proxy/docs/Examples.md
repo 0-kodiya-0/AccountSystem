@@ -8,7 +8,7 @@ Perfect for local development when you have multiple services running on differe
 
 ```json
 {
-  "port": 8080,
+  "port": 7000,
   "logging": {
     "enabled": true,
     "level": "info",
@@ -31,7 +31,7 @@ Perfect for local development when you have multiple services running on differe
 With this configuration:
 - Frontend at `http://localhost:5173` is served at `/`
 - Backend API at `http://localhost:3000` is accessible at `/api/*`
-- All requests go through `http://localhost:8080`
+- All requests go through `http://localhost:7000`
 
 ## Microservices Gateway
 
@@ -84,7 +84,7 @@ Enable WebSocket proxying for real-time applications.
 
 ```json
 {
-  "port": 8080,
+  "port": 7000,
   "services": {
     "realtime-api": {
       "target": "http://localhost:3000",
@@ -121,7 +121,7 @@ Support multiple API versions with regex routing.
 
 ```json
 {
-  "port": 8080,
+  "port": 7000,
   "services": {
     "api-v1": {
       "target": "http://api-v1-service:3000",
@@ -164,7 +164,7 @@ Serve a frontend application with multiple backend APIs.
 
 ```json
 {
-  "port": 8080,
+  "port": 7000,
   "cors": {
     "origin": ["http://localhost:5173"],
     "credentials": true
@@ -202,7 +202,7 @@ Distribute requests across multiple instances of the same service.
 
 ```json
 {
-  "port": 8080,
+  "port": 7000,
   "services": {
     "api-instance-1": {
       "target": "http://api-server-1:3000",
@@ -276,7 +276,7 @@ Advanced routing with custom headers and cookie handling.
 
 ```json
 {
-  "port": 8080,
+  "port": 7000,
   "cors": {
     "origin": ["http://localhost:3000", "https://app.example.com"],
     "credentials": true,
@@ -351,7 +351,7 @@ Configuration for Docker containerized services.
 
 ```json
 {
-  "port": 8080,
+  "port": 7000,
   "logging": {
     "enabled": true,
     "level": "info",
@@ -367,12 +367,12 @@ Configuration for Docker containerized services.
       "target": "http://backend:3000",
       "pathPrefix": "/api",
       "headers": {
-        "X-Forwarded-Host": "localhost:8080",
+        "X-Forwarded-Host": "localhost:7000",
         "X-Service-Name": "backend"
       }
     },
     "database-admin": {
-      "target": "http://db-admin:8080",
+      "target": "http://db-admin:7000",
       "pathPrefix": "/admin"
     },
     "monitoring": {
@@ -394,7 +394,7 @@ Configuration for testing with multiple environments.
 
 ```json
 {
-  "port": 8080,
+  "port": 7000,
   "logging": {
     "enabled": true,
     "level": "debug",
