@@ -89,6 +89,7 @@ export function getEnvironmentConfig() {
     return {
         backendUrl: process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000',
         socketUrl: process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000',
+        proxyPath: process.env.NEXT_PUBLIC_PROXY_PATH,
         appName: process.env.NEXT_PUBLIC_APP_NAME || 'AccountSystem',
         homeUrl: process.env.NEXT_PUBLIC_HOME_URL,
         enableOAuth: process.env.NEXT_PUBLIC_ENABLE_OAUTH !== 'false',

@@ -177,9 +177,10 @@ export interface NotificationListResponse {
 
 // SDK Configuration
 export interface SDKConfig {
-    baseURL: string;
+    backendUrl: string;
     timeout?: number;
     withCredentials?: boolean;
+    proxyPath?: string;
 }
 
 // Error Types

@@ -24,10 +24,18 @@ import {
 
 export class HttpClient {
     private http: AxiosInstance;
+    private proxyPath: string;
 
     constructor(config: SDKConfig) {
+        this.proxyPath = config.proxyPath || '';
+
+        // Build the full base URL with proxy path if provided
+        const fullBaseUrl = this.proxyPath 
+            ? `${config.backendUrl}${this.proxyPath}`
+            : config.backendUrl;
+
         this.http = axios.create({
-            baseURL: config.baseURL,
+            baseURL: fullBaseUrl,  // Use full URL with proxy path
             timeout: config.timeout || 30000,
             withCredentials: config.withCredentials !== false,
             headers: {
@@ -101,7 +109,7 @@ export class HttpClient {
         const params = new URLSearchParams();
         if (redirectUrl) params.append('redirectUrl', redirectUrl);
 
-        window.location.href = `/${accountId}/account/refreshToken?${params.toString()}`;
+        window.location.href = `${this.getRedirectBaseUrl()}/${accountId}/account/refreshToken?${params.toString()}`;
     }
 
     async revokeToken(accountId: string): Promise<{ success: boolean }> {
@@ -172,19 +180,32 @@ export class HttpClient {
         return response.data;
     }
 
+    /**
+     * Get the redirect URL for OAuth and token operations
+     * Uses proxyPath if provided, otherwise uses baseURL
+     */
+    private getRedirectBaseUrl(): string {
+        if (this.proxyPath) {
+            // Use current origin + proxy path
+            return `${window.location.origin}${this.proxyPath}`;
+        }
+        // Fall back to configured baseURL
+        return this.http.defaults.baseURL as string;
+    }
+
     // OAuth Authentication
     redirectToOAuthSignup(provider: string, redirectUrl?: string): void {
         const params = new URLSearchParams();
         if (redirectUrl) params.append('redirectUrl', redirectUrl);
 
-        window.location.href = `/oauth/signup/${provider}?${params.toString()}`;
+        window.location.href = `${this.getRedirectBaseUrl()}/oauth/signup/${provider}?${params.toString()}`;
     }
 
     redirectToOAuthSignin(provider: string, redirectUrl?: string): void {
         const params = new URLSearchParams();
         if (redirectUrl) params.append('redirectUrl', redirectUrl);
 
-        window.location.href = `/oauth/signin/${provider}?${params.toString()}`;
+        window.location.href = `${this.getRedirectBaseUrl()}/oauth/signin/${provider}?${params.toString()}`;
     }
 
     requestGooglePermission(accountId: string, scopeNames: string[], redirectUrl?: string): void {
@@ -193,7 +214,7 @@ export class HttpClient {
         if (redirectUrl) params.append('redirectUrl', redirectUrl);
 
         const scopes = Array.isArray(scopeNames) ? scopeNames.join(',') : scopeNames;
-        window.location.href = `/oauth/permission/${scopes}?${params.toString()}`;
+        window.location.href = `${this.getRedirectBaseUrl()}/oauth/permission/${scopes}?${params.toString()}`;
     }
 
     reauthorizePermissions(accountId: string, redirectUrl?: string): void {
@@ -201,7 +222,7 @@ export class HttpClient {
         params.append('accountId', accountId);
         if (redirectUrl) params.append('redirectUrl', redirectUrl);
 
-        window.location.href = `/oauth/permission/reauthorize?${params.toString()}`;
+        window.location.href = `${this.getRedirectBaseUrl()}/oauth/permission/reauthorize?${params.toString()}`;
     }
 
     // Google API

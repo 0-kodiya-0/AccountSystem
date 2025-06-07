@@ -8,7 +8,8 @@ const config = getEnvironmentConfig()
 
 // Create HTTP client instance
 export const authClient = new HttpClient({
-    baseURL: config.backendUrl,
+    backendUrl: config.backendUrl,
+    proxyPath: config.proxyPath, 
     timeout: 30000,
     withCredentials: true, // Important for cookie-based auth
 })
