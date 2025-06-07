@@ -61,6 +61,8 @@ declare global {
     }
     namespace Express {
         interface Request {
+            parentUrl?: string;
+
             accessToken?: string;
             oauthAccessToken?: string;
 

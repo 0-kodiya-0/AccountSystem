@@ -150,14 +150,14 @@ export const validateTokenAccess = asyncHandler(async (req, res, next) => {
         if (isRefreshTokenPath) {
             throw new RedirectError(
                 ApiErrorCode.TOKEN_INVALID,
-                `/account/logout?accountId=${accountPath}&clearClientAccountState=${false}`,
+                `./account/logout?accountId=${accountPath}&clearClientAccountState=${false}`,
                 "Refresh token expired",
                 302
             );
         } else {
             throw new RedirectError(
                 ApiErrorCode.TOKEN_INVALID,
-                `/${accountPath}/account/refreshToken`,
+                `./${accountPath}/account/refreshToken`,
                 "Access token expired",
                 302,
                 undefined,

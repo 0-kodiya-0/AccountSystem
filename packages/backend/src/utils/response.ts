@@ -269,6 +269,7 @@ export const successHandler = (result: any, req: Request, res: Response, next: N
 
     // Handle BaseSuccess responses
     if (result instanceof RedirectSuccess) {
+        logger.info('Response', result);
         redirectWithSuccess(
             req,
             res,
@@ -284,6 +285,7 @@ export const successHandler = (result: any, req: Request, res: Response, next: N
     }
 
     if (result instanceof JsonSuccess) {
+        logger.info('Response', result);
         res.status(result.statusCode).json(createSuccessResponse(result.data));
         return;
     }

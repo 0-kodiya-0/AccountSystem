@@ -18,6 +18,7 @@ import notificationRoutes, { NotificationSocketHandler } from './feature/notific
 import { authenticateSession, validateAccountAccess, validateTokenAccess } from './middleware';
 import { ApiErrorCode, NotFoundError } from './types/response.types';
 import { logger } from './utils/logger';
+import { autoTrackParentUrl } from './middleware/path-track';
 
 let httpServer: Server | null = null;
 
@@ -52,18 +53,18 @@ function createMainApp(): express.Application {
 
     // OAuth routes (enabled unless specifically disabled)
     if (process.env.DISABLE_OAUTH !== 'true') {
-        app.use('/oauth', oauthRoutes);
+        app.use('/oauth', autoTrackParentUrl(), oauthRoutes);
         logger.info('OAuth routes enabled');
     } else {
         logger.info('OAuth routes disabled');
     }
 
     // Account routes (always enabled)
-    app.use('/account', authNotNeedAccountRouter);
+    app.use('/account', autoTrackParentUrl(), authNotNeedAccountRouter);
 
     // Local auth routes (enabled unless specifically disabled)
     if (process.env.DISABLE_LOCAL_AUTH !== 'true') {
-        app.use('/auth', localAuthNotRequiredRouter);
+        app.use('/auth', autoTrackParentUrl(), localAuthNotRequiredRouter);
         logger.info('Local authentication routes enabled');
     } else {
         logger.info('Local authentication routes disabled');
@@ -72,12 +73,12 @@ function createMainApp(): express.Application {
     // Routes that need authentication
     app.use("/:accountId", authenticateSession, validateAccountAccess, validateTokenAccess);
 
-    app.use('/:accountId/account', authNeedAccountRouter);
-    app.use('/:accountId/google', googleRoutes);
+    app.use('/:accountId/account', autoTrackParentUrl(), authNeedAccountRouter);
+    app.use('/:accountId/google', autoTrackParentUrl(), googleRoutes);
 
     // Notification routes (enabled unless specifically disabled)
     if (process.env.DISABLE_NOTIFICATIONS !== 'true') {
-        app.use('/:accountId/notifications', notificationRoutes);
+        app.use('/:accountId/notifications', autoTrackParentUrl(), notificationRoutes);
         logger.info('Notification routes enabled');
     } else {
         logger.info('Notification routes disabled');
@@ -85,7 +86,7 @@ function createMainApp(): express.Application {
 
     // Local auth authenticated routes (enabled unless specifically disabled)
     if (process.env.DISABLE_LOCAL_AUTH !== 'true') {
-        app.use('/:accountId/auth', localAuthRequiredRouter);
+        app.use('/:accountId/auth', autoTrackParentUrl(), localAuthRequiredRouter);
     }
 
     applyErrorHandlers(app);

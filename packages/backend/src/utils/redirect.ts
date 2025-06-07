@@ -21,8 +21,6 @@ export interface RedirectOptions {
 
 /**
  * Get the path prefix that was stripped by the proxy
- * @param req Express request object
- * @returns The stripped path prefix (e.g., "/api")
  */
 function getStrippedPathPrefix(req: Request): string {
     // First check if X-Path-Prefix header exists
@@ -31,26 +29,11 @@ function getStrippedPathPrefix(req: Request): string {
         return headerPrefix;
     }
 
-    // Fallback: calculate from original URL vs current URL
-    const originalUrl = req.originalUrl || req.url;
-    const currentUrl = req.url;
-
-    // Parse URLs to get just the path (no query params)
-    const originalPath = originalUrl.split('?')[0];
-    const currentPath = currentUrl.split('?')[0];
-
-    // If originalPath ends with currentPath, the difference is the stripped prefix
-    if (originalPath.endsWith(currentPath) && originalPath !== currentPath) {
-        const strippedPrefix = originalPath.substring(0, originalPath.length - currentPath.length);
-        // Remove trailing slash if present
-        return strippedPrefix.endsWith('/') ? strippedPrefix.slice(0, -1) : strippedPrefix;
-    }
-
     return '';
 }
 
 /**
- * Creates a redirect URL with proper parameters and smart path prefix handling
+ * Creates a redirect URL with proper parameters and relative path handling
  */
 export const createRedirectUrl = (
     req: Request,
@@ -82,34 +65,57 @@ export const createRedirectUrl = (
             finalUrl = baseUrl;
         }
     } else {
-        // For relative URLs, clean them up and add path prefix
+        // For relative URLs, handle based on relative path notation
         baseUrl = decodeURIComponent(baseUrl);
-
-        // Normalize the path and remove any query parameters
-        let cleanPath = path.normalize(baseUrl).split('?')[0];
-
-        // Remove any leading "./" or "../" patterns - we don't want relative navigation
-        cleanPath = cleanPath.replace(/^(\.\.?\/)+/, '');
-
-        // Ensure path starts with /
-        if (!cleanPath.startsWith('/')) {
-            cleanPath = '/' + cleanPath;
-        }
-
-        // Add path prefix if it exists and isn't already present
-        if (pathPrefix && !cleanPath.startsWith(pathPrefix)) {
-            cleanPath = pathPrefix + cleanPath;
-        }
-
-        finalUrl = cleanPath;
 
         // Extract any existing query parameters from original baseUrl
         const queryIndex = baseUrl.indexOf('?');
+        let cleanPath = baseUrl;
         if (queryIndex !== -1) {
+            cleanPath = baseUrl.substring(0, queryIndex);
             const queryString = baseUrl.substring(queryIndex + 1);
             new URLSearchParams(queryString).forEach((value, key) => {
                 queryParams.append(key, value);
             });
+        }
+
+        // Handle relative path notation
+        if (cleanPath.startsWith('../')) {
+            // ../ means: pathPrefix + parent paths + target path
+            const targetPath = cleanPath.substring(3); // Remove '../'
+            
+            // Use the parentUrl set by middleware
+            const parentPath = req.parentUrl || '';
+            
+            console.log('Parent URL from middleware:', parentPath);
+            console.log('Target path:', targetPath);
+            
+            // Combine: pathPrefix + parentPath + targetPath
+            if (pathPrefix) {
+                finalUrl = path.normalize(pathPrefix + parentPath + '/' + targetPath).replace(/\/+/g, '/');
+            } else {
+                finalUrl = path.normalize(parentPath + '/' + targetPath).replace(/\/+/g, '/');
+            }
+            
+            console.log('Final URL:', finalUrl);
+        } else if (cleanPath.startsWith('./')) {
+            // ./ means: add only pathPrefix + target path
+            const targetPath = cleanPath.substring(2); // Remove './'
+            
+            if (pathPrefix) {
+                finalUrl = path.normalize(pathPrefix + '/' + targetPath).replace(/\/+/g, '/');
+            } else {
+                finalUrl = '/' + targetPath;
+            }
+        } else {
+            finalUrl = cleanPath;
+            
+            // Ensure it starts with /
+            if (!finalUrl.startsWith('/')) {
+                finalUrl = '/' + finalUrl;
+            }
+
+            console.log(finalUrl)
         }
     }
 
@@ -141,12 +147,7 @@ export const createRedirectUrl = (
 
     // For permission redirects, include original URL (cleaned)
     if (originalUrl) {
-        // Clean the original URL too
-        let cleanOriginalUrl = originalUrl.replace(/^(\.\.?\/)+/, '');
-        if (pathPrefix && !cleanOriginalUrl.startsWith(pathPrefix)) {
-            cleanOriginalUrl = pathPrefix + cleanOriginalUrl;
-        }
-        queryParams.append('redirectUrl', encodeURIComponent(cleanOriginalUrl));
+        queryParams.append('redirectUrl', encodeURIComponent(originalUrl));
     }
 
     // Construct the final URL with query parameters
@@ -212,37 +213,4 @@ export const redirectWithError = (
         code,
         ...options
     }, options.originalUrl);
-};
-
-/**
- * Extract frontend redirect URL from request query parameters
- * With fallback to default URL and smart path prefix handling
- */
-export const getRedirectUrl = (req: Request, defaultUrl: string): string => {
-    const redirectUrl = req.query.redirectUrl as string;
-    const pathPrefix = getStrippedPathPrefix(req);
-
-    // Validate the URL to prevent open redirects
-    if (redirectUrl) {
-        // Clean up any relative navigation patterns
-        let cleanUrl = redirectUrl.replace(/^(\.\.?\/)+/, '');
-
-        // If it's a relative URL, add path prefix if needed
-        if (cleanUrl.startsWith('/') && pathPrefix && !cleanUrl.startsWith(pathPrefix)) {
-            cleanUrl = pathPrefix + cleanUrl;
-        }
-
-        // Basic validation for relative URLs
-        if (cleanUrl.startsWith('/')) {
-            return cleanUrl;
-        }
-    }
-
-    // Apply path prefix to default URL if needed
-    let finalDefaultUrl = defaultUrl;
-    if (pathPrefix && !finalDefaultUrl.startsWith(pathPrefix) && finalDefaultUrl.startsWith('/')) {
-        finalDefaultUrl = pathPrefix + finalDefaultUrl;
-    }
-
-    return finalDefaultUrl;
 };
