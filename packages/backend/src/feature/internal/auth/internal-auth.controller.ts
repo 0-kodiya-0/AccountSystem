@@ -6,7 +6,7 @@ import { verifyLocalJwtToken, verifyLocalRefreshToken } from '../../local_auth';
 import { verifyOAuthJwtToken, verifyOAuthRefreshToken } from '../../oauth/OAuth.jwt';
 import {
     getTokenInfo,
-    getAccountScopes,
+    getGoogleAccountScopes,
     hasScope,
     verifyTokenOwnership
 } from '../../google/services/token';
@@ -85,7 +85,7 @@ export const getUserScopes = asyncHandler(async (req, res, next) => {
         throw new BadRequestError('Google scopes are only available for OAuth accounts');
     }
 
-    const scopes = await getAccountScopes(accountId);
+    const scopes = await getGoogleAccountScopes(accountId);
 
     next(new JsonSuccess({
         accountId,
@@ -304,7 +304,7 @@ export const getGoogleTokenInfo = asyncHandler(async (req, res, next) => {
         const grantedScopes = tokenInfo.scope ? tokenInfo.scope.split(' ') : [];
 
         // Get stored scopes from our database
-        const storedScopes = await getAccountScopes(accountId);
+        const storedScopes = await getGoogleAccountScopes(accountId);
 
         next(new JsonSuccess({
             accountId,
