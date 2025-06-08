@@ -42,10 +42,10 @@ export default function AuthCallbackPage() {
         }, delay * 1000)
     }
 
-    // Use the callback handler hook with custom overrides
+    // Use the callback handler hook with custom overrides and disabled defaults
     const { handleAuthCallback } = useCallbackHandler({
-        enableAutoRedirect: false, // We handle redirects manually for UI feedback
-        customRedirectUrl: config.homeUrl || "/dashboard",
+        // Disable default handlers since we're providing custom implementations
+        disableDefaultHandlers: false,
 
         // OAuth success handlers with UI updates
         onOAuthSigninSuccess: async ({ name }) => {
@@ -198,19 +198,17 @@ export default function AuthCallbackPage() {
                 title: 'Additional permissions needed',
                 message: 'Redirecting to grant additional permissions...'
             })
+            // The hook will handle the actual reauthorization call
+            // We just need to show the UI feedback
             setTimeout(() => {
-                window.location.href = `/oauth/permission/reauthorize?accountId=${accountId}`
+                // The hook already called client.reauthorizePermissions(accountId)
+                // which will redirect to Google, so this timeout is just for UI
+                setStatus({
+                    type: 'processing',
+                    title: 'Redirecting to Google...',
+                    message: 'Please wait while we redirect you to grant permissions.'
+                })
             }, 1000)
-        },
-
-        onAccountSelectionRequired: async () => {
-            console.log("Account selection required")
-            setStatus({
-                type: 'redirecting',
-                title: 'Multiple accounts found',
-                message: 'Redirecting to account selection...'
-            })
-            redirectWithCountdown("/accounts", 1)
         },
 
         // Generic error handler

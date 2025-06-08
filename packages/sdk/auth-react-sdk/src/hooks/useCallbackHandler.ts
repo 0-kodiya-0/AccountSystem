@@ -7,35 +7,32 @@ interface UseCallbackHandlerOptions {
     onOAuthSigninSuccess?: (data: { accountId: string; name: string; provider: OAuthProviders; account?: Account }) => void | Promise<void>;
     onOAuthSignupSuccess?: (data: { accountId: string; name: string; provider: OAuthProviders; account?: Account }) => void | Promise<void>;
     onOAuthPermissionSuccess?: (data: { accountId: string; service?: string; scopeLevel?: string; provider: OAuthProviders }) => void | Promise<void>;
-    
+
     // Local auth success handlers
     onLocalSigninSuccess?: (data: { accountId: string; name: string; account?: Account }) => void | Promise<void>;
     onLocalSignupSuccess?: (data: { accountId: string; message?: string }) => void | Promise<void>;
     onLocal2FARequired?: (data: { tempToken: string; accountId: string; message?: string }) => void | Promise<void>;
     onLocalEmailVerified?: (data: { message?: string }) => void | Promise<void>;
     onLocalPasswordResetSuccess?: (data: { message?: string }) => void | Promise<void>;
-    
+
     // Error handlers
     onOAuthError?: (data: { error: string; provider?: OAuthProviders; code?: string }) => void | Promise<void>;
     onLocalAuthError?: (data: { error: string; code?: string }) => void | Promise<void>;
     onPermissionError?: (data: { error: string; provider?: OAuthProviders; code?: string }) => void | Promise<void>;
-    onInvalidState?: (data: { error: string }) => void | Promise<void>;
     onUserNotFound?: (data: { error: string }) => void | Promise<void>;
     onUserExists?: (data: { error: string }) => void | Promise<void>;
     onTokenExpired?: (data: { error: string }) => void | Promise<void>;
-    
+
     // Special flow handlers
-    onPermissionReauthorize?: (data: { accountId: string; name: string; provider: OAuthProviders }) => void | Promise<void>;
-    onAccountSelectionRequired?: (data: { accounts?: string[] }) => void | Promise<void>;
-    
+    onPermissionReauthorize?: (data: { accountId: string; missingScopes?: string[] }) => void | Promise<void>;
+
     // Generic handlers
     onSuccess?: (data: CallbackData) => void | Promise<void>;
     onError?: (data: CallbackData) => void | Promise<void>;
     onUnknownCode?: (data: CallbackData) => void | Promise<void>;
 
-    // Navigation/redirect options
-    enableAutoRedirect?: boolean;
-    customRedirectUrl?: string;
+    // Control default behavior after override handlers
+    disableDefaultHandlers?: boolean;
 }
 
 interface UseCallbackHandlerReturn {
@@ -55,20 +52,13 @@ export const useCallbackHandler = (options: UseCallbackHandlerOptions = {}): Use
     } = useAuth();
 
     const {
-        enableAutoRedirect = true,
-        customRedirectUrl,
+        disableDefaultHandlers = false,
         ...overrideHandlers
     } = options;
 
-    // Default navigation helper
-    const navigateTo = useCallback((url: string, delay: number = 0) => {
-        if (delay > 0) {
-            setTimeout(() => {
-                window.location.href = url;
-            }, delay);
-        } else {
-            window.location.href = url;
-        }
+    // Simple navigation helper - always redirects to root
+    const navigateToRoot = useCallback(() => {
+        window.location.href = '/';
     }, []);
 
     // URL parameter decoder
@@ -85,8 +75,6 @@ export const useCallbackHandler = (options: UseCallbackHandlerOptions = {}): Use
     const executeHandler = useCallback(async (
         callbackData: CallbackData
     ): Promise<void> => {
-        const defaultRedirectUrl = customRedirectUrl || window.location.origin + '/dashboard';
-
         try {
             switch (callbackData.code) {
                 // OAuth success cases
@@ -97,20 +85,21 @@ export const useCallbackHandler = (options: UseCallbackHandlerOptions = {}): Use
                         provider: callbackData.provider!
                     };
 
+                    // Always run override handler first if provided
                     if (overrideHandlers.onOAuthSigninSuccess) {
                         await overrideHandlers.onOAuthSigninSuccess(data);
-                        break;
                     }
 
-                    console.log(`OAuth signin successful: ${data.name} (${data.accountId}) via ${data.provider}`);
-                    
-                    const account = await client.getAccount(data.accountId);
-                    addAccount(account);
-                    setCurrentAccount(data.accountId);
-                    clearOAuthState();
-                    
-                    if (enableAutoRedirect) {
-                        navigateTo(defaultRedirectUrl);
+                    // Run default handler unless disabled
+                    if (!disableDefaultHandlers) {
+                        console.log(`OAuth signin successful: ${data.name} (${data.accountId}) via ${data.provider}`);
+
+                        const account = await client.getAccount(data.accountId);
+                        addAccount(account);
+                        setCurrentAccount(data.accountId);
+                        clearOAuthState();
+
+                        navigateToRoot();
                     }
                     break;
                 }
@@ -122,20 +111,21 @@ export const useCallbackHandler = (options: UseCallbackHandlerOptions = {}): Use
                         provider: callbackData.provider!
                     };
 
+                    // Always run override handler first if provided
                     if (overrideHandlers.onOAuthSignupSuccess) {
                         await overrideHandlers.onOAuthSignupSuccess(data);
-                        break;
                     }
 
-                    console.log(`OAuth signup successful: ${data.name} (${data.accountId}) via ${data.provider}`);
-                    
-                    const account = await client.getAccount(data.accountId);
-                    addAccount(account);
-                    setCurrentAccount(data.accountId);
-                    clearOAuthState();
-                    
-                    if (enableAutoRedirect) {
-                        navigateTo(defaultRedirectUrl);
+                    // Run default handler unless disabled
+                    if (!disableDefaultHandlers) {
+                        console.log(`OAuth signup successful: ${data.name} (${data.accountId}) via ${data.provider}`);
+
+                        const account = await client.getAccount(data.accountId);
+                        addAccount(account);
+                        setCurrentAccount(data.accountId);
+                        clearOAuthState();
+
+                        navigateToRoot();
                     }
                     break;
                 }
@@ -148,15 +138,15 @@ export const useCallbackHandler = (options: UseCallbackHandlerOptions = {}): Use
                         provider: callbackData.provider!
                     };
 
+                    // Always run override handler first if provided
                     if (overrideHandlers.onOAuthPermissionSuccess) {
                         await overrideHandlers.onOAuthPermissionSuccess(data);
-                        break;
                     }
 
-                    console.log(`OAuth permission granted: ${data.service} ${data.scopeLevel} for ${data.accountId} via ${data.provider}`);
-                    
-                    if (enableAutoRedirect) {
-                        navigateTo(defaultRedirectUrl);
+                    // Run default handler unless disabled
+                    if (!disableDefaultHandlers) {
+                        console.log(`OAuth permission granted: ${data.service} ${data.scopeLevel} for ${data.accountId} via ${data.provider}`);
+                        navigateToRoot();
                     }
                     break;
                 }
@@ -168,19 +158,20 @@ export const useCallbackHandler = (options: UseCallbackHandlerOptions = {}): Use
                         name: callbackData.name!
                     };
 
+                    // Always run override handler first if provided
                     if (overrideHandlers.onLocalSigninSuccess) {
                         await overrideHandlers.onLocalSigninSuccess(data);
-                        break;
                     }
 
-                    console.log(`Local signin successful: ${data.name} (${data.accountId})`);
-                    
-                    const account = await client.getAccount(data.accountId);
-                    addAccount(account);
-                    setCurrentAccount(data.accountId);
-                    
-                    if (enableAutoRedirect) {
-                        navigateTo(defaultRedirectUrl);
+                    // Run default handler unless disabled
+                    if (!disableDefaultHandlers) {
+                        console.log(`Local signin successful: ${data.name} (${data.accountId})`);
+
+                        const account = await client.getAccount(data.accountId);
+                        addAccount(account);
+                        setCurrentAccount(data.accountId);
+
+                        navigateToRoot();
                     }
                     break;
                 }
@@ -191,15 +182,15 @@ export const useCallbackHandler = (options: UseCallbackHandlerOptions = {}): Use
                         message: callbackData.message
                     };
 
+                    // Always run override handler first if provided
                     if (overrideHandlers.onLocalSignupSuccess) {
                         await overrideHandlers.onLocalSignupSuccess(data);
-                        break;
                     }
 
-                    console.log(`Local signup successful: ${data.accountId} - ${data.message}`);
-                    
-                    if (enableAutoRedirect) {
-                        navigateTo(window.location.origin + '/check-email');
+                    // Run default handler unless disabled
+                    if (!disableDefaultHandlers) {
+                        console.log(`Local signup successful: ${data.accountId} - ${data.message}`);
+                        navigateToRoot();
                     }
                     break;
                 }
@@ -211,16 +202,16 @@ export const useCallbackHandler = (options: UseCallbackHandlerOptions = {}): Use
                         message: callbackData.message
                     };
 
+                    // Always run override handler first if provided
                     if (overrideHandlers.onLocal2FARequired) {
                         await overrideHandlers.onLocal2FARequired(data);
-                        break;
                     }
 
-                    console.log(`2FA required for ${data.accountId}: ${data.message}`);
-                    setOAuthTempToken(data.tempToken);
-                    
-                    if (enableAutoRedirect) {
-                        navigateTo(`${window.location.origin}/two-factor-verify?tempToken=${data.tempToken}`);
+                    // Run default handler unless disabled
+                    if (!disableDefaultHandlers) {
+                        console.log(`2FA required for ${data.accountId}: ${data.message}`);
+                        setOAuthTempToken(data.tempToken);
+                        navigateToRoot();
                     }
                     break;
                 }
@@ -228,15 +219,15 @@ export const useCallbackHandler = (options: UseCallbackHandlerOptions = {}): Use
                 case CallbackCode.LOCAL_EMAIL_VERIFIED: {
                     const data = { message: callbackData.message };
 
+                    // Always run override handler first if provided
                     if (overrideHandlers.onLocalEmailVerified) {
                         await overrideHandlers.onLocalEmailVerified(data);
-                        break;
                     }
 
-                    console.log(`Email verified: ${data.message}`);
-                    
-                    if (enableAutoRedirect) {
-                        navigateTo(window.location.origin + '/login');
+                    // Run default handler unless disabled
+                    if (!disableDefaultHandlers) {
+                        console.log(`Email verified: ${data.message}`);
+                        navigateToRoot();
                     }
                     break;
                 }
@@ -244,20 +235,20 @@ export const useCallbackHandler = (options: UseCallbackHandlerOptions = {}): Use
                 case CallbackCode.LOCAL_PASSWORD_RESET_SUCCESS: {
                     const data = { message: callbackData.message };
 
+                    // Always run override handler first if provided
                     if (overrideHandlers.onLocalPasswordResetSuccess) {
                         await overrideHandlers.onLocalPasswordResetSuccess(data);
-                        break;
                     }
 
-                    console.log(`Password reset successful: ${data.message}`);
-                    
-                    if (enableAutoRedirect) {
-                        navigateTo(window.location.origin + '/login');
+                    // Run default handler unless disabled
+                    if (!disableDefaultHandlers) {
+                        console.log(`Password reset successful: ${data.message}`);
+                        navigateToRoot();
                     }
                     break;
                 }
 
-                // Error cases
+                // Error cases - all redirect to root with error in URL
                 case CallbackCode.OAUTH_ERROR: {
                     const data = {
                         error: callbackData.error || 'OAuth authentication failed',
@@ -265,19 +256,17 @@ export const useCallbackHandler = (options: UseCallbackHandlerOptions = {}): Use
                         code: callbackData.code
                     };
 
+                    // Always run override handler first if provided
                     if (overrideHandlers.onOAuthError) {
                         await overrideHandlers.onOAuthError(data);
-                        break;
                     }
 
-                    console.error(`OAuth error (${data.provider}): ${data.error} [${data.code}]`);
-                    setError(data.error);
-                    clearOAuthState();
-                    
-                    if (enableAutoRedirect) {
-                        const loginUrl = new URL(window.location.origin + '/login');
-                        loginUrl.searchParams.set('error', data.error);
-                        navigateTo(loginUrl.toString());
+                    // Run default handler unless disabled
+                    if (!disableDefaultHandlers) {
+                        console.error(`OAuth error (${data.provider}): ${data.error} [${data.code}]`);
+                        setError(data.error);
+                        clearOAuthState();
+                        navigateToRoot();
                     }
                     break;
                 }
@@ -288,18 +277,16 @@ export const useCallbackHandler = (options: UseCallbackHandlerOptions = {}): Use
                         code: callbackData.code
                     };
 
+                    // Always run override handler first if provided
                     if (overrideHandlers.onLocalAuthError) {
                         await overrideHandlers.onLocalAuthError(data);
-                        break;
                     }
 
-                    console.error(`Local auth error: ${data.error} [${data.code}]`);
-                    setError(data.error);
-                    
-                    if (enableAutoRedirect) {
-                        const loginUrl = new URL(window.location.origin + '/login');
-                        loginUrl.searchParams.set('error', data.error);
-                        navigateTo(loginUrl.toString());
+                    // Run default handler unless disabled
+                    if (!disableDefaultHandlers) {
+                        console.error(`Local auth error: ${data.error} [${data.code}]`);
+                        setError(data.error);
+                        navigateToRoot();
                     }
                     break;
                 }
@@ -311,36 +298,16 @@ export const useCallbackHandler = (options: UseCallbackHandlerOptions = {}): Use
                         code: callbackData.code
                     };
 
+                    // Always run override handler first if provided
                     if (overrideHandlers.onPermissionError) {
                         await overrideHandlers.onPermissionError(data);
-                        break;
                     }
 
-                    console.error(`Permission error (${data.provider}): ${data.error} [${data.code}]`);
-                    setError(data.error);
-                    
-                    if (enableAutoRedirect) {
-                        const dashboardUrl = new URL(defaultRedirectUrl);
-                        dashboardUrl.searchParams.set('error', data.error);
-                        navigateTo(dashboardUrl.toString());
-                    }
-                    break;
-                }
-
-                case CallbackCode.INVALID_STATE: {
-                    const data = { error: callbackData.error || 'Invalid authentication state' };
-
-                    if (overrideHandlers.onInvalidState) {
-                        await overrideHandlers.onInvalidState(data);
-                        break;
-                    }
-
-                    console.error(`Invalid state: ${data.error}`);
-                    setError(data.error);
-                    clearOAuthState();
-                    
-                    if (enableAutoRedirect) {
-                        navigateTo(window.location.origin + '/login');
+                    // Run default handler unless disabled
+                    if (!disableDefaultHandlers) {
+                        console.error(`Permission error (${data.provider}): ${data.error} [${data.code}]`);
+                        setError(data.error);
+                        navigateToRoot();
                     }
                     break;
                 }
@@ -348,16 +315,16 @@ export const useCallbackHandler = (options: UseCallbackHandlerOptions = {}): Use
                 case CallbackCode.USER_NOT_FOUND: {
                     const data = { error: callbackData.error || 'User not found' };
 
+                    // Always run override handler first if provided
                     if (overrideHandlers.onUserNotFound) {
                         await overrideHandlers.onUserNotFound(data);
-                        break;
                     }
 
-                    console.error(`User not found: ${data.error}`);
-                    setError(data.error);
-                    
-                    if (enableAutoRedirect) {
-                        navigateTo(window.location.origin + '/signup');
+                    // Run default handler unless disabled
+                    if (!disableDefaultHandlers) {
+                        console.error(`User not found: ${data.error}`);
+                        setError(data.error);
+                        navigateToRoot();
                     }
                     break;
                 }
@@ -365,16 +332,16 @@ export const useCallbackHandler = (options: UseCallbackHandlerOptions = {}): Use
                 case CallbackCode.USER_EXISTS: {
                     const data = { error: callbackData.error || 'User already exists' };
 
+                    // Always run override handler first if provided
                     if (overrideHandlers.onUserExists) {
                         await overrideHandlers.onUserExists(data);
-                        break;
                     }
 
-                    console.error(`User exists: ${data.error}`);
-                    setError(data.error);
-                    
-                    if (enableAutoRedirect) {
-                        navigateTo(window.location.origin + '/login');
+                    // Run default handler unless disabled
+                    if (!disableDefaultHandlers) {
+                        console.error(`User exists: ${data.error}`);
+                        setError(data.error);
+                        navigateToRoot();
                     }
                     break;
                 }
@@ -382,17 +349,17 @@ export const useCallbackHandler = (options: UseCallbackHandlerOptions = {}): Use
                 case CallbackCode.TOKEN_EXPIRED: {
                     const data = { error: callbackData.error || 'Token expired' };
 
+                    // Always run override handler first if provided
                     if (overrideHandlers.onTokenExpired) {
                         await overrideHandlers.onTokenExpired(data);
-                        break;
                     }
 
-                    console.error(`Token expired: ${data.error}`);
-                    setError(data.error);
-                    clearOAuthState();
-                    
-                    if (enableAutoRedirect) {
-                        navigateTo(window.location.origin + '/login');
+                    // Run default handler unless disabled
+                    if (!disableDefaultHandlers) {
+                        console.error(`Token expired: ${data.error}`);
+                        setError(data.error);
+                        clearOAuthState();
+                        navigateToRoot();
                     }
                     break;
                 }
@@ -401,51 +368,42 @@ export const useCallbackHandler = (options: UseCallbackHandlerOptions = {}): Use
                 case CallbackCode.PERMISSION_REAUTHORIZE: {
                     const data = {
                         accountId: callbackData.accountId!,
-                        name: callbackData.name!,
-                        provider: callbackData.provider!
+                        missingScopes: callbackData.missingScopes
                     };
 
+                    // Always run override handler first if provided
                     if (overrideHandlers.onPermissionReauthorize) {
                         await overrideHandlers.onPermissionReauthorize(data);
-                        break;
                     }
 
-                    console.log(`Permission reauthorization needed for ${data.name} (${data.accountId}) via ${data.provider}`);
-                    
-                    if (enableAutoRedirect) {
-                        navigateTo(`${window.location.origin}/oauth/permission/reauthorize?accountId=${data.accountId}`);
-                    }
-                    break;
-                }
-
-                case CallbackCode.ACCOUNT_SELECTION_REQUIRED: {
-                    const data = { accounts: callbackData.accounts };
-
-                    if (overrideHandlers.onAccountSelectionRequired) {
-                        await overrideHandlers.onAccountSelectionRequired(data);
-                        break;
-                    }
-
-                    console.log(`Account selection required for accounts: ${data.accounts?.join(', ')}`);
-                    
-                    if (enableAutoRedirect) {
-                        navigateTo(window.location.origin + '/accounts');
+                    // Run default handler unless disabled
+                    if (!disableDefaultHandlers) {
+                        console.log(`Permission reauthorization needed for account ${data.accountId}`);
+                        
+                        // User is successfully signed in, so save their information
+                        const account = await client.getAccount(data.accountId);
+                        addAccount(account);
+                        setCurrentAccount(data.accountId);
+                        clearOAuthState();
+                        
+                        // Now request the missing permissions
+                        client.reauthorizePermissions(data.accountId);
                     }
                     break;
                 }
 
                 // Unknown code
                 default: {
+                    // Always run override handler first if provided
                     if (overrideHandlers.onUnknownCode) {
                         await overrideHandlers.onUnknownCode(callbackData);
-                        break;
                     }
 
-                    console.warn('Unknown callback code:', callbackData);
-                    setError('Unknown callback response');
-                    
-                    if (enableAutoRedirect) {
-                        navigateTo(window.location.origin + '/login');
+                    // Run default handler unless disabled
+                    if (!disableDefaultHandlers) {
+                        console.warn('Unknown callback code:', callbackData);
+                        setError('Unknown callback response');
+                        navigateToRoot();
                     }
                     break;
                 }
@@ -458,7 +416,7 @@ export const useCallbackHandler = (options: UseCallbackHandlerOptions = {}): Use
 
         } catch (error) {
             console.error('Error handling callback:', error);
-            
+
             const errorData = {
                 ...callbackData,
                 error: error instanceof Error ? error.message : 'Unknown callback handling error'
@@ -466,30 +424,26 @@ export const useCallbackHandler = (options: UseCallbackHandlerOptions = {}): Use
 
             if (overrideHandlers.onError) {
                 await overrideHandlers.onError(errorData);
-            } else {
+            }
+
+            // Run default error handling unless disabled
+            if (!disableDefaultHandlers) {
                 setError(errorData.error);
-                if (enableAutoRedirect) {
-                    const loginUrl = new URL(window.location.origin + '/login');
-                    if (errorData.error) {
-                        loginUrl.searchParams.set('error', errorData.error);
-                    }
-                    navigateTo(loginUrl.toString());
-                }
+                navigateToRoot();
             }
         }
     }, [
         client, addAccount, setCurrentAccount, setOAuthTempToken, clearOAuthState,
-        setError, enableAutoRedirect, customRedirectUrl, overrideHandlers, navigateTo
+        setError, disableDefaultHandlers, overrideHandlers, navigateToRoot
     ]);
 
-    // Main callback handling function
     const handleAuthCallback = useCallback(async (params: URLSearchParams) => {
         try {
             setAuthenticating(true);
             clearError();
 
             const code = params.get('code');
-            
+
             if (!code) {
                 throw new Error('No callback code found');
             }
