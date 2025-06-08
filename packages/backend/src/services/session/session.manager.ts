@@ -5,6 +5,7 @@ import { refreshGoogleToken, revokeTokens } from '../../feature/google/services/
 import { createLocalJwtToken } from '../../feature/local_auth';
 import { createOAuthJwtToken } from '../../feature/oauth/OAuth.jwt';
 import { getNodeEnv } from '../../config/env.config';
+import { getStrippedPathPrefix } from '../../utils/redirect';
 
 // Environment variables
 const COOKIE_MAX_AGE = 365 * 24 * 60 * 60 * 1000; // 1 year in milliseconds
@@ -19,12 +20,12 @@ export interface SessionError {
  * Sets the access token as a cookie for a specific account
  * No longer signs the token - just stores it directly
  */
-export const setAccessTokenCookie = (res: Response, accountId: string, accessToken: string, expiresIn: number): void => {
+export const setAccessTokenCookie = (req: Request, res: Response, accountId: string, accessToken: string, expiresIn: number): void => {
     res.cookie(`access_token_${accountId}`, accessToken, {
         httpOnly: true,
         secure: getNodeEnv() === 'production',
         maxAge: expiresIn,
-        path: `/${accountId}`,
+        path: `${getStrippedPathPrefix(req)}/${accountId}`,
         sameSite: 'lax'
     });
 };
@@ -33,12 +34,12 @@ export const setAccessTokenCookie = (res: Response, accountId: string, accessTok
  * Sets the refresh token as a cookie for a specific account
  * No longer signs the token - just stores it directly
  */
-export const setRefreshTokenCookie = (res: Response, accountId: string, refreshToken: string): void => {
+export const setRefreshTokenCookie = (req: Request, res: Response, accountId: string, refreshToken: string): void => {
     res.cookie(`refresh_token_${accountId}`, refreshToken, {
         httpOnly: true,
         secure: getNodeEnv() === 'production',
         maxAge: COOKIE_MAX_AGE,
-        path: `/${accountId}/account/refreshToken`,
+        path: `${getStrippedPathPrefix(req)}/${accountId}/account/refreshToken`,
         sameSite: 'lax'
     });
 };
@@ -102,8 +103,8 @@ export const refreshAccessToken = async (
 
         // Create a new JWT token that wraps the OAuth access token
         const newJwtToken = await createOAuthJwtToken(
-            accountId, 
-            tokens.access_token, 
+            accountId,
+            tokens.access_token,
             Math.floor(((tokens.expiry_date as number) - Date.now()) / 1000)
         );
 
@@ -130,12 +131,14 @@ export const handleTokenRefresh = async (
     accountId: string,
     extractedRefreshToken: string, // Already extracted by middleware
     accountType: AccountType,
+    req: Request,
     res: Response
 ): Promise<void> => {
     const newTokenInfo = await refreshAccessToken(accountId, extractedRefreshToken, accountType);
 
     // Update the access token cookie
     setAccessTokenCookie(
+        req,
         res,
         accountId,
         newTokenInfo.accessToken,

@@ -33,9 +33,6 @@
                 "X-Path-Prefix": "/api/v1"
             },
             "cookieConfig": {
-                "pathRewrite": {
-                    "/api/v1/": "/"
-                },
                 "domainRewrite": true
             }
         },

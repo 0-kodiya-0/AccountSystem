@@ -83,6 +83,7 @@ export const signup = asyncHandler(async (req: SignUpRequest, res, next) => {
 
             if (result.accessTokenInfo && result.accessTokenInfo.expires_in) {
                 setAccessTokenCookie(
+                    req, 
                     res,
                     result.accountId,
                     result.accessToken,
@@ -90,7 +91,7 @@ export const signup = asyncHandler(async (req: SignUpRequest, res, next) => {
                 );
 
                 if (result.refreshToken) {
-                    setRefreshTokenCookie(res, result.accountId, result.refreshToken);
+                    setRefreshTokenCookie(req, res, result.accountId, result.refreshToken);
                 }
             }
 
@@ -129,9 +130,6 @@ export const signup = asyncHandler(async (req: SignUpRequest, res, next) => {
 /**
  * Handle sign in process
  */
-/**
- * Handle sign in process
- */
 export const signin = asyncHandler(async (req: SignInRequest, res, next) => {
     const provider = req.params.provider as OAuthProviders;
     const { state } = req.query;
@@ -154,6 +152,7 @@ export const signin = asyncHandler(async (req: SignInRequest, res, next) => {
 
             if (result.accessTokenInfo && result.accessTokenInfo.expires_in) {
                 setAccessTokenCookie(
+                    req,
                     res,
                     result.userId,
                     result.accessToken,
@@ -161,7 +160,7 @@ export const signin = asyncHandler(async (req: SignInRequest, res, next) => {
                 );
 
                 if (result.refreshToken) {
-                    setRefreshTokenCookie(res, result.userId, result.refreshToken);
+                    setRefreshTokenCookie(req, res, result.userId, result.refreshToken);
                 }
             }
 
@@ -375,6 +374,7 @@ export const handlePermissionCallback = asyncHandler(async (req, res, next) => {
             );
 
             setAccessTokenCookie(
+                req,
                 res,
                 accountId,
                 jwtAccessToken, // Our JWT token that wraps the OAuth token
@@ -382,7 +382,7 @@ export const handlePermissionCallback = asyncHandler(async (req, res, next) => {
             );
 
             if (jwtRefreshToken) {
-                setRefreshTokenCookie(res, accountId, jwtRefreshToken); // Our JWT refresh token
+                setRefreshTokenCookie(req, res, accountId, jwtRefreshToken); // Our JWT refresh token
             }
 
             logger.info(`Token updated for ${service} ${scopeLevel}. Processing success callback.`);

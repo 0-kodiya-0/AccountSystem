@@ -97,7 +97,7 @@ export const refreshToken = asyncHandler(async (req, res, next) => {
 
     const finalRedirectUrl = AccountService.validateRedirectUrl(redirectUrl as string);
 
-    await AccountService.refreshAccountToken(res, accountId, account, refreshToken);
+    await AccountService.refreshAccountToken(req, res, accountId, account, refreshToken);
 
     next(new Redirect(null, finalRedirectUrl));
 });

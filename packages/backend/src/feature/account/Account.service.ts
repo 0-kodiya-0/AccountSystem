@@ -1,4 +1,4 @@
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { ApiErrorCode, BadRequestError } from '../../types/response.types';
 import { toSafeAccount } from './Account.utils';
 import {
@@ -127,13 +127,14 @@ export function validateRedirectUrl(redirectUrl: string | undefined | null): str
  * Refresh account token - now directly calls session manager
  */
 export async function refreshAccountToken(
+    req: Request,
     res: Response,
     accountId: string,
     account: AccountDocument,
     refreshToken: string
 ): Promise<void> {
     // Direct call to session manager - no need for wrapper logic
-    await handleTokenRefresh(accountId, refreshToken, account.accountType, res);
+    await handleTokenRefresh(accountId, refreshToken, account.accountType, req, res);
 }
 
 /**

@@ -92,11 +92,11 @@ export const login = asyncHandler(async (req, res, next) => {
 
     // Set cookies
     const expiresIn = account.security.sessionTimeout || 3600;
-    setAccessTokenCookie(res, account.id, accessToken, expiresIn * 1000);
+    setAccessTokenCookie(req, res, account.id, accessToken, expiresIn * 1000);
 
     // Set remember me cookie if requested
     if (loginData.rememberMe) {
-        setRefreshTokenCookie(res, account.id, refreshToken);
+        setRefreshTokenCookie(req, res, account.id, refreshToken);
     }
 
     // Return success response
@@ -126,7 +126,7 @@ export const verifyTwoFactor = asyncHandler(async (req, res, next) => {
 
         // Set cookies
         const expiresIn = account.security.sessionTimeout || 3600;
-        setAccessTokenCookie(res, account.id, jwtToken, expiresIn * 1000);
+        setAccessTokenCookie(req ,res, account.id, jwtToken, expiresIn * 1000);
 
         // Return success response
         next(new JsonSuccess({
