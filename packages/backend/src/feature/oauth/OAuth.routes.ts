@@ -29,6 +29,11 @@ router.get('/callback/:provider', AuthController.handleCallback);
 router.get('/callback/permission/:provider', AuthController.handlePermissionCallback);
 
 /**
+ * Route specifically for re-requesting all previously granted scopes during sign-in flow
+ */
+router.get('/permission/reauthorize', AuthController.reauthorizePermissions);
+
+/**
  * Route to request permission for specific scope names
  * Now accepts scope names that get auto-converted to proper Google OAuth URLs
  * 
@@ -38,8 +43,3 @@ router.get('/callback/permission/:provider', AuthController.handlePermissionCall
  * - GET /permission/["gmail.readonly","calendar.events"]?accountId=123&redirectUrl=/dashboard
  */
 router.get('/permission/:scopeNames', AuthController.requestPermission);
-
-/**
- * Route specifically for re-requesting all previously granted scopes during sign-in flow
- */
-router.get('/permission/reauthorize', AuthController.reauthorizePermissions);
