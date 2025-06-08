@@ -153,19 +153,14 @@ export class ServerError<T> extends BaseError<T> {
     }
 }
 
-// Redirect error with additional redirect path
-export class RedirectError<T> extends BaseError<T> {
+export class Redirect<T> {
     constructor(
-        code: ApiErrorCode,
+        public readonly data: T,
         public readonly redirectPath: string,
-        message: string = '',
-        statusCode: number = 302,
-        data?: T,
-        public readonly originalUrl?: string,
-        public readonly sendStatus?: boolean
+        public readonly statusCode: number = 302,
+        public readonly originalUrl?: string
     ) {
-        super(code, message, statusCode, data);
-        Object.setPrototypeOf(this, RedirectError.prototype);
+        Object.setPrototypeOf(this, Redirect.prototype);
     }
 }
 
@@ -188,10 +183,44 @@ export class JsonSuccess<T> extends BaseSuccess<T> {
     }
 }
 
-// Redirect success response
-export class RedirectSuccess<T> extends BaseSuccess<T> {
-    constructor(data: T, public readonly redirectPath: string, statusCode: number = 302, message: string = '', public readonly originalUrl?: string, public readonly sendStatus?: boolean) {
-        super(data, statusCode, message);
-        Object.setPrototypeOf(this, RedirectSuccess.prototype);
-    }
+// New callback codes enum
+export enum CallbackCode {
+    // OAuth success codes
+    OAUTH_SIGNIN_SUCCESS = 'oauth_signin_success',
+    OAUTH_SIGNUP_SUCCESS = 'oauth_signup_success',
+    OAUTH_PERMISSION_SUCCESS = 'oauth_permission_success',
+    
+    // Local auth success codes
+    LOCAL_SIGNIN_SUCCESS = 'local_signin_success',
+    LOCAL_SIGNUP_SUCCESS = 'local_signup_success',
+    LOCAL_2FA_REQUIRED = 'local_2fa_required',
+    LOCAL_EMAIL_VERIFIED = 'local_email_verified',
+    LOCAL_PASSWORD_RESET_SUCCESS = 'local_password_reset_success',
+    
+    // Error codes
+    OAUTH_ERROR = 'oauth_error',
+    LOCAL_AUTH_ERROR = 'local_auth_error',
+    PERMISSION_ERROR = 'permission_error',
+    INVALID_STATE = 'invalid_state',
+    USER_NOT_FOUND = 'user_not_found',
+    USER_EXISTS = 'user_exists',
+    TOKEN_EXPIRED = 'token_expired',
+    
+    // Special flow codes
+    PERMISSION_REAUTHORIZE = 'permission_reauthorize',
+    ACCOUNT_SELECTION_REQUIRED = 'account_selection_required'
+}
+
+export interface CallbackData {
+    code: CallbackCode;
+    accountId?: string;
+    name?: string;
+    provider?: OAuthProviders;
+    tempToken?: string;
+    service?: string;
+    scopeLevel?: string;
+    error?: string;
+    message?: string;
+    // Additional context data
+    [key: string]: any;
 }

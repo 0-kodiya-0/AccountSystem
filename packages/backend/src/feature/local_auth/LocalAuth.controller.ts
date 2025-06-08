@@ -1,11 +1,13 @@
 import { asyncHandler } from '../../utils/response';
 import {
     JsonSuccess,
-    RedirectSuccess,
+    Redirect,
     ValidationError,
     ApiErrorCode,
     BadRequestError,
-    AuthError
+    AuthError,
+    CallbackCode,
+    CallbackData
 } from '../../types/response.types';
 import * as LocalAuthService from './LocalAuth.service';
 import {
@@ -30,6 +32,7 @@ import { ValidationUtils } from '../../utils/validation';
 import { createLocalJwtToken, createLocalRefreshToken } from './LocalAuth.jwt';
 import { findUserById } from '../account';
 import { logger } from '../../utils/logger';
+import { getCallbackUrl } from '../../utils/redirect';
 
 /**
  * Sign up (register) with email and password
@@ -142,18 +145,29 @@ export const verifyEmail = asyncHandler(async (req, res, next) => {
     const { token } = req.query as unknown as VerifyEmailRequest;
 
     if (!token) {
-        throw new BadRequestError('Verification token is required', 400, ApiErrorCode.MISSING_DATA);
+        const callbackData: CallbackData = {
+            code: CallbackCode.LOCAL_AUTH_ERROR,
+            error: 'Verification token is required'
+        };
+        return next(new Redirect(callbackData, getCallbackUrl()));
     }
 
-    // Verify email using cached token
-    await LocalAuthService.verifyEmail(token);
+    try {
+        await LocalAuthService.verifyEmail(token);
 
-    // Redirect to login page with success message
-    next(new RedirectSuccess(
-        { message: 'Email verified successfully. You can now log in.' },
-        '/login',
-        302
-    ));
+        const callbackData: CallbackData = {
+            code: CallbackCode.LOCAL_EMAIL_VERIFIED,
+            message: 'Email verified successfully. You can now log in.'
+        };
+
+        next(new Redirect(callbackData, getCallbackUrl()));
+    } catch (error) {
+        const callbackData: CallbackData = {
+            code: CallbackCode.LOCAL_AUTH_ERROR,
+            error: error instanceof Error ? error.message : 'Email verification failed'
+        };
+        next(new Redirect(callbackData, getCallbackUrl()));
+    }
 });
 
 /**
@@ -186,18 +200,30 @@ export const resetPassword = asyncHandler(async (req, res, next) => {
     ValidationUtils.validateRequiredFields(req.body, ['password', 'confirmPassword']);
 
     if (password !== confirmPassword) {
-        throw new ValidationError('Passwords do not match', 400, ApiErrorCode.VALIDATION_ERROR);
+        const callbackData: CallbackData = {
+            code: CallbackCode.LOCAL_AUTH_ERROR,
+            error: 'Passwords do not match'
+        };
+        return next(new Redirect(callbackData, getCallbackUrl()));
     }
 
-    // Use centralized password validation
-    ValidationUtils.validatePasswordStrength(password);
+    try {
+        ValidationUtils.validatePasswordStrength(password);
+        await LocalAuthService.resetPassword(token as string, password);
 
-    // Reset password using cached token
-    await LocalAuthService.resetPassword(token as string, password);
+        const callbackData: CallbackData = {
+            code: CallbackCode.LOCAL_PASSWORD_RESET_SUCCESS,
+            message: 'Password reset successfully. You can now log in with your new password.'
+        };
 
-    next(new JsonSuccess({
-        message: 'Password reset successfully. You can now log in with your new password.'
-    }));
+        next(new Redirect(callbackData, getCallbackUrl()));
+    } catch (error) {
+        const callbackData: CallbackData = {
+            code: CallbackCode.LOCAL_AUTH_ERROR,
+            error: error instanceof Error ? error.message : 'Password reset failed'
+        };
+        next(new Redirect(callbackData, getCallbackUrl()));
+    }
 });
 
 /**

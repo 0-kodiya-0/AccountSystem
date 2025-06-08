@@ -1,10 +1,8 @@
 import passport from 'passport';
 import {
-    ApiErrorCode,
-    BadRequestError,
-    NotFoundError,
-    RedirectError,
-    RedirectSuccess
+    CallbackCode,
+    CallbackData,
+    Redirect
 } from '../../types/response.types';
 import * as AuthService from './OAuth.service';
 import { AuthType, AuthUrls, OAuthState, PermissionState, ProviderResponse, SignInState } from './OAuth.types';
@@ -29,12 +27,13 @@ import {
     verifyTokenOwnership
 } from '../google/services/token';
 import { setAccessTokenCookie, setRefreshTokenCookie } from '../../services';
-import { createRedirectUrl, RedirectType } from '../../utils/redirect';
+import { getCallbackUrl } from '../../utils/redirect';
 import { SignUpRequest, SignInRequest, OAuthCallBackRequest } from './OAuth.dto';
 import { ValidationUtils } from '../../utils/validation';
 import { buildGoogleScopeUrls, validateScopeNames } from '../google/config';
 import { asyncHandler } from '../../utils/response';
 import { logger } from '../../utils/logger';
+import { createOAuthJwtToken, createOAuthRefreshToken } from './OAuth.jwt';
 
 /**
  * Initiate Google authentication
@@ -63,15 +62,15 @@ export const initiateGoogleAuth = asyncHandler(async (req, res, next) => {
  * Handle sign up process
  */
 export const signup = asyncHandler(async (req: SignUpRequest, res, next) => {
-    const frontendRedirectUrl = req.query.redirectUrl as string;
     const provider = req.params.provider as OAuthProviders;
 
-    if (!frontendRedirectUrl) {
-        throw new BadRequestError("Missing redirectUrl query parameter");
-    }
-
     if (!validateProvider(provider, res)) {
-        throw new RedirectError(ApiErrorCode.INVALID_PROVIDER, frontendRedirectUrl, 'Invalid provider');
+        const callbackData: CallbackData = {
+            code: CallbackCode.OAUTH_ERROR,
+            error: 'Invalid provider',
+            provider
+        };
+        return next(new Redirect(callbackData, getCallbackUrl()));
     }
 
     const reqState = req.query.state;
@@ -86,116 +85,122 @@ export const signup = asyncHandler(async (req: SignUpRequest, res, next) => {
                 setAccessTokenCookie(
                     res,
                     result.accountId,
-                    result.accessToken, // This is now our JWT token that wraps the OAuth token
+                    result.accessToken,
                     result.accessTokenInfo.expires_in * 1000
                 );
 
                 if (result.refreshToken) {
-                    setRefreshTokenCookie(res, result.accountId, result.refreshToken); // This is our JWT refresh token
+                    setRefreshTokenCookie(res, result.accountId, result.refreshToken);
                 }
             }
 
-            // Use the stored redirect URL if available, otherwise use the default
-            const redirectTo = stateDetails.redirectUrl || frontendRedirectUrl;
-
-            next(new RedirectSuccess({
+            const callbackData: CallbackData = {
+                code: CallbackCode.OAUTH_SIGNUP_SUCCESS,
                 accountId: result.accountId,
-                name: result.name
-            }, redirectTo));
+                name: result.name,
+                provider
+            };
 
+            next(new Redirect(callbackData, getCallbackUrl()));
             return;
         } catch (error) {
             logger.error(error);
-            throw new RedirectError(ApiErrorCode.SERVER_ERROR, frontendRedirectUrl, 'Database operation failed');
+            const callbackData: CallbackData = {
+                code: CallbackCode.OAUTH_ERROR,
+                error: 'Signup processing failed',
+                provider
+            };
+            next(new Redirect(callbackData, getCallbackUrl()));
+            return;
         }
     }
 
-    const generatedState = await generateOAuthState(provider as OAuthProviders, AuthType.SIGN_UP, frontendRedirectUrl);
+    // Generate state without redirectUrl
+    const generatedState = await generateOAuthState(provider as OAuthProviders, AuthType.SIGN_UP);
     const authUrls: AuthUrls = {
         [OAuthProviders.Google]: '../auth/google',
         [OAuthProviders.Microsoft]: '../auth/microsoft',
         [OAuthProviders.Facebook]: '../auth/facebook',
     };
 
-    next(new RedirectSuccess({ state: generatedState }, authUrls[provider], 302, "State generated", frontendRedirectUrl));
+    next(new Redirect({ state: generatedState }, authUrls[provider]));
 });
 
 /**
  * Handle sign in process
  */
 export const signin = asyncHandler(async (req: SignInRequest, res, next) => {
-    const frontendRedirectUrl = req.query.redirectUrl as string;
     const provider = req.params.provider as OAuthProviders;
     const { state } = req.query;
 
-    if (!frontendRedirectUrl) {
-        throw new BadRequestError("Missing redirectUrl query parameter");
-    }
-
     if (!validateProvider(provider, res)) {
-        throw new BadRequestError('Invalid provider');
+        const callbackData: CallbackData = {
+            code: CallbackCode.OAUTH_ERROR,
+            error: 'Invalid provider',
+            provider
+        };
+        return next(new Redirect(callbackData, getCallbackUrl()));
     }
 
     if (state && typeof state === 'string') {
         const stateDetails = await validateState(state, validateSignInState, res) as SignInState;
 
         try {
-            const result = await AuthService.processSignIn(stateDetails, frontendRedirectUrl);
+            const result = await AuthService.processSignIn(stateDetails);
             await clearSignInState(stateDetails.state);
 
             if (result.accessTokenInfo && result.accessTokenInfo.expires_in) {
                 setAccessTokenCookie(
                     res,
                     result.userId,
-                    result.accessToken, // This is now our JWT token that wraps the OAuth token
+                    result.accessToken,
                     result.accessTokenInfo.expires_in * 1000
                 );
 
                 if (result.refreshToken) {
-                    setRefreshTokenCookie(res, result.userId, result.refreshToken); // This is our JWT refresh token
+                    setRefreshTokenCookie(res, result.userId, result.refreshToken);
                 }
             }
 
             // Handle additional scopes
             if (result.needsAdditionalScopes) {
-                const redirectTo = createRedirectUrl(req, stateDetails.redirectUrl || frontendRedirectUrl, {
-                    type: RedirectType.SUCCESS,
-                    data: {
-                        accountId: result.userId,
-                        name: result.userName
-                    }
-                });
-
-                next(new RedirectSuccess({
+                const callbackData: CallbackData = {
+                    code: CallbackCode.PERMISSION_REAUTHORIZE,
                     accountId: result.userId,
                     name: result.userName,
-                    skipRedirectUrl: redirectTo
-                }, '../auth/permission-confirmation', undefined, undefined, `./oauth/permission/reauthorize?redirectUrl=${redirectTo}`));
+                    provider
+                };
+                next(new Redirect(callbackData, getCallbackUrl()));
             } else {
-                // No additional scopes needed, continue with normal flow
-                const redirectTo = stateDetails.redirectUrl || frontendRedirectUrl;
-
-                next(new RedirectSuccess({
+                const callbackData: CallbackData = {
+                    code: CallbackCode.OAUTH_SIGNIN_SUCCESS,
                     accountId: result.userId,
-                    name: result.userName
-                }, redirectTo));
+                    name: result.userName,
+                    provider
+                };
+                next(new Redirect(callbackData, getCallbackUrl()));
             }
-
             return;
         } catch (error) {
             logger.error(error);
-            throw new RedirectError(ApiErrorCode.DATABASE_ERROR, frontendRedirectUrl, 'Failed to validate state');
+            const callbackData: CallbackData = {
+                code: CallbackCode.OAUTH_ERROR,
+                error: 'Signin processing failed',
+                provider
+            };
+            next(new Redirect(callbackData, getCallbackUrl()));
+            return;
         }
     }
 
-    const generatedState = await generateOAuthState(provider as OAuthProviders, AuthType.SIGN_IN, frontendRedirectUrl);
+    const generatedState = await generateOAuthState(provider as OAuthProviders, AuthType.SIGN_IN);
     const authUrls: AuthUrls = {
         [OAuthProviders.Google]: '../auth/google',
         [OAuthProviders.Microsoft]: '../auth/microsoft',
         [OAuthProviders.Facebook]: '../auth/facebook',
     };
 
-    next(new RedirectSuccess({ state: generatedState }, authUrls[provider], 302, undefined, frontendRedirectUrl));
+    next(new Redirect({ state: generatedState }, authUrls[provider]));
 });
 
 /**
@@ -206,7 +211,11 @@ export const handleCallback = asyncHandler(async (req: OAuthCallBackRequest, res
     const stateFromProvider = req.query.state;
 
     if (!validateProvider(provider, res)) {
-        throw new BadRequestError('Invalid provider');
+        const callbackData: CallbackData = {
+            code: CallbackCode.OAUTH_ERROR,
+            error: 'Invalid provider'
+        };
+        return next(new Redirect(callbackData, getCallbackUrl()));
     }
 
     const stateDetails = await validateState(
@@ -215,37 +224,43 @@ export const handleCallback = asyncHandler(async (req: OAuthCallBackRequest, res
         res
     ) as OAuthState;
 
-    // Extract redirect URL from state
-    const redirectUrl = stateDetails.redirectUrl || '/';
-
     await clearOAuthState(stateDetails.state);
 
     passport.authenticate(provider as OAuthProviders, { session: false }, async (err: Error | null, userData: ProviderResponse) => {
         try {
             if (err) {
-                return next(new RedirectError(ApiErrorCode.AUTH_FAILED, redirectUrl, 'Authentication failed'));
+                const callbackData: CallbackData = {
+                    code: CallbackCode.OAUTH_ERROR,
+                    error: 'Authentication failed',
+                    provider: provider as OAuthProviders
+                };
+                return next(new Redirect(callbackData, getCallbackUrl()));
             }
 
             if (!userData) {
-                return next(new RedirectError(ApiErrorCode.AUTH_FAILED, redirectUrl, 'Authentication failed - no user data'));
+                const callbackData: CallbackData = {
+                    code: CallbackCode.OAUTH_ERROR,
+                    error: 'No user data received',
+                    provider: provider as OAuthProviders
+                };
+                return next(new Redirect(callbackData, getCallbackUrl()));
             }
 
-            const result = await AuthService.processSignInSignupCallback(userData, stateDetails, redirectUrl);
+            const result = await AuthService.processSignInSignupCallback(userData, stateDetails);
 
             if (result.authType === AuthType.SIGN_UP) {
-                next(new RedirectSuccess({ state: result.state },
-                    `../signup/${provider}`,
-                    302,
-                    "User authenticated by provider", redirectUrl));
+                next(new Redirect({ state: result.state }, `../signup/${provider}`));
             } else {
-                next(new RedirectSuccess({ state: result.state },
-                    `../signin/${provider}`,
-                    302,
-                    "User authenticated by provider", redirectUrl));
+                next(new Redirect({ state: result.state }, `../signin/${provider}`));
             }
         } catch (error) {
             logger.error(error);
-            next(new RedirectError(ApiErrorCode.SERVER_ERROR, redirectUrl, 'Failed to process authentication'));
+            const callbackData: CallbackData = {
+                code: CallbackCode.OAUTH_ERROR,
+                error: 'Failed to process authentication',
+                provider: provider as OAuthProviders
+            };
+            next(new Redirect(callbackData, getCallbackUrl()));
         }
     })(req, res, next);
 });
@@ -258,7 +273,12 @@ export const handlePermissionCallback = asyncHandler(async (req, res, next) => {
     const stateFromProvider = req.query.state as string;
 
     if (!validateProvider(provider, res)) {
-        throw new BadRequestError('Invalid provider');
+        const callbackData: CallbackData = {
+            code: CallbackCode.PERMISSION_ERROR,
+            error: 'Invalid provider',
+            provider: provider as OAuthProviders
+        };
+        return next(new Redirect(callbackData, getCallbackUrl()));
     }
 
     const permissionDetails = await validateState(
@@ -268,24 +288,41 @@ export const handlePermissionCallback = asyncHandler(async (req, res, next) => {
     ) as PermissionState;
 
     // Get the details we need from the permission state
-    const { accountId, service, scopeLevel, redirectUrl } = permissionDetails;
+    const { accountId, service, scopeLevel } = permissionDetails;
 
     // Use the permission-specific passport strategy
     passport.authenticate(`${provider}-permission`, { session: false }, async (err: Error | null, result: ProviderResponse) => {
         try {
             if (err) {
                 logger.error('Permission token exchange error:', err);
-                return next(new RedirectError(ApiErrorCode.AUTH_FAILED, redirectUrl, 'Permission token exchange failed'));
+                const callbackData: CallbackData = {
+                    code: CallbackCode.PERMISSION_ERROR,
+                    error: 'Permission token exchange failed',
+                    provider: provider as OAuthProviders,
+                    accountId
+                };
+                return next(new Redirect(callbackData, getCallbackUrl()));
             }
 
             if (!result || !result.tokenDetails || !result.tokenDetails.accessToken || !result.tokenDetails.refreshToken) {
-                return next(new RedirectError(ApiErrorCode.AUTH_FAILED, redirectUrl, 'Permission request failed'));
+                const callbackData: CallbackData = {
+                    code: CallbackCode.PERMISSION_ERROR,
+                    error: 'Permission request failed - no tokens received',
+                    provider: provider as OAuthProviders,
+                    accountId
+                };
+                return next(new Redirect(callbackData, getCallbackUrl()));
             }
 
             const exists = await AuthService.checkUserExists(accountId);
 
             if (!exists) {
-                return next(new RedirectError(ApiErrorCode.USER_NOT_FOUND, redirectUrl, 'User record not found in database'));
+                const callbackData: CallbackData = {
+                    code: CallbackCode.USER_NOT_FOUND,
+                    error: 'User record not found in database',
+                    accountId
+                };
+                return next(new Redirect(callbackData, getCallbackUrl()));
             }
 
             logger.info(`Processing permission callback for account ${accountId}, service ${service}, scope ${scopeLevel}`);
@@ -295,13 +332,25 @@ export const handlePermissionCallback = asyncHandler(async (req, res, next) => {
 
             if (!token.isValid) {
                 logger.error('Token ownership verification failed:', token.reason);
-                return next(new RedirectError(ApiErrorCode.AUTH_FAILED, redirectUrl, 'Permission was granted with an incorrect account. Please try again and ensure you use the correct Google account.'));
+                const callbackData: CallbackData = {
+                    code: CallbackCode.PERMISSION_ERROR,
+                    error: 'Permission was granted with an incorrect account. Please try again and ensure you use the correct Google account.',
+                    provider: provider as OAuthProviders,
+                    accountId
+                };
+                return next(new Redirect(callbackData, getCallbackUrl()));
             }
 
             const accessTokenInfo = await getTokenInfo(result.tokenDetails.accessToken);
 
             if (!accessTokenInfo.expires_in) {
-                return next(new RedirectError(ApiErrorCode.SERVER_ERROR, redirectUrl, 'Failed to fetch token information'));
+                const callbackData: CallbackData = {
+                    code: CallbackCode.PERMISSION_ERROR,
+                    error: 'Failed to fetch token information',
+                    provider: provider as OAuthProviders,
+                    accountId
+                };
+                return next(new Redirect(callbackData, getCallbackUrl()));
             }
 
             // Update tokens and scopes
@@ -309,9 +358,6 @@ export const handlePermissionCallback = asyncHandler(async (req, res, next) => {
                 accountId,
                 result.tokenDetails.accessToken
             );
-
-            // Create our JWT tokens that wrap the OAuth tokens
-            const { createOAuthJwtToken, createOAuthRefreshToken } = await import('./OAuth.jwt');
 
             const jwtAccessToken = await createOAuthJwtToken(
                 accountId,
@@ -335,16 +381,27 @@ export const handlePermissionCallback = asyncHandler(async (req, res, next) => {
                 setRefreshTokenCookie(res, accountId, jwtRefreshToken); // Our JWT refresh token
             }
 
-            logger.info(`Token updated for ${service} ${scopeLevel}. Redirecting to ${redirectUrl}`);
+            logger.info(`Token updated for ${service} ${scopeLevel}. Processing success callback.`);
 
-            next(new RedirectSuccess({
+            const callbackData: CallbackData = {
+                code: CallbackCode.OAUTH_PERMISSION_SUCCESS,
                 accountId,
                 service,
                 scopeLevel,
-            }, redirectUrl));
+                provider: provider as OAuthProviders,
+                message: `Successfully granted ${service} ${scopeLevel} permissions`
+            };
+
+            next(new Redirect(callbackData, getCallbackUrl()));
         } catch (error) {
             logger.error('Error updating token:', error);
-            next(new RedirectError(ApiErrorCode.SERVER_ERROR, redirectUrl, 'Failed to update token'));
+            const callbackData: CallbackData = {
+                code: CallbackCode.PERMISSION_ERROR,
+                error: 'Failed to update token',
+                provider: provider as OAuthProviders,
+                accountId
+            };
+            next(new Redirect(callbackData, getCallbackUrl()));
         }
     })(req, res, next);
 });
@@ -354,18 +411,22 @@ export const handlePermissionCallback = asyncHandler(async (req, res, next) => {
  * Accepts scope names and converts them to proper Google OAuth scope URLs
  */
 export const requestPermission = asyncHandler(async (req, res, next) => {
-    const requestedScopeNames = req.params.scopeNames as string; // Changed from scopes to scopeNames
-    const { accountId, redirectUrl } = req.query;
+    const requestedScopeNames = req.params.scopeNames as string;
+    const { accountId } = req.query;
 
-    ValidationUtils.validateRequiredFields(req.query, ['redirectUrl', 'accountId']);
-    ValidationUtils.validateUrl(redirectUrl as string, 'Redirect URL');
+    ValidationUtils.validateRequiredFields(req.query, ['accountId']);
     ValidationUtils.validateObjectId(accountId as string, 'Account ID');
 
     // Get user account information
     const account = await AuthService.getUserAccount(accountId as string);
 
     if (!account || !account.userDetails.email) {
-        throw new NotFoundError('Account not found or missing email', 404, ApiErrorCode.USER_NOT_FOUND);
+        const callbackData: CallbackData = {
+            code: CallbackCode.USER_NOT_FOUND,
+            error: 'Account not found or missing email',
+            accountId: accountId as string
+        };
+        return next(new Redirect(callbackData, getCallbackUrl()));
     }
 
     const userEmail = account.userDetails.email;
@@ -387,11 +448,21 @@ export const requestPermission = asyncHandler(async (req, res, next) => {
     const validation = validateScopeNames(scopeNames);
 
     if (!validation.valid) {
-        throw new BadRequestError(`Invalid scope name format: ${validation.errors.join(', ')}`);
+        const callbackData: CallbackData = {
+            code: CallbackCode.PERMISSION_ERROR,
+            error: `Invalid scope name format: ${validation.errors.join(', ')}`,
+            accountId: accountId as string
+        };
+        return next(new Redirect(callbackData, getCallbackUrl()));
     }
 
     if (scopeNames.length === 0) {
-        throw new BadRequestError('At least one scope name is required');
+        const callbackData: CallbackData = {
+            code: CallbackCode.PERMISSION_ERROR,
+            error: 'At least one scope name is required',
+            accountId: accountId as string
+        };
+        return next(new Redirect(callbackData, getCallbackUrl()));
     }
 
     const scopes = buildGoogleScopeUrls(scopeNames);
@@ -399,7 +470,6 @@ export const requestPermission = asyncHandler(async (req, res, next) => {
     // Generate state and save permission state
     const state = await generatePermissionState(
         OAuthProviders.Google,
-        redirectUrl as string,
         accountId as string,
         'custom', // service field - keeping for backward compatibility
         requestedScopeNames // Store original scope names string
@@ -427,31 +497,45 @@ export const requestPermission = asyncHandler(async (req, res, next) => {
  * Reauthorize permissions
  */
 export const reauthorizePermissions = asyncHandler(async (req, res, next) => {
-    const { accountId, redirectUrl } = req.query;
+    const { accountId } = req.query;
 
-    if (!accountId || !redirectUrl) {
-        throw new BadRequestError("Missing required parameters");
+    if (!accountId) {
+        const callbackData: CallbackData = {
+            code: CallbackCode.PERMISSION_ERROR,
+            error: 'Missing required accountId parameter'
+        };
+        return next(new Redirect(callbackData, getCallbackUrl()));
     }
 
     // Get the user's account details
     const account = await AuthService.getUserAccount(accountId as string);
 
     if (!account || !account.userDetails.email) {
-        throw new NotFoundError('Account not found or missing email', 404, ApiErrorCode.USER_NOT_FOUND);
+        const callbackData: CallbackData = {
+            code: CallbackCode.USER_NOT_FOUND,
+            error: 'Account not found or missing email',
+            accountId: accountId as string
+        };
+        return next(new Redirect(callbackData, getCallbackUrl()));
     }
 
     // Get previously granted scopes from the database
     const storedScopes = await AuthService.getAccountScopes(accountId as string);
 
     if (!storedScopes || storedScopes.length === 0) {
-        // No additional scopes to request, just redirect to final destination
-        return next(new RedirectSuccess({ message: "No additional scopes needed" }, redirectUrl as string));
+        // No additional scopes to request, redirect with success
+        const callbackData: CallbackData = {
+            code: CallbackCode.OAUTH_PERMISSION_SUCCESS,
+            accountId: accountId as string,
+            message: 'No additional scopes needed',
+            provider: OAuthProviders.Google
+        };
+        return next(new Redirect(callbackData, getCallbackUrl()));
     }
 
     // Generate a unique state for this re-authorization
     const state = await generatePermissionState(
         OAuthProviders.Google,
-        redirectUrl as string,
         accountId as string,
         "reauthorize",
         "all"

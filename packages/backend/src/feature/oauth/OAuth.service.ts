@@ -1,6 +1,6 @@
 import db from '../../config/db';
 import { Account, AccountType, AccountStatus, OAuthProviders } from '../account/Account.types';
-import { ApiErrorCode, BadRequestError, RedirectError } from '../../types/response.types';
+import { ApiErrorCode, BadRequestError } from '../../types/response.types';
 import { AuthType, OAuthState, ProviderResponse, SignInState } from './OAuth.types';
 import {
     generateSignInState,
@@ -81,7 +81,7 @@ export async function processSignup(
 /**
  * Process sign in with OAuth provider
  */
-export async function processSignIn(stateDetails: SignInState, redirectUrl: string) {
+export async function processSignIn(stateDetails: SignInState) {
     if (!stateDetails || !stateDetails.oAuthResponse.email) {
         throw new BadRequestError('Invalid or missing state details', 400, ApiErrorCode.INVALID_STATE);
     }
@@ -89,12 +89,12 @@ export async function processSignIn(stateDetails: SignInState, redirectUrl: stri
     const user = await findUserByEmail(stateDetails.oAuthResponse.email);
 
     if (!user) {
-        throw new RedirectError(ApiErrorCode.USER_NOT_FOUND, redirectUrl, 'User details not found');
+        throw new BadRequestError('User not found', 404, ApiErrorCode.USER_NOT_FOUND);
     }
 
     // Ensure this is an OAuth account
     if (user.accountType !== AccountType.OAuth) {
-        throw new RedirectError(ApiErrorCode.AUTH_FAILED, redirectUrl, 'Account exists but is not an OAuth account');
+        throw new BadRequestError('Account exists but is not an OAuth account', 400, ApiErrorCode.AUTH_FAILED);
     }
 
     const oauthAccessToken = stateDetails.oAuthResponse.tokenDetails.accessToken;
@@ -132,8 +132,7 @@ export async function processSignIn(stateDetails: SignInState, redirectUrl: stri
  */
 export async function processSignInSignupCallback(
     userData: ProviderResponse,
-    stateDetails: OAuthState,
-    redirectUrl: string
+    stateDetails: OAuthState
 ) {
     const userEmail = userData.email;
     if (!userEmail) {
@@ -145,14 +144,14 @@ export async function processSignInSignupCallback(
 
     if (stateDetails.authType === AuthType.SIGN_UP) {
         if (user) {
-            throw new RedirectError(ApiErrorCode.USER_EXISTS, redirectUrl);
+            throw new BadRequestError('User already exists', 409, ApiErrorCode.USER_EXISTS);
         }
-        state = await generateSignupState(userData, redirectUrl);
+        state = await generateSignupState(userData);
     } else {
         if (!user) {
-            throw new RedirectError(ApiErrorCode.USER_NOT_FOUND, redirectUrl);
+            throw new BadRequestError('User not found', 404, ApiErrorCode.USER_NOT_FOUND);
         }
-        state = await generateSignInState(userData, redirectUrl);
+        state = await generateSignInState(userData);
     }
 
     return {

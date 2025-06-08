@@ -20,8 +20,7 @@ const permissionStateCache = new LRUCache<string, PermissionState>(options);
 export const saveOAuthState = (
     state: string,
     provider: OAuthProviders,
-    authType: AuthType,
-    redirectUrl?: string
+    authType: AuthType
 ): void => {
     const expiresAt = new Date(Date.now() + options.ttl);
 
@@ -29,7 +28,6 @@ export const saveOAuthState = (
         state,
         provider,
         authType,
-        redirectUrl,
         expiresAt: expiresAt.toISOString(),
     };
 
@@ -59,15 +57,13 @@ export const removeOAuthState = (state: string): void => {
 // SignInState methods
 export const saveSignInState = (
     state: string,
-    providerResponse: ProviderResponse,
-    redirectUrl?: string
+    providerResponse: ProviderResponse
 ): void => {
     const expiresAt = new Date(Date.now() + options.ttl);
 
     const stateData: SignInState = {
         state,
         oAuthResponse: providerResponse,
-        redirectUrl,
         expiresAt: expiresAt.toISOString(),
     };
 
@@ -97,15 +93,13 @@ export const removeSignInState = (state: string): void => {
 // SignUpState methods
 export const saveSignUpState = (
     state: string,
-    providerResponse: ProviderResponse,
-    redirectUrl?: string
+    providerResponse: ProviderResponse
 ): void => {
     const expiresAt = new Date(Date.now() + options.ttl);
 
     const stateData: SignUpState = {
         state,
         oAuthResponse: providerResponse,
-        redirectUrl,
         expiresAt: expiresAt.toISOString(),
     };
 
@@ -138,8 +132,7 @@ export const savePermissionState = (
     provider: OAuthProviders,
     accountId: string,
     service: string,
-    scopeLevel: string,
-    redirectUrl: string
+    scopeLevel: string
 ): void => {
     const expiresAt = new Date(Date.now() + options.ttl);
 
@@ -150,7 +143,6 @@ export const savePermissionState = (
         accountId,
         service,
         scopeLevel,
-        redirectUrl,
         expiresAt: expiresAt.toISOString(),
     };
 

@@ -5,58 +5,53 @@ import { saveOAuthState, saveSignInState, saveSignUpState, removeOAuthState, rem
 
 export const generateOAuthState = async (
     provider: OAuthProviders,
-    authType: AuthType,
-    redirectUrl?: string
+    authType: AuthType
 ): Promise<string> => {
     const state = crypto.randomBytes(32).toString('hex');
 
-    // Save state in cache with redirect URL
-    saveOAuthState(state, provider, authType, redirectUrl);
+    // Save state in cache without redirect URL
+    saveOAuthState(state, provider, authType);
 
     return state;
 };
 
 export const generateSignupState = async (
-    providerResponse: ProviderResponse,
-    redirectUrl?: string
+    providerResponse: ProviderResponse
 ): Promise<string> => {
     const state = crypto.randomBytes(32).toString('hex');
 
-    // Save state in cache with redirect URL
-    saveSignUpState(state, providerResponse, redirectUrl);
+    // Save state in cache without redirect URL
+    saveSignUpState(state, providerResponse);
 
     return state;
 };
 
 export const generateSignInState = async (
-    providerResponse: ProviderResponse,
-    redirectUrl?: string
+    providerResponse: ProviderResponse
 ): Promise<string> => {
     const state = crypto.randomBytes(32).toString('hex');
 
-    // Save state in cache with redirect URL
-    saveSignInState(state, providerResponse, redirectUrl);
+    // Save state in cache without redirect URL
+    saveSignInState(state, providerResponse);
 
     return state;
 };
 
 export const generatePermissionState = async (
     provider: OAuthProviders,
-    redirectUrl: string,
     accountId: string,
     service: string,
     scopeLevel: string
 ): Promise<string> => {
     const state = crypto.randomBytes(32).toString('hex');
 
-    // Save state in cache
+    // Save state in cache without redirect URL
     savePermissionState(
         state,
         provider,
         accountId,
         service,
-        scopeLevel,
-        redirectUrl
+        scopeLevel
     );
 
     return state;

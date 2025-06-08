@@ -5,8 +5,6 @@ import {
     ApiErrorCode,
     BaseError,
     JsonSuccess,
-    RedirectError,
-    RedirectSuccess,
     AuthError,
     ValidationError,
     NotFoundError,
@@ -15,14 +13,15 @@ import {
     AccountValidationError,
     ChatValidationError,
     SessionValidationError,
-    ProviderValidationError
+    ProviderValidationError,
+    Redirect
 } from "../types/response.types";
-import { redirectWithError, redirectWithSuccess } from "./redirect";
 import { MongoError } from "mongodb";
 import { Error as MongooseError } from "mongoose";
 import { GaxiosError } from "gaxios";
 import jwt from "jsonwebtoken";
 import { logger } from "./logger";
+import { createRedirectUrl } from "./redirect";
 
 export const createSuccessResponse = <T>(data: T): ApiResponse<T> => ({
     success: true,
@@ -46,7 +45,7 @@ export const sendError = <T>(res: Response, status: number, code: ApiErrorCode, 
 };
 
 
-export const asyncHandler = <T extends Request> (
+export const asyncHandler = <T extends Request>(
     fn: (req: T, res: Response, next: NextFunction) => Promise<void> | void
 ): RequestHandler => {
     return (req, res, next) => {
@@ -267,20 +266,9 @@ export const successHandler = (result: any, req: Request, res: Response, next: N
         return;
     }
 
-    // Handle BaseSuccess responses
-    if (result instanceof RedirectSuccess) {
-        logger.info('Response', result);
-        redirectWithSuccess(
-            req,
-            res,
-            result.redirectPath,
-            {
-                originalUrl: result.originalUrl,
-                message: result.message,
-                data: result.data,
-                sendStatus: result.sendStatus
-            }
-        );
+    // Skip redirects (handled by redirectHandler)
+    if (result instanceof Redirect) {
+        next(result);
         return;
     }
 
@@ -308,25 +296,14 @@ export const successHandler = (result: any, req: Request, res: Response, next: N
 
 // Enhanced error handling middleware
 export const errorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
-    // Log the error
-    logger.error('Error:', err);
-
-    // Handle different error types
-    if (err instanceof RedirectError) {
-        redirectWithError(
-            req,
-            res,
-            err.redirectPath,
-            err.code,
-            {
-                originalUrl: err.originalUrl,
-                message: err.message,
-                data: err.data,
-                sendStatus: err.sendStatus
-            }
-        );
+    // Skip redirects (handled by redirectHandler)
+    if (err instanceof Redirect) {
+        next(err);
         return;
     }
+
+    // Log the error
+    logger.error('Error:', err);
 
     // Handle all the different BaseError types
     if (err instanceof AuthError) {
@@ -384,6 +361,34 @@ export const errorHandler = (err: any, req: Request, res: Response, next: NextFu
     ));
 };
 
+
+// Redirect response middleware (handle before success handler)
+export const redirectHandler = (result: any, req: Request, res: Response, next: NextFunction) => {
+    // Only handle Redirect responses
+    if (result instanceof Redirect) {
+        logger.info('Processing redirect:', {
+            redirectPath: result.redirectPath,
+            statusCode: result.statusCode,
+            data: result.data
+        });
+
+        // Use createRedirectUrl for proper URL handling with proxy support and relative paths
+        const redirectUrl = createRedirectUrl(
+            req,
+            result.redirectPath,
+            result.data,
+            result.originalUrl
+        );
+
+        logger.info('Redirecting to:', { redirectUrl });
+        res.redirect(result.statusCode, redirectUrl);
+        return;
+    }
+
+    // Not a redirect, pass to next handler
+    next(result);
+};
+
 // Example of how to apply all middleware in the correct order
 export const applyErrorHandlers = (app: any) => {
     // Apply in order from most specific to most general
@@ -391,8 +396,11 @@ export const applyErrorHandlers = (app: any) => {
     app.use(mongoErrorHandler);
     app.use(googleApiErrorHandler);
     app.use(apiRequestErrorHandler);
+
+    // Handle redirects first (before success handler)
     app.use(successHandler);
     app.use(errorHandler);
+    app.use(redirectHandler);
 
     // Catch-all for unhandled errors
     app.use((err: any, req: Request, res: Response, next: NextFunction) => {

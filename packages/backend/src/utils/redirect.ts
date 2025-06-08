@@ -1,23 +1,7 @@
-import { Response, Request } from "express";
-import { ApiErrorCode } from "../types/response.types";
+import { Request } from "express";
 import * as path from "path";
 import { logger } from "./logger";
-
-// Redirect types
-export enum RedirectType {
-    SUCCESS = 'success',
-    ERROR = 'error',
-    PERMISSION = 'permission'
-}
-
-// Interface for redirect options
-export interface RedirectOptions {
-    type: RedirectType;
-    code?: ApiErrorCode;
-    message?: string;
-    data?: Record<string, any>;
-    sendStatus?: boolean;
-}
+import { getProxyUrl } from "../config/env.config";
 
 /**
  * Get the path prefix that was stripped by the proxy
@@ -38,7 +22,7 @@ function getStrippedPathPrefix(req: Request): string {
 export const createRedirectUrl = (
     req: Request,
     baseUrl: string,
-    options: RedirectOptions,
+    data?: Record<string, any>,
     originalUrl?: string
 ): string => {
     let finalUrl = '';
@@ -83,25 +67,25 @@ export const createRedirectUrl = (
         if (cleanPath.startsWith('../')) {
             // ../ means: pathPrefix + parent paths + target path
             const targetPath = cleanPath.substring(3); // Remove '../'
-            
+
             // Use the parentUrl set by middleware
             const parentPath = req.parentUrl || '';
-            
+
             console.log('Parent URL from middleware:', parentPath);
             console.log('Target path:', targetPath);
-            
+
             // Combine: pathPrefix + parentPath + targetPath
             if (pathPrefix) {
                 finalUrl = path.normalize(pathPrefix + parentPath + '/' + targetPath).replace(/\/+/g, '/');
             } else {
                 finalUrl = path.normalize(parentPath + '/' + targetPath).replace(/\/+/g, '/');
             }
-            
+
             console.log('Final URL:', finalUrl);
         } else if (cleanPath.startsWith('./')) {
             // ./ means: add only pathPrefix + target path
             const targetPath = cleanPath.substring(2); // Remove './'
-            
+
             if (pathPrefix) {
                 finalUrl = path.normalize(pathPrefix + '/' + targetPath).replace(/\/+/g, '/');
             } else {
@@ -109,39 +93,23 @@ export const createRedirectUrl = (
             }
         } else {
             finalUrl = cleanPath;
-            
+
             // Ensure it starts with /
             if (!finalUrl.startsWith('/')) {
                 finalUrl = '/' + finalUrl;
             }
-
-            console.log(finalUrl)
-        }
-    }
-
-    // Add status parameter
-    if (options.sendStatus !== false) {
-        queryParams.append('status', options.type);
-    }
-
-    // Add code and message for errors
-    if (options.code) {
-        queryParams.append('errorCode', options.code);
-
-        if (options.message) {
-            queryParams.append('errorMessage', encodeURIComponent(options.message));
         }
     }
 
     // Add data for success
-    if (options.data) {
-        if (typeof options.data === "object" && options.data !== null) {
-            Object.keys(options.data).forEach(key => {
-                const value = options.data![key];
+    if (data) {
+        if (typeof data === "object" && data !== null) {
+            Object.keys(data).forEach(key => {
+                const value = data![key];
                 queryParams.append(key, encodeURIComponent(value));
             });
         } else {
-            queryParams.append('data', encodeURIComponent(JSON.stringify(options.data)));
+            queryParams.append('data', encodeURIComponent(JSON.stringify(data)));
         }
     }
 
@@ -160,57 +128,8 @@ export const createRedirectUrl = (
 };
 
 /**
- * Handle redirects with proper status and parameters
+ * Build unified callback URL with code and data
  */
-export const handleRedirect = (
-    req: Request,
-    res: Response,
-    baseUrl: string,
-    options: RedirectOptions,
-    originalUrl?: string
-): void => {
-    const redirectUrl = createRedirectUrl(req, baseUrl, options, originalUrl);
-    res.redirect(redirectUrl);
-};
-
-/**
- * Redirect on success
- */
-export const redirectWithSuccess = (
-    req: Request,
-    res: Response,
-    path: string,
-    options: {
-        originalUrl?: string,
-        message?: string,
-        data?: Record<string, any>,
-        sendStatus?: boolean
-    }
-): void => {
-    handleRedirect(req, res, path, {
-        type: RedirectType.SUCCESS,
-        ...options
-    }, options.originalUrl);
-};
-
-/**
- * Redirect on error
- */
-export const redirectWithError = (
-    req: Request,
-    res: Response,
-    path: string,
-    code: ApiErrorCode,
-    options: {
-        originalUrl?: string,
-        message?: string,
-        data?: Record<string, any>,
-        sendStatus?: boolean
-    }
-): void => {
-    handleRedirect(req, res, path, {
-        type: RedirectType.ERROR,
-        code,
-        ...options
-    }, options.originalUrl);
-};
+export function getCallbackUrl(): string {
+    return `${getProxyUrl()}/auth/callback`;
+}

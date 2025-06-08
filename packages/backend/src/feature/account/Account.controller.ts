@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
-import { JsonSuccess, RedirectSuccess } from '../../types/response.types';
+import { JsonSuccess, Redirect } from '../../types/response.types';
 import { AccountDocument } from './Account.model';
 import { asyncHandler } from '../../utils/response';
 import * as AccountService from './Account.service';
@@ -24,7 +24,7 @@ export const logoutAll = (req: Request, res: Response, next: NextFunction) => {
     const accountIdArray = AccountService.validateAccountIds(accountIds as string[]);
     AccountService.clearAllAccountSessions(res, accountIdArray);
 
-    next(new RedirectSuccess(null, "/"));
+    next(new Redirect(null, "/"));
 };
 
 /**
@@ -36,7 +36,10 @@ export const logout = (req: Request, res: Response, next: NextFunction) => {
     const validatedAccountId = AccountService.validateSingleAccountId(accountId as string);
     AccountService.clearSingleAccountSession(res, validatedAccountId);
 
-    next(new RedirectSuccess({ clearClientAccountState: clearClientAccountState === "false" ? false : true }, "/", undefined));
+    next(new Redirect(
+        { clearClientAccountState: clearClientAccountState === "false" ? false : true },
+        "/"
+    ));
 };
 
 /**
@@ -96,7 +99,7 @@ export const refreshToken = asyncHandler(async (req, res, next) => {
 
     await AccountService.refreshAccountToken(res, accountId, account, refreshToken);
 
-    next(new RedirectSuccess(null, finalRedirectUrl, undefined, undefined, undefined, false));
+    next(new Redirect(null, finalRedirectUrl));
 });
 
 /**

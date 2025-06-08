@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { ApiErrorCode, BadRequestError, NotFoundError, RedirectError, ServerError } from '../types/response.types';
+import { ApiErrorCode, BadRequestError, NotFoundError, Redirect, ServerError } from '../types/response.types';
 import db from '../config/db';
 import { asyncHandler } from '../utils/response';
 import { validateAccount } from '../feature/account/Account.validation';
@@ -148,19 +148,21 @@ export const validateTokenAccess = asyncHandler(async (req, res, next) => {
         const accountPath = account.id || account._id?.toHexString?.() || accountId;
 
         if (isRefreshTokenPath) {
-            throw new RedirectError(
-                ApiErrorCode.TOKEN_INVALID,
-                `./account/logout?accountId=${accountPath}&clearClientAccountState=${false}`,
-                "Refresh token expired",
-                302
+            throw new Redirect(
+                {
+                    code: ApiErrorCode.TOKEN_INVALID,
+                    message: "Refresh token expired"
+                },
+                `./account/logout?accountId=${accountPath}&clearClientAccountState=${false}`
             );
         } else {
-            throw new RedirectError(
-                ApiErrorCode.TOKEN_INVALID,
+            throw new Redirect(
+                {
+                    code: ApiErrorCode.TOKEN_INVALID,
+                    message: "Access token expired"
+                },
                 `./${accountPath}/account/refreshToken`,
-                "Access token expired",
                 302,
-                undefined,
                 req.originalUrl
             );
         }
