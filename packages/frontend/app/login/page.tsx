@@ -19,17 +19,45 @@ import { useLocalAuth } from "@/hooks/useLocalAuth"
 import { useOAuth } from "@/hooks/useOAuth"
 import { getEnvironmentConfig } from "@/lib/utils"
 
-const loginSchema = z.object({
-    email: z.string().email("Please enter a valid email address").optional(),
-    username: z.string().min(1, "Username is required").optional(),
-    password: z.string().min(1, "Password is required"),
-    rememberMe: z.boolean(),
-}).refine((data) => data.email || data.username, {
-    message: "Either email or username is required",
-    path: ["email"]
-})
+// Base form data type that includes all possible fields
+type LoginFormData = {
+    email: string
+    username: string
+    password: string
+    rememberMe: boolean
+    loginType: 'email' | 'username' // Track which type is being used
+}
 
-type LoginFormData = z.infer<typeof loginSchema>
+// Create the Zod schema with conditional validation using refine
+const createLoginSchema = () => {
+    return z.object({
+        email: z.string(),
+        username: z.string(),
+        password: z.string().min(1, "Password is required"),
+        rememberMe: z.boolean(),
+        loginType: z.enum(['email', 'username']),
+    }).refine((data) => {
+        // Conditional validation based on loginType
+        if (data.loginType === 'email') {
+            // When using email, validate email field
+            if (!data.email || data.email.trim() === '') {
+                return false
+            }
+            // Validate email format
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+            return emailRegex.test(data.email)
+        } else {
+            // When using username, validate username field
+            if (!data.username || data.username.trim() === '') {
+                return false
+            }
+            return data.username.length >= 1
+        }
+    }, {
+        message: "Please provide a valid email address or username",
+        path: ["email"] // Show error on email field by default
+    })
+}
 
 export default function LoginPage() {
     const router = useRouter()
@@ -45,17 +73,80 @@ export default function LoginPage() {
         register,
         handleSubmit,
         formState: { errors, isSubmitting },
+        watch,
+        setValue,
+        clearErrors,
+        setError,
+        trigger
     } = useForm<LoginFormData>({
-        resolver: zodResolver(loginSchema),
+        resolver: zodResolver(createLoginSchema()),
         defaultValues: {
-            rememberMe: false,
             email: "",
-            username: ""
+            username: "",
+            password: "",
+            rememberMe: false,
+            loginType: "email",
         }
     })
 
+    // Debug: Watch form values
+    const watchedValues = watch()
+    console.log("Current mode:", useEmail ? "email" : "username")
+    console.log("Form values:", watchedValues)
+    console.log("Form errors:", errors)
+    console.log("Is submitting:", isSubmitting)
+    console.log("Is authenticating:", isAuthenticating)
+
+    const handleInputTypeChange = async (newUseEmail: boolean) => {
+        setUseEmail(newUseEmail)
+        
+        // Update the loginType field to trigger proper validation
+        setValue("loginType", newUseEmail ? "email" : "username")
+        
+        // Clear the field that's not being used and its errors
+        if (newUseEmail) {
+            setValue("username", "")
+            clearErrors("username")
+        } else {
+            setValue("email", "")
+            clearErrors("email")
+        }
+
+        // Clear any existing validation errors
+        clearErrors()
+        
+        // Re-trigger validation after a short delay
+        setTimeout(() => trigger(), 100)
+    }
+
     const onSubmit = async (data: LoginFormData) => {
+        console.log("Form submitted with data:", data)
+        
         try {
+            // Additional client-side validation based on current mode
+            if (useEmail) {
+                if (!data.email || data.email.trim() === '') {
+                    setError("email", { message: "Email is required" })
+                    return
+                }
+                // Validate email format
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+                if (!emailRegex.test(data.email)) {
+                    setError("email", { message: "Please enter a valid email address" })
+                    return
+                }
+            } else {
+                if (!data.username || data.username.trim() === '') {
+                    setError("username", { message: "Username is required" })
+                    return
+                }
+            }
+
+            if (!data.password || data.password.trim() === '') {
+                setError("password", { message: "Password is required" })
+                return
+            }
+
             const loginData = {
                 email: useEmail ? data.email : undefined,
                 username: !useEmail ? data.username : undefined,
@@ -63,10 +154,13 @@ export default function LoginPage() {
                 rememberMe: data.rememberMe ?? false,
             }
 
+            console.log("Sending login request with:", loginData)
+
             const result = await login(loginData)
+            console.log("Login result:", result)
 
             if (result?.requiresTwoFactor) {
-                // Redirect to 2FA verification page
+                console.log("2FA required, redirecting...")
                 router.push("/two-factor-verify")
                 return
             }
@@ -78,11 +172,12 @@ export default function LoginPage() {
                 variant: "success",
             })
 
-            // Redirect to home URL or dashboard
+            console.log("Login successful, redirecting to:", config.homeUrl || "/dashboard")
             const redirectUrl = config.homeUrl || "/dashboard"
             router.push(redirectUrl)
 
         } catch (error: unknown) {
+            console.error("Login error:", error)
             const errorMessage = error instanceof Error ? error.message : "Please check your credentials and try again."
             toast({
                 title: "Sign in failed",
@@ -93,10 +188,11 @@ export default function LoginPage() {
     }
 
     const handleOAuthLogin = (provider: OAuthProviders) => {
+        console.log("OAuth login clicked for provider:", provider)
         try {
-            const redirectUrl = config.homeUrl || "/dashboard"
-            signinWithProvider(provider, redirectUrl)
+            signinWithProvider(provider)
         } catch (error: unknown) {
+            console.error("OAuth error:", error)
             const errorMessage = error instanceof Error ? error.message : "Unable to start OAuth sign in process."
             toast({
                 title: "OAuth sign in failed",
@@ -112,7 +208,27 @@ export default function LoginPage() {
             description="Sign in to your account to continue"
             showBackToHome={!!config.homeUrl}
         >
+            {/* Debug Info */}
+            {config.debugMode && (
+                <div className="mb-4 p-3 bg-gray-100 dark:bg-gray-800 rounded text-xs">
+                    <div><strong>Debug Info:</strong></div>
+                    <div>Use Email: {useEmail ? 'Yes' : 'No'}</div>
+                    <div>Login Type: {watchedValues.loginType}</div>
+                    <div>Email: {watchedValues.email || 'empty'}</div>
+                    <div>Username: {watchedValues.username || 'empty'}</div>
+                    <div>Password: {watchedValues.password ? '*'.repeat(watchedValues.password.length) : 'empty'}</div>
+                    <div>Remember Me: {watchedValues.rememberMe ? 'Yes' : 'No'}</div>
+                    <div>Is Submitting: {isSubmitting ? 'Yes' : 'No'}</div>
+                    <div>Is Authenticating: {isAuthenticating ? 'Yes' : 'No'}</div>
+                    <div>Form Valid: {Object.keys(errors).length === 0 ? 'Yes' : 'No'}</div>
+                    <div>Errors: {JSON.stringify(errors)}</div>
+                </div>
+            )}
+
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+                {/* Hidden field for login type */}
+                <input type="hidden" {...register("loginType")} />
+
                 {/* OAuth Buttons */}
                 {config.enableOAuth && (
                     <div className="space-y-3">
@@ -145,7 +261,7 @@ export default function LoginPage() {
                             type="button"
                             variant={useEmail ? "default" : "ghost"}
                             size="sm"
-                            onClick={() => setUseEmail(true)}
+                            onClick={() => handleInputTypeChange(true)}
                             className="text-xs"
                         >
                             Email
@@ -154,7 +270,7 @@ export default function LoginPage() {
                             type="button"
                             variant={!useEmail ? "default" : "ghost"}
                             size="sm"
-                            onClick={() => setUseEmail(false)}
+                            onClick={() => handleInputTypeChange(false)}
                             className="text-xs"
                         >
                             Username
@@ -168,17 +284,35 @@ export default function LoginPage() {
                         <Label htmlFor={useEmail ? "email" : "username"}>
                             {useEmail ? "Email address" : "Username"}
                         </Label>
-                        <Input
-                            id={useEmail ? "email" : "username"}
-                            type={useEmail ? "email" : "text"}
-                            placeholder={useEmail ? "Enter your email" : "Enter your username"}
-                            error={!!(useEmail ? errors.email : errors.username)}
-                            disabled={isSubmitting || isAuthenticating}
-                            {...register(useEmail ? "email" : "username")}
-                        />
-                        {(useEmail ? errors.email : errors.username) && (
+                        {useEmail ? (
+                            <Input
+                                id="email"
+                                type="email"
+                                placeholder="Enter your email"
+                                error={!!errors.email}
+                                disabled={isSubmitting || isAuthenticating}
+                                {...register("email")}
+                                autoComplete="email"
+                            />
+                        ) : (
+                            <Input
+                                id="username"
+                                type="text"
+                                placeholder="Enter your username"
+                                error={!!errors.username}
+                                disabled={isSubmitting || isAuthenticating}
+                                {...register("username")}
+                                autoComplete="username"
+                            />
+                        )}
+                        {useEmail && errors.email && (
                             <p className="text-sm text-destructive">
-                                {(useEmail ? errors.email : errors.username)?.message}
+                                {errors.email.message}
+                            </p>
+                        )}
+                        {!useEmail && errors.username && (
+                            <p className="text-sm text-destructive">
+                                {errors.username.message}
                             </p>
                         )}
                     </div>
@@ -204,6 +338,7 @@ export default function LoginPage() {
                                 error={!!errors.password}
                                 disabled={isSubmitting || isAuthenticating}
                                 {...register("password")}
+                                autoComplete="current-password"
                             />
                             <Button
                                 type="button"
@@ -224,7 +359,9 @@ export default function LoginPage() {
                             </Button>
                         </div>
                         {errors.password && (
-                            <p className="text-sm text-destructive">{errors.password.message}</p>
+                            <p className="text-sm text-destructive">
+                                {errors.password.message}
+                            </p>
                         )}
                     </div>
                 )}
@@ -252,6 +389,7 @@ export default function LoginPage() {
                         className="w-full"
                         loading={isSubmitting || isAuthenticating}
                         disabled={isSubmitting || isAuthenticating}
+                        onClick={() => console.log("Sign in button clicked, form valid:", Object.keys(errors).length === 0)}
                     >
                         Sign in
                     </Button>
