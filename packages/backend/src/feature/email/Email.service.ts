@@ -2,7 +2,7 @@ import nodemailer from 'nodemailer';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { ServerError, ValidationError } from '../../types/response.types';
-import { getTemplateMetadata, isValidTemplate, getTemplateFilePath } from './Email.utils';
+import { getTemplateMetadata, getTemplateFilePath } from './Email.utils';
 import { EmailTemplate } from './Email.types';
 import { getAppName, getBaseUrl, getNodeEnv, getProxyUrl, getSenderEmail, getSenderName } from '../../config/env.config';
 import { getTransporter, resetTransporter } from './Email.transporter';
@@ -83,6 +83,7 @@ function generatePlainText(html: string, variables: Record<string, string>): str
 
 /**
  * Generic email sender for custom templates with type safety
+ * Now throws errors instead of swallowing them
  */
 export async function sendCustomEmail(
     to: string,
@@ -90,6 +91,14 @@ export async function sendCustomEmail(
     template: EmailTemplate,
     variables: Record<string, string>
 ): Promise<void> {
+    // Input validation
+    if (!to || !to.trim()) {
+        throw new ValidationError('Recipient email is required');
+    }
+    if (!subject || !subject.trim()) {
+        throw new ValidationError('Email subject is required');
+    }
+
     const transporter = await getTransporter();
 
     // Add common variables
@@ -116,7 +125,7 @@ export async function sendCustomEmail(
         text
     };
 
-    // Send email with error handling
+    // Send email with proper error handling
     try {
         const result = await transporter.sendMail(mailOptions);
 
@@ -124,6 +133,8 @@ export async function sendCustomEmail(
         if (getNodeEnv() !== 'production') {
             logger.info('Preview URL: %s', nodemailer.getTestMessageUrl(result));
         }
+
+        logger.info(`Email sent successfully to ${to}: ${subject}`);
     } catch (error) {
         logger.error('Failed to send email:', error);
 
@@ -137,14 +148,19 @@ export async function sendCustomEmail(
             resetTransporter();
         }
 
-        throw new ServerError('Failed to send email');
+        // Re-throw the error instead of swallowing it
+        throw new ServerError(`Failed to send email to ${to}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
 
 /**
- * Send email verification
+ * Send email verification - now throws on failure
  */
 export async function sendVerificationEmail(email: string, firstName: string, token: string): Promise<void> {
+    if (!email || !firstName || !token) {
+        throw new ValidationError('Email, firstName, and token are required for verification email');
+    }
+
     const verificationUrl = `${getProxyUrl()}${getBaseUrl()}/auth/verify-email?token=${token}`;
 
     await sendCustomEmail(
@@ -159,9 +175,13 @@ export async function sendVerificationEmail(email: string, firstName: string, to
 }
 
 /**
- * Send password reset email
+ * Send password reset email - now throws on failure
  */
 export async function sendPasswordResetEmail(email: string, firstName: string, token: string): Promise<void> {
+    if (!email || !firstName || !token) {
+        throw new ValidationError('Email, firstName, and token are required for password reset email');
+    }
+
     const resetUrl = `${getProxyUrl()}${getBaseUrl()}/reset-password?token=${token}`;
 
     await sendCustomEmail(
@@ -176,9 +196,13 @@ export async function sendPasswordResetEmail(email: string, firstName: string, t
 }
 
 /**
- * Send password changed notification
+ * Send password changed notification - now throws on failure
  */
 export async function sendPasswordChangedNotification(email: string, firstName: string): Promise<void> {
+    if (!email || !firstName) {
+        throw new ValidationError('Email and firstName are required for password changed notification');
+    }
+
     const now = new Date();
 
     await sendCustomEmail(
@@ -194,9 +218,13 @@ export async function sendPasswordChangedNotification(email: string, firstName: 
 }
 
 /**
- * Send successful login notification
+ * Send login notification - now throws on failure
  */
 export async function sendLoginNotification(email: string, firstName: string, ipAddress: string, device: string): Promise<void> {
+    if (!email || !firstName || !ipAddress || !device) {
+        throw new ValidationError('Email, firstName, ipAddress, and device are required for login notification');
+    }
+
     const now = new Date();
 
     await sendCustomEmail(
@@ -213,9 +241,13 @@ export async function sendLoginNotification(email: string, firstName: string, ip
 }
 
 /**
- * Send two-factor authentication enabled notification
+ * Send two-factor authentication enabled notification - now throws on failure
  */
 export async function sendTwoFactorEnabledNotification(email: string, firstName: string): Promise<void> {
+    if (!email || !firstName) {
+        throw new ValidationError('Email and firstName are required for 2FA enabled notification');
+    }
+
     const now = new Date();
 
     await sendCustomEmail(
@@ -227,142 +259,4 @@ export async function sendTwoFactorEnabledNotification(email: string, firstName:
             DATE: now.toLocaleDateString()
         }
     );
-}
-
-/**
- * Send bulk emails with rate limiting and type safety
- */
-export async function sendBulkEmails(
-    emails: Array<{
-        to: string;
-        subject: string;
-        template: EmailTemplate;
-        variables: Record<string, string>;
-    }>,
-    options: {
-        batchSize?: number;
-        delayBetweenBatches?: number;
-    } = {}
-): Promise<void> {
-    const { batchSize = 10, delayBetweenBatches = 1000 } = options;
-
-    // Process emails in batches to avoid overwhelming the SMTP server
-    for (let i = 0; i < emails.length; i += batchSize) {
-        const batch = emails.slice(i, i + batchSize);
-
-        // Send batch in parallel
-        const promises = batch.map(email =>
-            sendCustomEmail(email.to, email.subject, email.template, email.variables)
-        );
-
-        try {
-            await Promise.all(promises);
-            logger.info(`Sent batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(emails.length / batchSize)}`);
-        } catch (error) {
-            logger.error(`Failed to send batch ${Math.floor(i / batchSize) + 1}:`, error);
-        }
-
-        // Wait between batches (except for the last batch)
-        if (i + batchSize < emails.length) {
-            await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
-        }
-    }
-}
-
-/**
- * Send test email
- */
-export async function sendTestEmail(to: string): Promise<void> {
-    await sendCustomEmail(
-        to,
-        `Test Email from ${getAppName()}`,
-        EmailTemplate.EMAIL_VERIFICATION, // Reuse verification template for testing
-        {
-            FIRST_NAME: 'Test User',
-            VERIFICATION_URL: `${getProxyUrl()}${getBaseUrl()}/test`
-        }
-    );
-}
-
-/**
- * Clear template cache (useful for development)
- */
-export function clearTemplateCache(): void {
-    templateCache.clear();
-    logger.info('Email template cache cleared');
-}
-
-/**
- * Clear all caches and reset transporter (useful for development)
- */
-export function clearAllCaches(): void {
-    clearTemplateCache();
-    resetTransporter();
-    logger.info('All email caches cleared and transporter reset');
-}
-
-/**
- * Validate email template exists
- */
-export async function validateTemplate(template: EmailTemplate): Promise<boolean> {
-    try {
-        await loadTemplate(template);
-        return true;
-    } catch {
-        return false;
-    }
-}
-
-/**
- * Validate template by string name (with type checking)
- */
-export async function validateTemplateByName(templateName: string): Promise<boolean> {
-    if (!isValidTemplate(templateName)) {
-        return false;
-    }
-    return validateTemplate(templateName);
-}
-
-/**
- * Get available email templates
- */
-export async function getAvailableTemplates(): Promise<EmailTemplate[]> {
-    try {
-        const templatesDir = path.join(process.cwd(), 'src', 'feature', 'email', 'templates');
-        const files = await fs.readdir(templatesDir);
-
-        // Filter and validate template files
-        const availableTemplates: EmailTemplate[] = [];
-
-        for (const file of files) {
-            if (file.endsWith('.html')) {
-                const templateName = file.replace('.html', '');
-                if (isValidTemplate(templateName)) {
-                    availableTemplates.push(templateName);
-                }
-            }
-        }
-
-        return availableTemplates;
-    } catch (error) {
-        logger.error('Failed to read templates directory:', error);
-        return [];
-    }
-}
-
-/**
- * Get template information
- */
-export function getTemplateInfo(template: EmailTemplate) {
-    return getTemplateMetadata(template);
-}
-
-/**
- * List all templates with their metadata
- */
-export function listAllTemplates() {
-    return Object.values(EmailTemplate).map(template => ({
-        template,
-        ...getTemplateMetadata(template)
-    }));
 }

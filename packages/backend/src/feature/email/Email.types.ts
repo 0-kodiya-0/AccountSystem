@@ -128,3 +128,10 @@ export interface EmailHealthCheck {
     missingEnvVars: string[];
     templateValidation: Record<EmailTemplate, boolean>;
 }
+
+export  interface RetryOptions {
+    maxAttempts?: number;
+    delayMs?: number;
+    backoffMultiplier?: number;
+    criticalOperation?: boolean;
+}
