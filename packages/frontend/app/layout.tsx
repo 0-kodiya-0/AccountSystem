@@ -3,7 +3,7 @@ import { Inter } from "next/font/google"
 import "./globals.css"
 
 import { ThemeProvider } from "@/components/theme/theme-provider"
-import { ToastProvider, ToastViewport } from "@/components/ui/toast"
+import { Toaster } from "@/components/ui/toaster"
 import { AuthProvider } from "@accountsystem/auth-react-sdk"
 import { authClient } from "@/lib/auth"
 import { getEnvironmentConfig } from "@/lib/utils"
@@ -59,10 +59,8 @@ export default function RootLayout({
             autoFetchAccountData={true}
             prefetchOnMount={true}
           >
-            <ToastProvider>
-              {children}
-              <ToastViewport />
-            </ToastProvider>
+            {children}
+            <Toaster />
           </AuthProvider>
         </ThemeProvider>
       </body>
