@@ -1,11 +1,9 @@
-import { useAuth } from "@accountsystem/auth-react-sdk"
-import { OAuthProviders } from "@accountsystem/auth-react-sdk"
+import { useAuth , OAuthProviders } from "@accountsystem/auth-react-sdk"
 
 export function useOAuth() {
     const { 
         startOAuthSignup, 
         startOAuthSignin,
-        handleOAuthCallback,
         requestGooglePermission,
         checkGoogleScopes,
         isAuthenticating,
@@ -13,32 +11,19 @@ export function useOAuth() {
         oauthState
     } = useAuth()
 
-    const signupWithProvider = (provider: OAuthProviders, redirectUrl?: string) => {
-        startOAuthSignup(provider, redirectUrl)
+    const signupWithProvider = (provider: OAuthProviders) => {
+        startOAuthSignup(provider)
     }
 
-    const signinWithProvider = (provider: OAuthProviders, redirectUrl?: string) => {
-        startOAuthSignin(provider, redirectUrl)
-    }
-
-    const handleCallback = async (params: URLSearchParams) => {
-        return await handleOAuthCallback(params)
-    }
-
-    const requestPermissions = (accountId: string, scopes: string[], redirectUrl?: string) => {
-        requestGooglePermission(accountId, scopes, redirectUrl)
-    }
-
-    const checkPermissions = async (accountId: string, scopes: string[]) => {
-        return await checkGoogleScopes(accountId, scopes)
+    const signinWithProvider = (provider: OAuthProviders) => {
+        startOAuthSignin(provider)
     }
 
     return {
         signupWithProvider,
         signinWithProvider,
-        handleOAuthCallback: handleCallback,
-        requestGooglePermission: requestPermissions,
-        checkGoogleScopes: checkPermissions,
+        requestGooglePermission,
+        checkGoogleScopes,
         isAuthenticating,
         error,
         oauthState
