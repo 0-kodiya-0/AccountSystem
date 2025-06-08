@@ -15,7 +15,6 @@ import {
     TokenCheckResponse,
     TwoFactorSetupResponse
 } from '../types';
-import { CallbackHandlers, CallbackHandler } from '../callback/callback-handler';
 
 interface AuthContextValue {
     // Client instance
@@ -72,12 +71,18 @@ interface AuthContextValue {
     refreshAccountData: (accountId: string) => Promise<Account>;
     prefetchAccountsData: () => Promise<void>;
 
-    // Utilities
+    // Store actions (exposed for hooks)
+    addAccount: (account: Account) => void;
+    setCurrentAccount: (accountId: string | null) => void;
+    setOAuthTempToken: (tempToken: string) => void;
+    clearOAuthState: () => void;
+    setAuthenticating: (authenticating: boolean) => void;
+    setError: (error: string | null) => void;
     clearError: () => void;
-    refreshCurrentAccount: () => Promise<void>;
+    setLoading: (loading: boolean) => void;
 
-    handleAuthCallback: (params: URLSearchParams, handlers: CallbackHandlers) => Promise<void>;
-    createCallbackHandler: (handlers: CallbackHandlers) => CallbackHandler;
+    // Utilities
+    refreshCurrentAccount: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -293,11 +298,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         }
     }, [client, setLoading, clearError, setError]);
 
-    const createCallbackHandler = useCallback((handlers: CallbackHandlers) => {
-        return new CallbackHandler(handlers);
-    }, []);
-
-    // Update the OAuth methods to not use redirectUrl
+    // OAuth methods
     const startOAuthSignup = useCallback((provider: OAuthProviders) => {
         setOAuthInProgress(provider);
         client.redirectToOAuthSignup(provider);
@@ -307,37 +308,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         setOAuthInProgress(provider);
         client.redirectToOAuthSignin(provider);
     }, [client, setOAuthInProgress]);
-
-    const handleAuthCallback = useCallback(async (params: URLSearchParams, handlers: CallbackHandlers) => {
-        try {
-            setAuthenticating(true);
-            clearError();
-
-            if (!handlers) {
-                throw new Error('Callback handlers are required');
-            }
-
-            const callbackHandler = new CallbackHandler(handlers);
-            const success = await callbackHandler.handleCallbackFromParams(params);
-
-            if (success) {
-                // Clean up URL parameters
-                const url = new URL(window.location.href);
-                url.search = '';
-                window.history.replaceState({}, '', url.toString());
-            } else {
-                throw new Error('No valid callback data found');
-            }
-
-            clearOAuthState();
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Auth callback failed';
-            setError(message);
-            clearOAuthState();
-        } finally {
-            setAuthenticating(false);
-        }
-    }, [client, setAuthenticating, clearError, setError, addAccount, setCurrentAccount, clearOAuthState, setOAuthTempToken]);
 
     // Account Management Methods
     const updateAccount = useCallback(async (accountId: string, updates: Partial<Account>): Promise<Account> => {
@@ -541,12 +511,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         refreshAccountData,
         prefetchAccountsData,
 
-        // Utilities
+        // Store actions (exposed for hooks)
+        addAccount,
+        setCurrentAccount,
+        setOAuthTempToken,
+        clearOAuthState,
+        setAuthenticating,
+        setError,
         clearError,
-        refreshCurrentAccount,
+        setLoading,
 
-        createCallbackHandler,
-        handleAuthCallback
+        // Utilities
+        refreshCurrentAccount
     };
 
     return (

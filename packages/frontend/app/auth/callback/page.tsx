@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@accountsystem/auth-react-sdk"
+import { useCallbackHandler } from "@accountsystem/auth-react-sdk"
 import { getEnvironmentConfig } from "@/lib/utils"
-import { CallbackHandlers } from "@accountsystem/auth-react-sdk"
 import { CheckCircle, XCircle, AlertCircle } from "lucide-react"
 
 type StatusType = 'processing' | 'success' | 'error' | 'redirecting'
@@ -18,7 +17,6 @@ interface StatusState {
 
 export default function AuthCallbackPage() {
     const router = useRouter()
-    const { handleAuthCallback } = useAuth()
     const config = getEnvironmentConfig()
 
     const [status, setStatus] = useState<StatusState>({
@@ -44,6 +42,200 @@ export default function AuthCallbackPage() {
         }, delay * 1000)
     }
 
+    // Use the callback handler hook with custom overrides
+    const { handleAuthCallback } = useCallbackHandler({
+        enableAutoRedirect: false, // We handle redirects manually for UI feedback
+        customRedirectUrl: config.homeUrl || "/dashboard",
+
+        // OAuth success handlers with UI updates
+        onOAuthSigninSuccess: async ({ name }) => {
+            console.log("OAuth signin success:", name)
+            setStatus({
+                type: 'success',
+                title: 'Sign in successful!',
+                message: `Welcome back, ${name}! Redirecting to your dashboard...`
+            })
+            redirectWithCountdown(config.homeUrl || "/dashboard", 2)
+        },
+
+        onOAuthSignupSuccess: async ({ name }) => {
+            console.log("OAuth signup success:", name)
+            setStatus({
+                type: 'success',
+                title: 'Account created successfully!',
+                message: `Welcome to our platform, ${name}! Redirecting to your dashboard...`
+            })
+            redirectWithCountdown(config.homeUrl || "/dashboard", 2)
+        },
+
+        onOAuthPermissionSuccess: async ({ service, scopeLevel }) => {
+            console.log("OAuth permission success:", service, scopeLevel)
+            setStatus({
+                type: 'success',
+                title: 'Permissions granted!',
+                message: `Successfully granted ${service} ${scopeLevel} permissions. Redirecting...`
+            })
+            redirectWithCountdown(config.homeUrl || "/dashboard", 2)
+        },
+
+        // Local auth success handlers
+        onLocalSigninSuccess: async ({ name }) => {
+            console.log("Local signin success:", name)
+            setStatus({
+                type: 'success',
+                title: 'Sign in successful!',
+                message: `Welcome back, ${name}! Redirecting to your dashboard...`
+            })
+            redirectWithCountdown(config.homeUrl || "/dashboard", 2)
+        },
+
+        onLocalSignupSuccess: async ({ message }) => {
+            console.log("Local signup success:", message)
+            setStatus({
+                type: 'success',
+                title: 'Account created!',
+                message: message || "Account created successfully. Redirecting to sign in..."
+            })
+            redirectWithCountdown("/login", 2)
+        },
+
+        onLocal2FARequired: async ({ tempToken }) => {
+            console.log("2FA required:", tempToken)
+            setStatus({
+                type: 'redirecting',
+                title: 'Two-factor authentication required',
+                message: 'Redirecting to verification page...'
+            })
+            redirectWithCountdown(`/two-factor-verify?tempToken=${tempToken}`, 1)
+        },
+
+        onLocalEmailVerified: async ({ message }) => {
+            console.log("Email verified:", message)
+            setStatus({
+                type: 'success',
+                title: 'Email verified!',
+                message: message || "Email verified successfully. You can now sign in."
+            })
+            redirectWithCountdown("/login", 2)
+        },
+
+        onLocalPasswordResetSuccess: async ({ message }) => {
+            console.log("Password reset success:", message)
+            setStatus({
+                type: 'success',
+                title: 'Password reset successful!',
+                message: message || "Password reset successfully. You can now sign in."
+            })
+            redirectWithCountdown("/login", 2)
+        },
+
+        // Error handlers with UI updates
+        onOAuthError: async ({ error }) => {
+            console.error("OAuth error:", error)
+            setStatus({
+                type: 'error',
+                title: 'OAuth authentication failed',
+                message: error || "OAuth authentication failed. Please try again."
+            })
+            redirectWithCountdown("/login", 4)
+        },
+
+        onLocalAuthError: async ({ error }) => {
+            console.error("Local auth error:", error)
+            setStatus({
+                type: 'error',
+                title: 'Authentication failed',
+                message: error || "Authentication failed. Please try again."
+            })
+            redirectWithCountdown("/login", 4)
+        },
+
+        onPermissionError: async ({ error }) => {
+            console.error("Permission error:", error)
+            setStatus({
+                type: 'error',
+                title: 'Permission request failed',
+                message: error || "Permission request failed. Returning to dashboard."
+            })
+            redirectWithCountdown(config.homeUrl || "/dashboard", 4)
+        },
+
+        onUserNotFound: async () => {
+            console.log("User not found")
+            setStatus({
+                type: 'error',
+                title: 'Account not found',
+                message: 'Please sign up for an account first.'
+            })
+            redirectWithCountdown("/signup", 3)
+        },
+
+        onUserExists: async () => {
+            console.log("User exists")
+            setStatus({
+                type: 'error',
+                title: 'Account already exists',
+                message: 'Please sign in to your existing account.'
+            })
+            redirectWithCountdown("/login", 3)
+        },
+
+        onTokenExpired: async () => {
+            console.log("Token expired")
+            setStatus({
+                type: 'error',
+                title: 'Session expired',
+                message: 'Your session has expired. Please sign in again.'
+            })
+            redirectWithCountdown("/login", 3)
+        },
+
+        // Special flow handlers
+        onPermissionReauthorize: async ({ accountId }) => {
+            console.log("Permission reauthorize:", accountId)
+            setStatus({
+                type: 'redirecting',
+                title: 'Additional permissions needed',
+                message: 'Redirecting to grant additional permissions...'
+            })
+            setTimeout(() => {
+                window.location.href = `/oauth/permission/reauthorize?accountId=${accountId}`
+            }, 1000)
+        },
+
+        onAccountSelectionRequired: async () => {
+            console.log("Account selection required")
+            setStatus({
+                type: 'redirecting',
+                title: 'Multiple accounts found',
+                message: 'Redirecting to account selection...'
+            })
+            redirectWithCountdown("/accounts", 1)
+        },
+
+        // Generic error handler
+        onError: async (data) => {
+            console.error('Callback error:', data)
+            setStatus({
+                type: 'error',
+                title: 'Authentication failed',
+                message: data.error || "There was a problem processing your authentication."
+            })
+            redirectWithCountdown("/login", 4)
+        },
+
+        // Unknown code handler
+        onUnknownCode: async (data) => {
+            console.warn('Unknown callback code:', data)
+            setStatus({
+                type: 'error',
+                title: 'Unknown response',
+                message: 'Received an unknown response from authentication.'
+            })
+            redirectWithCountdown("/login", 4)
+        }
+    })
+
     const handleCallback = async () => {
         try {
             // Get all URL parameters from current page
@@ -55,189 +247,8 @@ export default function AuthCallbackPage() {
                 throw new Error('No callback code found')
             }
 
-            // Define custom callback handlers with UI status updates
-            const callbackHandlers: CallbackHandlers = {
-                // OAuth success handlers
-                onOAuthSigninSuccess: async ({ name }) => {
-                    console.log("OAuth signin success:", name)
-                    setStatus({
-                        type: 'success',
-                        title: 'Sign in successful!',
-                        message: `Welcome back, ${name}! Redirecting to your dashboard...`
-                    })
-                    redirectWithCountdown(config.homeUrl || "/dashboard", 2)
-                },
-
-                onOAuthSignupSuccess: async ({ name }) => {
-                    console.log("OAuth signup success:", name)
-                    setStatus({
-                        type: 'success',
-                        title: 'Account created successfully!',
-                        message: `Welcome to our platform, ${name}! Redirecting to your dashboard...`
-                    })
-                    redirectWithCountdown(config.homeUrl || "/dashboard", 2)
-                },
-
-                onOAuthPermissionSuccess: async ({ service, scopeLevel }) => {
-                    console.log("OAuth permission success:", service, scopeLevel)
-                    setStatus({
-                        type: 'success',
-                        title: 'Permissions granted!',
-                        message: `Successfully granted ${service} ${scopeLevel} permissions. Redirecting...`
-                    })
-                    redirectWithCountdown(config.homeUrl || "/dashboard", 2)
-                },
-
-                // Local auth success handlers
-                onLocalSigninSuccess: async ({ name }) => {
-                    console.log("Local signin success:", name)
-                    setStatus({
-                        type: 'success',
-                        title: 'Sign in successful!',
-                        message: `Welcome back, ${name}! Redirecting to your dashboard...`
-                    })
-                    redirectWithCountdown(config.homeUrl || "/dashboard", 2)
-                },
-
-                onLocalSignupSuccess: async ({ message }) => {
-                    console.log("Local signup success:", message)
-                    setStatus({
-                        type: 'success',
-                        title: 'Account created!',
-                        message: message || "Account created successfully. Redirecting to sign in..."
-                    })
-                    redirectWithCountdown("/login", 2)
-                },
-
-                onLocal2FARequired: async ({ tempToken }) => {
-                    console.log("2FA required:", tempToken)
-                    setStatus({
-                        type: 'redirecting',
-                        title: 'Two-factor authentication required',
-                        message: 'Redirecting to verification page...'
-                    })
-                    redirectWithCountdown(`/two-factor-verify?tempToken=${tempToken}`, 1)
-                },
-
-                onLocalEmailVerified: async ({ message }) => {
-                    console.log("Email verified:", message)
-                    setStatus({
-                        type: 'success',
-                        title: 'Email verified!',
-                        message: message || "Email verified successfully. You can now sign in."
-                    })
-                    redirectWithCountdown("/login", 2)
-                },
-
-                onLocalPasswordResetSuccess: async ({ message }) => {
-                    console.log("Password reset success:", message)
-                    setStatus({
-                        type: 'success',
-                        title: 'Password reset successful!',
-                        message: message || "Password reset successfully. You can now sign in."
-                    })
-                    redirectWithCountdown("/login", 2)
-                },
-
-                // Error handlers
-                onOAuthError: async ({ error }) => {
-                    console.error("OAuth error:", error)
-                    setStatus({
-                        type: 'error',
-                        title: 'OAuth authentication failed',
-                        message: error || "OAuth authentication failed. Please try again."
-                    })
-                    redirectWithCountdown("/login", 4)
-                },
-
-                onLocalAuthError: async ({ error }) => {
-                    console.error("Local auth error:", error)
-                    setStatus({
-                        type: 'error',
-                        title: 'Authentication failed',
-                        message: error || "Authentication failed. Please try again."
-                    })
-                    redirectWithCountdown("/login", 4)
-                },
-
-                onPermissionError: async ({ error }) => {
-                    console.error("Permission error:", error)
-                    setStatus({
-                        type: 'error',
-                        title: 'Permission request failed',
-                        message: error || "Permission request failed. Returning to dashboard."
-                    })
-                    redirectWithCountdown(config.homeUrl || "/dashboard", 4)
-                },
-
-                onUserNotFound: async () => {
-                    console.log("User not found")
-                    setStatus({
-                        type: 'error',
-                        title: 'Account not found',
-                        message: 'Please sign up for an account first.'
-                    })
-                    redirectWithCountdown("/signup", 3)
-                },
-
-                onUserExists: async () => {
-                    console.log("User exists")
-                    setStatus({
-                        type: 'error',
-                        title: 'Account already exists',
-                        message: 'Please sign in to your existing account.'
-                    })
-                    redirectWithCountdown("/login", 3)
-                },
-
-                onTokenExpired: async () => {
-                    console.log("Token expired")
-                    setStatus({
-                        type: 'error',
-                        title: 'Session expired',
-                        message: 'Your session has expired. Please sign in again.'
-                    })
-                    redirectWithCountdown("/login", 3)
-                },
-
-                // Special flow handlers
-                onPermissionReauthorize: async ({ accountId }) => {
-                    console.log("Permission reauthorize:", accountId)
-                    setStatus({
-                        type: 'redirecting',
-                        title: 'Additional permissions needed',
-                        message: 'Redirecting to grant additional permissions...'
-                    })
-                    setTimeout(() => {
-                        window.location.href = `/oauth/permission/reauthorize?accountId=${accountId}`
-                    }, 1000)
-                },
-
-                onAccountSelectionRequired: async () => {
-                    console.log("Account selection required")
-                    setStatus({
-                        type: 'redirecting',
-                        title: 'Multiple accounts found',
-                        message: 'Redirecting to account selection...'
-                    })
-                    redirectWithCountdown("/accounts", 1)
-                },
-
-                // Unknown code handler
-                onUnknownCode: async (data) => {
-                    console.warn('Unknown callback code:', data)
-                    setStatus({
-                        type: 'error',
-                        title: 'Unknown response',
-                        message: 'Received an unknown response from authentication.'
-                    })
-                    redirectWithCountdown("/login", 4)
-                }
-            }
-
-            // Handle the callback using the auth context method
             console.log("Starting handleAuthCallback...")
-            await handleAuthCallback(params, callbackHandlers)
+            await handleAuthCallback(params)
             console.log("handleAuthCallback completed")
 
         } catch (error: any) {

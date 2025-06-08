@@ -7,8 +7,7 @@ export { AuthProvider, useAuth } from './context/auth-context';
 export { NotificationsProvider, useNotificationsContext } from './context/notifications-context';
 
 // Callback handling
-export { CallbackHandler } from './callback/callback-handler';
-export type { CallbackHandlers } from './callback/callback-handler';
+export { useCallbackHandler } from './hooks/useCallbackHandler';
 
 // Store exports
 export { 
@@ -23,16 +22,17 @@ export {
     useAccountIds
 } from './store/account-store';
 
+// Hook exports
+export { useNotifications } from "./hooks/useNotifications";
+export { useRealtimeNotifications } from "./hooks/useRealtimeNotifications";
+export { useSocket } from "./hooks/useSocket";
+export { useAccount } from "./hooks/useAccount";
+
 // Type exports
 export * from './types';
 
 // Utility exports
 export * from './utils';
-
-export { useNotifications } from "./hooks/useNotifications";
-export { useRealtimeNotifications } from "./hooks/useRealtimeNotifications";
-export { useSocket } from "./hooks/useSocket";
-export { useAccount } from "./hooks/useAccount";
 
 // Version export
 export const version = '1.0.0';
