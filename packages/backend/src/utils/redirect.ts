@@ -6,7 +6,7 @@ import { getProxyUrl } from "../config/env.config";
 /**
  * Get the path prefix that was stripped by the proxy
  */
-function getStrippedPathPrefix(req: Request): string {
+export function getStrippedPathPrefix(req: Request): string {
     // First check if X-Path-Prefix header exists
     const headerPrefix = req.get('X-Path-Prefix');
     if (headerPrefix) {
