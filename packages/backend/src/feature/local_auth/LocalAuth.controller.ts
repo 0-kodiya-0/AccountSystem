@@ -33,6 +33,7 @@ import { createLocalJwtToken, createLocalRefreshToken } from './LocalAuth.jwt';
 import { findUserById } from '../account';
 import { logger } from '../../utils/logger';
 import { getCallbackUrl } from '../../utils/redirect';
+import { sendNonCriticalEmail } from '../email/Email.utils';
 
 /**
  * Sign up (register) with email and password
@@ -97,7 +98,7 @@ export const login = asyncHandler(async (req, res, next) => {
     if (loginData.rememberMe) {
         setRefreshTokenCookie(res, account.id, refreshToken);
     }
-    
+
     // Return success response
     next(new JsonSuccess({
         accountId: account.id,
@@ -273,12 +274,12 @@ export const setupTwoFactor = asyncHandler(async (req, res, next) => {
             // Send notification email (async - don't wait)
             const account = await findUserById(accountId) as Account;
             if (account.userDetails.email) {
-                sendTwoFactorEnabledNotification(
-                    account.userDetails.email,
-                    account.userDetails.firstName || account.userDetails.name.split(' ')[0]
-                ).catch(err => {
-                    logger.error('Failed to send 2FA enabled notification:', err);
-                });
+                sendNonCriticalEmail(
+                    sendTwoFactorEnabledNotification,
+                    [account.userDetails.email,
+                    account.userDetails.firstName || account.userDetails.name.split(' ')[0]],
+                    { maxAttempts: 2, delayMs: 1000 }
+                )
             }
 
             next(new JsonSuccess({
