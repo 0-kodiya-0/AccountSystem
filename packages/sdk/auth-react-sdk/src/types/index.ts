@@ -366,3 +366,45 @@ export interface UseAccountResult {
     refresh: () => Promise<Account | null>;
     clearError: () => void;
 }
+
+export enum CallbackCode {
+    // OAuth success codes
+    OAUTH_SIGNIN_SUCCESS = 'oauth_signin_success',
+    OAUTH_SIGNUP_SUCCESS = 'oauth_signup_success',
+    OAUTH_PERMISSION_SUCCESS = 'oauth_permission_success',
+    
+    // Local auth success codes
+    LOCAL_SIGNIN_SUCCESS = 'local_signin_success',
+    LOCAL_SIGNUP_SUCCESS = 'local_signup_success',
+    LOCAL_2FA_REQUIRED = 'local_2fa_required',
+    LOCAL_EMAIL_VERIFIED = 'local_email_verified',
+    LOCAL_PASSWORD_RESET_SUCCESS = 'local_password_reset_success',
+    
+    // Error codes
+    OAUTH_ERROR = 'oauth_error',
+    LOCAL_AUTH_ERROR = 'local_auth_error',
+    PERMISSION_ERROR = 'permission_error',
+    INVALID_STATE = 'invalid_state',
+    USER_NOT_FOUND = 'user_not_found',
+    USER_EXISTS = 'user_exists',
+    TOKEN_EXPIRED = 'token_expired',
+    
+    // Special flow codes
+    PERMISSION_REAUTHORIZE = 'permission_reauthorize',
+    ACCOUNT_SELECTION_REQUIRED = 'account_selection_required'
+}
+
+export interface CallbackData {
+    code: CallbackCode;
+    accountId?: string;
+    name?: string;
+    provider?: OAuthProviders;
+    tempToken?: string;
+    service?: string;
+    scopeLevel?: string;
+    error?: string;
+    message?: string;
+    // Additional context data
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    [key: string]: any;
+}

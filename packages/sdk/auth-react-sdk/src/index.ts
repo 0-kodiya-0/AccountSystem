@@ -6,6 +6,10 @@ export { SocketClient } from "./client/socket-client";
 export { AuthProvider, useAuth } from './context/auth-context';
 export { NotificationsProvider, useNotificationsContext } from './context/notifications-context';
 
+// Callback handling
+export { CallbackHandler } from './callback/callback-handler';
+export type { CallbackHandlers } from './callback/callback-handler';
+
 // Store exports
 export { 
     useAccountStore, 

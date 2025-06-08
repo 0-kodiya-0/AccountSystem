@@ -15,6 +15,7 @@ import {
     TokenCheckResponse,
     TwoFactorSetupResponse
 } from '../types';
+import { CallbackHandlers, CallbackHandler } from '../callback/callback-handler';
 
 interface AuthContextValue {
     // Client instance
@@ -44,9 +45,8 @@ interface AuthContextValue {
     resetPassword: (token: string, data: ResetPasswordRequest) => Promise<void>;
 
     // OAuth Authentication
-    startOAuthSignup: (provider: OAuthProviders, redirectUrl?: string) => void;
-    startOAuthSignin: (provider: OAuthProviders, redirectUrl?: string) => void;
-    handleOAuthCallback: (params: URLSearchParams) => Promise<void>;
+    startOAuthSignup: (provider: OAuthProviders) => void;
+    startOAuthSignin: (provider: OAuthProviders) => void;
 
     // Account Management
     fetchAccount: (accountId: string, force?: boolean) => Promise<Account>;
@@ -64,7 +64,7 @@ interface AuthContextValue {
     isAccountDisabled: (accountId: string) => boolean;
 
     // Google Permissions
-    requestGooglePermission: (accountId: string, scopes: string[], redirectUrl?: string) => void;
+    requestGooglePermission: (accountId: string, scopes: string[]) => void;
     checkGoogleScopes: (accountId: string, scopes: string[]) => Promise<TokenCheckResponse>;
 
     // Data Management
@@ -75,6 +75,9 @@ interface AuthContextValue {
     // Utilities
     clearError: () => void;
     refreshCurrentAccount: () => Promise<void>;
+
+    handleAuthCallback: (params: URLSearchParams, handlers: CallbackHandlers) => Promise<void>;
+    createCallbackHandler: (handlers: CallbackHandlers) => CallbackHandler;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -290,55 +293,51 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         }
     }, [client, setLoading, clearError, setError]);
 
-    // OAuth Authentication Methods
-    const startOAuthSignup = useCallback((provider: OAuthProviders, redirectUrl?: string) => {
-        setOAuthInProgress(provider, redirectUrl);
-        client.redirectToOAuthSignup(provider, redirectUrl);
+    const createCallbackHandler = useCallback((handlers: CallbackHandlers) => {
+        return new CallbackHandler(handlers);
+    }, []);
+
+    // Update the OAuth methods to not use redirectUrl
+    const startOAuthSignup = useCallback((provider: OAuthProviders) => {
+        setOAuthInProgress(provider);
+        client.redirectToOAuthSignup(provider);
     }, [client, setOAuthInProgress]);
 
-    const startOAuthSignin = useCallback((provider: OAuthProviders, redirectUrl?: string) => {
-        setOAuthInProgress(provider, redirectUrl);
-        client.redirectToOAuthSignin(provider, redirectUrl);
+    const startOAuthSignin = useCallback((provider: OAuthProviders) => {
+        setOAuthInProgress(provider);
+        client.redirectToOAuthSignin(provider);
     }, [client, setOAuthInProgress]);
 
-    const handleOAuthCallback = useCallback(async (params: URLSearchParams) => {
+    const handleAuthCallback = useCallback(async (params: URLSearchParams, handlers: CallbackHandlers) => {
         try {
             setAuthenticating(true);
             clearError();
 
-            const state = params.get('state');
-            const code = params.get('code');
-            const error = params.get('error');
-
-            if (error) {
-                throw new Error(`OAuth error: ${error}`);
+            if (!handlers) {
+                throw new Error('Callback handlers are required');
             }
 
-            if (!state || !code) {
-                throw new Error('Invalid OAuth callback parameters');
-            }
+            const callbackHandler = new CallbackHandler(handlers);
+            const success = await callbackHandler.handleCallbackFromParams(params);
 
-            const accountId = params.get('accountId');
-            if (accountId) {
-                const account = await client.getAccount(accountId);
-                addAccount(account);
-                setCurrentAccount(accountId);
-
-                // Clean up URL
+            if (success) {
+                // Clean up URL parameters
                 const url = new URL(window.location.href);
                 url.search = '';
                 window.history.replaceState({}, '', url.toString());
+            } else {
+                throw new Error('No valid callback data found');
             }
 
             clearOAuthState();
         } catch (error) {
-            const message = error instanceof Error ? error.message : 'OAuth callback failed';
+            const message = error instanceof Error ? error.message : 'Auth callback failed';
             setError(message);
             clearOAuthState();
         } finally {
             setAuthenticating(false);
         }
-    }, [client, setAuthenticating, clearError, setError, addAccount, setCurrentAccount, clearOAuthState]);
+    }, [client, setAuthenticating, clearError, setError, addAccount, setCurrentAccount, clearOAuthState, setOAuthTempToken]);
 
     // Account Management Methods
     const updateAccount = useCallback(async (accountId: string, updates: Partial<Account>): Promise<Account> => {
@@ -437,8 +436,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     }, [client, getActiveAccountIds, clearAccounts, setLoading, setError]);
 
     // Google Permissions
-    const requestGooglePermission = useCallback((accountId: string, scopes: string[], redirectUrl?: string) => {
-        client.requestGooglePermission(accountId, scopes, redirectUrl);
+    const requestGooglePermission = useCallback((accountId: string, scopes: string[]) => {
+        client.requestGooglePermission(accountId, scopes);
     }, [client]);
 
     const checkGoogleScopes = useCallback(async (accountId: string, scopes: string[]) => {
@@ -517,7 +516,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         // OAuth Auth
         startOAuthSignup,
         startOAuthSignin,
-        handleOAuthCallback,
 
         // Account Management
         fetchAccount,
@@ -545,7 +543,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
 
         // Utilities
         clearError,
-        refreshCurrentAccount
+        refreshCurrentAccount,
+
+        createCallbackHandler,
+        handleAuthCallback
     };
 
     return (

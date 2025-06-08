@@ -30,7 +30,7 @@ export class HttpClient {
         this.proxyPath = config.proxyPath || '';
 
         // Build the full base URL with proxy path if provided
-        const fullBaseUrl = this.proxyPath 
+        const fullBaseUrl = this.proxyPath
             ? `${config.backendUrl}${this.proxyPath}`
             : config.backendUrl;
 
@@ -194,37 +194,32 @@ export class HttpClient {
     }
 
     // OAuth Authentication
-    redirectToOAuthSignup(provider: string, redirectUrl?: string): void {
-        const params = new URLSearchParams();
-        if (redirectUrl) params.append('redirectUrl', redirectUrl);
-
-        window.location.href = `${this.getRedirectBaseUrl()}/oauth/signup/${provider}?${params.toString()}`;
+    redirectToOAuthSignup(provider: string): void {
+        window.location.href = `${this.getRedirectBaseUrl()}/oauth/signup/${provider}`;
     }
 
-    redirectToOAuthSignin(provider: string, redirectUrl?: string): void {
-        const params = new URLSearchParams();
-        if (redirectUrl) params.append('redirectUrl', redirectUrl);
-
-        window.location.href = `${this.getRedirectBaseUrl()}/oauth/signin/${provider}?${params.toString()}`;
+    // Update redirectToOAuthSignin method - remove redirectUrl parameter  
+    redirectToOAuthSignin(provider: string): void {
+        window.location.href = `${this.getRedirectBaseUrl()}/oauth/signin/${provider}`;
     }
 
-    requestGooglePermission(accountId: string, scopeNames: string[], redirectUrl?: string): void {
+    // Update requestGooglePermission method - remove redirectUrl parameter
+    requestGooglePermission(accountId: string, scopeNames: string[]): void {
         const params = new URLSearchParams();
         params.append('accountId', accountId);
-        if (redirectUrl) params.append('redirectUrl', redirectUrl);
 
         const scopes = Array.isArray(scopeNames) ? scopeNames.join(',') : scopeNames;
         window.location.href = `${this.getRedirectBaseUrl()}/oauth/permission/${scopes}?${params.toString()}`;
     }
 
-    reauthorizePermissions(accountId: string, redirectUrl?: string): void {
+    // Update reauthorizePermissions method - remove redirectUrl parameter
+    reauthorizePermissions(accountId: string): void {
         const params = new URLSearchParams();
         params.append('accountId', accountId);
-        if (redirectUrl) params.append('redirectUrl', redirectUrl);
 
         window.location.href = `${this.getRedirectBaseUrl()}/oauth/permission/reauthorize?${params.toString()}`;
     }
-
+    
     // Google API
     async getGoogleTokenInfo(accountId: string): Promise<GoogleTokenInfo> {
         const response = await this.http.get(`/${accountId}/google/token`);
