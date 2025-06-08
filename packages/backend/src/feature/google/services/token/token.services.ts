@@ -1,25 +1,32 @@
 import { google } from 'googleapis';
-import { ProviderValidationError } from '../../../../types/response.types';
+import { ApiErrorCode, ProviderValidationError } from '../../../../types/response.types';
 import { OAuthProviders } from '../../../account/Account.types';
 import db from '../../../../config/db';
 import { getGoogleClientId, getGoogleClientSecret } from '../../../../config/env.config';
 import { logger } from '../../../../utils/logger';
+import { ValidationUtils } from '../../../../utils/validation';
 
 /**
 * Get detailed token information from Google
 * @param accessToken The access token to check
 */
 export async function getTokenInfo(accessToken: string) {
+    ValidationUtils.validateAccessToken(accessToken, 'getTokenInfo');
+
     try {
-        // Get token info from Google's token info endpoint
         const tokenInfoResult = await google.oauth2('v2').tokeninfo({
-            access_token: accessToken
+            access_token: accessToken.trim()
         });
 
         return tokenInfoResult.data;
     } catch (error) {
         logger.error('Error getting token info:', error);
-        throw new ProviderValidationError(OAuthProviders.Google, 'Error getting token info');
+        throw new ProviderValidationError(
+            OAuthProviders.Google,
+            'Failed to validate access token',
+            401,
+            ApiErrorCode.TOKEN_INVALID
+        );
     }
 }
 
@@ -29,17 +36,22 @@ export async function getTokenInfo(accessToken: string) {
 * @returns Array of granted scope URLs
 */
 export async function getTokenScopes(accessToken: string): Promise<string[]> {
+    ValidationUtils.validateAccessToken(accessToken, 'getTokenScopes');
+
     try {
-        // Get token info
         const tokenInfoResult = await google.oauth2('v2').tokeninfo({
-            access_token: accessToken
+            access_token: accessToken.trim()
         });
 
-        // Parse and return granted scopes
         return tokenInfoResult.data.scope ? tokenInfoResult.data.scope.split(' ') : [];
     } catch (error) {
         logger.error('Error getting token scopes:', error);
-        throw new ProviderValidationError(OAuthProviders.Google, 'Failed to get token scopes');
+        throw new ProviderValidationError(
+            OAuthProviders.Google,
+            'Failed to get token scopes',
+            401,
+            ApiErrorCode.TOKEN_INVALID
+        );
     }
 }
 
@@ -49,32 +61,30 @@ export async function getTokenScopes(accessToken: string): Promise<string[]> {
  * @param accessToken The access token containing scopes
  */
 export async function updateAccountScopes(accountId: string, accessToken: string): Promise<string[]> {
+    ValidationUtils.validateObjectIdWithContext(accountId, 'Account ID', 'updateAccountScopes');
+    ValidationUtils.validateAccessToken(accessToken, 'updateAccountScopes');
+
     try {
         // Get token info for scopes
-        const tokenInfoResult = await google.oauth2('v2').tokeninfo({
-            access_token: accessToken
-        });
+        const tokenInfo = await getTokenInfo(accessToken);
+        const grantedScopes = tokenInfo.scope ? tokenInfo.scope.split(' ') : [];
 
-        // Parse granted scopes
-        const grantedScopes = tokenInfoResult.data.scope ? tokenInfoResult.data.scope.split(' ') : [];
-        
         if (grantedScopes.length === 0) {
             return [];
         }
 
         // Get database models
         const models = await db.getModels();
-        
+
         // Check if permissions already exist
         const existingPermissions = await models.google.GooglePermissions.findOne({ accountId });
-        
+
         if (existingPermissions) {
-            // Update existing permissions only if new scopes are granted
+            // Check if there are new scopes to add
             const existingScopeSet = new Set(existingPermissions.scopes);
             const newScopes = grantedScopes.filter(scope => !existingScopeSet.has(scope));
-            
+
             if (newScopes.length > 0) {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (existingPermissions as any).addScopes(newScopes);
                 await existingPermissions.save();
             }
@@ -90,7 +100,12 @@ export async function updateAccountScopes(accountId: string, accessToken: string
         return grantedScopes;
     } catch (error) {
         logger.error('Error updating account scopes:', error);
-        throw new ProviderValidationError(OAuthProviders.Google, 'Failed to update account scopes');
+        throw new ProviderValidationError(
+            OAuthProviders.Google,
+            'Failed to update account scopes',
+            500,
+            ApiErrorCode.SERVER_ERROR
+        );
     }
 }
 
@@ -98,7 +113,7 @@ export async function updateAccountScopes(accountId: string, accessToken: string
  * Get all previously granted scopes for an account from GooglePermissions
  * @param accountId The account ID to check
  */
-export async function getAccountScopes(accountId: string): Promise<string[]> {
+export async function getGoogleAccountScopes(accountId: string): Promise<string[]> {
     try {
         // Get database models
         const models = await db.getModels();
@@ -122,35 +137,29 @@ export async function getAccountScopes(accountId: string): Promise<string[]> {
 * @param refreshToken The refresh token to use
 */
 export async function refreshGoogleToken(refreshToken: string) {
+    ValidationUtils.validateRefreshToken(refreshToken, 'refreshGoogleToken');
+
     try {
         const refreshClient = new google.auth.OAuth2(
             getGoogleClientId(),
             getGoogleClientSecret()
         );
 
-        refreshClient.setCredentials({ refresh_token: refreshToken });
-
+        refreshClient.setCredentials({ refresh_token: refreshToken.trim() });
         const { credentials } = await refreshClient.refreshAccessToken();
 
         if (!credentials.access_token || !credentials.expiry_date) {
-            throw new ProviderValidationError(
-                OAuthProviders.Google,
-                'Missing required token details'
-            );
+            throw new Error('Missing required token details in refresh response');
         }
 
         return credentials;
     } catch (error) {
         logger.error('Error refreshing access token:', error);
-
-        // Avoid wrapping the same error again
-        if (error instanceof ProviderValidationError) {
-            throw error;
-        }
-
         throw new ProviderValidationError(
             OAuthProviders.Google,
-            'Failed to refresh access token'
+            'Failed to refresh access token',
+            401,
+            ApiErrorCode.TOKEN_INVALID
         );
     }
 }
@@ -161,56 +170,54 @@ export async function refreshGoogleToken(refreshToken: string) {
  * @param refreshToken Optional refresh token to revoke
  */
 export async function revokeTokens(accessToken: string, refreshToken?: string) {
+    ValidationUtils.validateAccessToken(accessToken, 'revokeTokens');
+
+    if (refreshToken) {
+        ValidationUtils.validateRefreshToken(refreshToken, 'revokeTokens');
+    }
+
     try {
-        // Create OAuth2 client for revoking tokens
         const oAuth2Client = new google.auth.OAuth2(
             getGoogleClientId(),
             getGoogleClientSecret()
         );
 
-        // Revoke access token
         const results = {
             accessTokenRevoked: false,
             refreshTokenRevoked: false
         };
 
+        // Try to revoke access token
         try {
-            await oAuth2Client.revokeToken(accessToken);
+            await oAuth2Client.revokeToken(accessToken.trim());
             results.accessTokenRevoked = true;
         } catch (error) {
             logger.error('Error revoking access token:', error);
         }
 
-        // Revoke refresh token if provided
+        // Try to revoke refresh token if provided
         if (refreshToken) {
             try {
-                await oAuth2Client.revokeToken(refreshToken);
+                await oAuth2Client.revokeToken(refreshToken.trim());
                 results.refreshTokenRevoked = true;
             } catch (error) {
                 logger.error('Error revoking refresh token:', error);
             }
         }
 
-        // Check if at least one token was revoked successfully
+        // At least one token should be revoked
         if (!results.accessTokenRevoked && !results.refreshTokenRevoked) {
-            throw new ProviderValidationError(
-                OAuthProviders.Google,
-                'Failed to revoke tokens'
-            );
+            throw new Error('Failed to revoke any tokens');
         }
 
         return results;
     } catch (error) {
         logger.error('Error during token revocation:', error);
-        
-        // Avoid wrapping the same error again
-        if (error instanceof ProviderValidationError) {
-            throw error;
-        }
-        
         throw new ProviderValidationError(
             OAuthProviders.Google,
-            'Failed to revoke tokens'
+            'Failed to revoke tokens',
+            500,
+            ApiErrorCode.SERVER_ERROR
         );
     }
 }
@@ -256,7 +263,7 @@ export async function checkForAdditionalScopes(accountId: string, accessToken: s
     const currentScopes = tokenInfo.scope ? tokenInfo.scope.split(' ') : [];
     
     // Get previously granted scopes from GooglePermissions
-    const storedScopes = await getAccountScopes(accountId);
+    const storedScopes = await getGoogleAccountScopes(accountId);
     
     // Only care about missing scopes that aren't the basic profile and email
     const filteredStoredScopes = storedScopes.filter(scope => 
