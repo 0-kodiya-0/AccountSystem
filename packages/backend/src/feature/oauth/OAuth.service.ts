@@ -7,10 +7,16 @@ import {
     generateSignupState
 } from './OAuth.utils';
 import { validateAccount } from '../account/Account.validation';
-import { getTokenInfo } from '../google/services/token';
 import { findUserByEmail, findUserById } from '../account';
 import { createOAuthJwtToken, createOAuthRefreshToken } from './OAuth.jwt';
-import { logger } from '../../utils/logger';
+
+// Import centralized Google token services instead of duplicating logic
+import {
+    getTokenInfo,
+    updateAccountScopes,
+    getGoogleAccountScopes,
+    checkForAdditionalScopes
+} from '../google/services/token';
 
 /**
  * Process sign up with OAuth provider
@@ -52,16 +58,16 @@ export async function processSignup(
     const newAccountDoc = await models.accounts.Account.create(newAccount);
     const accountId = newAccountDoc.id || newAccountDoc._id.toHexString();
 
-    // Update Google permissions if provider is Google
+    // Update Google permissions if provider is Google - use centralized service
     if (provider === OAuthProviders.Google) {
         const accessToken = stateDetails.oAuthResponse.tokenDetails.accessToken;
-        await updateGooglePermissions(accountId, accessToken);
+        await updateAccountScopes(accountId, accessToken);
     }
 
     const oauthAccessToken = stateDetails.oAuthResponse.tokenDetails.accessToken;
     const oauthRefreshToken = stateDetails.oAuthResponse.tokenDetails.refreshToken;
-    
-    // Get token info to determine expiration
+
+    // Get token info to determine expiration - use centralized service
     const accessTokenInfo = await getTokenInfo(oauthAccessToken);
     const expiresIn = accessTokenInfo.expires_in || 3600; // Default to 1 hour
 
@@ -100,12 +106,12 @@ export async function processSignIn(stateDetails: SignInState) {
     const oauthAccessToken = stateDetails.oAuthResponse.tokenDetails.accessToken;
     const oauthRefreshToken = stateDetails.oAuthResponse.tokenDetails.refreshToken;
 
-    // Update Google permissions if provider is Google
+    // Update Google permissions if provider is Google - use centralized service
     if (user.provider === OAuthProviders.Google) {
-        await updateGooglePermissions(user.id, oauthAccessToken);
+        await updateAccountScopes(user.id, oauthAccessToken);
     }
 
-    // Get token info to determine expiration
+    // Get token info to determine expiration - use centralized service
     const accessTokenInfo = await getTokenInfo(oauthAccessToken);
     const expiresIn = accessTokenInfo.expires_in || 3600; // Default to 1 hour
 
@@ -113,7 +119,7 @@ export async function processSignIn(stateDetails: SignInState) {
     const accessToken = await createOAuthJwtToken(user.id, oauthAccessToken, expiresIn);
     const refreshToken = await createOAuthRefreshToken(user.id, oauthRefreshToken);
 
-    // Check for additional scopes from GooglePermissions
+    // Check for additional scopes from GooglePermissions - use centralized service
     const needsAdditionalScopes = await checkForAdditionalScopes(user.id, oauthAccessToken);
 
     return {
@@ -176,107 +182,20 @@ export async function getUserAccount(id: string) {
 }
 
 /**
- * Update Google permissions for an account
- */
-async function updateGooglePermissions(accountId: string, accessToken: string): Promise<void> {
-    try {
-        // Get token info for scopes
-        const tokenInfo = await getTokenInfo(accessToken);
-        const grantedScopes = tokenInfo.scope ? tokenInfo.scope.split(' ') : [];
-        
-        if (grantedScopes.length === 0) {
-            return;
-        }
-
-        // Get database models
-        const models = await db.getModels();
-        
-        // Check if permissions already exist
-        const existingPermissions = await models.google.GooglePermissions.findOne({ accountId });
-        
-        if (existingPermissions) {
-            // Check if there are new scopes to add
-            const existingScopeSet = new Set(existingPermissions.scopes);
-            const newScopes = grantedScopes.filter(scope => !existingScopeSet.has(scope));
-            
-            if (newScopes.length > 0) {
-                // Update with new scopes
-                (existingPermissions as any).addScopes(newScopes);
-                await existingPermissions.save();
-            }
-        } else {
-            // Create new permissions record
-            await models.google.GooglePermissions.create({
-                accountId,
-                scopes: grantedScopes,
-                lastUpdated: new Date().toISOString()
-            });
-        }
-    } catch (error) {
-        logger.error('Error updating Google permissions:', error);
-        // Don't throw error here to avoid breaking auth flow
-    }
-}
-
-/**
- * Check for additional scopes that user previously granted but aren't in current token
- */
-async function checkForAdditionalScopes(accountId: string, accessToken: string): Promise<{
-    needsAdditionalScopes: boolean,
-    missingScopes: string[]
-}> {
-    try {
-        // Get scopes from the current token
-        const tokenInfo = await getTokenInfo(accessToken);
-        const currentScopes = tokenInfo.scope ? tokenInfo.scope.split(' ') : [];
-        
-        // Get previously granted scopes from GooglePermissions
-        const storedScopes = await getAccountScopes(accountId);
-        
-        // Only care about missing scopes that aren't the basic profile and email
-        const filteredStoredScopes = storedScopes.filter(scope => 
-            !scope.includes('auth/userinfo.email') && 
-            !scope.includes('auth/userinfo.profile')
-        );
-        
-        // Find scopes that are in GooglePermissions but not in the current token
-        const missingScopes = filteredStoredScopes.filter(scope => !currentScopes.includes(scope));
-        
-        return {
-            needsAdditionalScopes: missingScopes.length > 0,
-            missingScopes
-        };
-    } catch (error) {
-        logger.error('Error checking for additional scopes:', error);
-        return {
-            needsAdditionalScopes: false,
-            missingScopes: []
-        };
-    }
-}
-
-/**
- * Get all scopes for an account from GooglePermissions
+ * Get all scopes for an account from GooglePermissions - use centralized service
  */
 export async function getAccountScopes(accountId: string): Promise<string[]> {
-    try {
-        const models = await db.getModels();
-        const permissions = await models.google.GooglePermissions.findOne({ accountId });
-        
-        return permissions ? permissions.scopes : [];
-    } catch (error) {
-        logger.error('Error getting account scopes:', error);
-        return [];
-    }
+    // Delegate to centralized Google token service
+    return getGoogleAccountScopes(accountId);
 }
 
 /**
- * Update tokens and scopes for a user (now only updates permissions, no token storage)
+ * Update tokens and scopes for a user - use centralized service
  */
 export async function updateTokensAndScopes(
     accountId: string,
     accessToken: string
 ) {
-    // Only update permissions, don't store tokens
-    await updateGooglePermissions(accountId, accessToken);
+    // Delegate to centralized Google token service
+    await updateAccountScopes(accountId, accessToken);
 }

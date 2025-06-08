@@ -129,6 +129,9 @@ export const signup = asyncHandler(async (req: SignUpRequest, res, next) => {
 /**
  * Handle sign in process
  */
+/**
+ * Handle sign in process
+ */
 export const signin = asyncHandler(async (req: SignInRequest, res, next) => {
     const provider = req.params.provider as OAuthProviders;
     const { state } = req.query;
@@ -168,7 +171,8 @@ export const signin = asyncHandler(async (req: SignInRequest, res, next) => {
                     code: CallbackCode.PERMISSION_REAUTHORIZE,
                     accountId: result.userId,
                     name: result.userName,
-                    provider
+                    provider,
+                    missingScopes: result.missingScopes // Add missing scopes to callback data
                 };
                 next(new Redirect(callbackData, getCallbackUrl()));
             } else {
