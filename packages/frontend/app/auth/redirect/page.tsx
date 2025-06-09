@@ -12,8 +12,7 @@ export default function AuthRedirect() {
         defaultHomeUrl: config.homeUrl || "/dashboard",
         defaultLoginUrl: "/login",
         defaultAccountsUrl: "/accounts",
-        autoRedirect: true,
-        disableDefaultHandlers: false
+        autoRedirect: true
     })
 
     // Get user-friendly message based on redirect code

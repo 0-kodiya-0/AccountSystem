@@ -42,143 +42,166 @@ export default function AuthCallbackPage() {
         }, delay * 1000)
     }
 
-    // Use the callback handler hook with custom overrides and disabled defaults
+    // Use the callback handler hook with custom overrides
     const { handleAuthCallback } = useAuthCallbackHandler({
-        // Disable default handlers since we're providing custom implementations
-        disableDefaultHandlers: false,
-
         // OAuth success handlers with UI updates
-        onOAuthSigninSuccess: async ({ name }) => {
-            console.log("OAuth signin success:", name)
+        onOAuthSigninSuccess: async (data) => {
+            console.log("OAuth signin success:", data.name)
             setStatus({
                 type: 'success',
                 title: 'Sign in successful!',
-                message: `Welcome back, ${name}! Redirecting to your dashboard...`
+                message: `Welcome back, ${data.name}! Redirecting to your dashboard...`
             })
             redirectWithCountdown(config.homeUrl || "/dashboard", 2)
+            
+            // Don't call defaultHandler since we're handling redirect ourselves
         },
 
-        onOAuthSignupSuccess: async ({ name }) => {
-            console.log("OAuth signup success:", name)
+        onOAuthSignupSuccess: async (data) => {
+            console.log("OAuth signup success:", data.name)
             setStatus({
                 type: 'success',
                 title: 'Account created successfully!',
-                message: `Welcome to our platform, ${name}! Redirecting to your dashboard...`
+                message: `Welcome to our platform, ${data.name}! Redirecting to your dashboard...`
             })
             redirectWithCountdown(config.homeUrl || "/dashboard", 2)
+            
+            // Don't call defaultHandler since we're handling redirect ourselves
         },
 
-        onOAuthPermissionSuccess: async ({ service, scopeLevel }) => {
-            console.log("OAuth permission success:", service, scopeLevel)
+        onOAuthPermissionSuccess: async (data) => {
+            console.log("OAuth permission success:", data.service, data.scopeLevel)
             setStatus({
                 type: 'success',
                 title: 'Permissions granted!',
-                message: `Successfully granted ${service} ${scopeLevel} permissions. Redirecting...`
+                message: `Successfully granted ${data.service} ${data.scopeLevel} permissions. Redirecting...`
             })
             redirectWithCountdown(config.homeUrl || "/dashboard", 2)
+            
+            // Don't call defaultHandler since we're handling redirect ourselves
         },
 
         // Local auth success handlers
-        onLocalSigninSuccess: async ({ name }) => {
-            console.log("Local signin success:", name)
+        onLocalSigninSuccess: async (data) => {
+            console.log("Local signin success:", data.name)
             setStatus({
                 type: 'success',
                 title: 'Sign in successful!',
-                message: `Welcome back, ${name}! Redirecting to your dashboard...`
+                message: `Welcome back, ${data.name}! Redirecting to your dashboard...`
             })
             redirectWithCountdown(config.homeUrl || "/dashboard", 2)
+            
+            // Don't call defaultHandler since we're handling redirect ourselves
         },
 
-        onLocalSignupSuccess: async ({ message }) => {
-            console.log("Local signup success:", message)
+        onLocalSignupSuccess: async (data) => {
+            console.log("Local signup success:", data.message)
             setStatus({
                 type: 'success',
                 title: 'Account created!',
-                message: message || "Account created successfully. Redirecting to sign in..."
+                message: data.message || "Account created successfully. Redirecting to sign in..."
             })
             redirectWithCountdown("/login", 2)
+            
+            // Don't call defaultHandler since we're handling redirect ourselves
         },
 
-        onLocal2FARequired: async ({ tempToken }) => {
-            console.log("2FA required:", tempToken)
+        onLocal2FARequired: async (data) => {
+            console.log("2FA required:", data.tempToken)
             setStatus({
                 type: 'redirecting',
                 title: 'Two-factor authentication required',
                 message: 'Redirecting to verification page...'
             })
-            redirectWithCountdown(`/two-factor-verify?tempToken=${tempToken}`, 1)
+            redirectWithCountdown(`/two-factor-verify?tempToken=${data.tempToken}`, 1)
+            
+            // Don't call defaultHandler since we're handling redirect ourselves
         },
 
-        onLocalEmailVerified: async ({ message }) => {
-            console.log("Email verified:", message)
+        onLocalEmailVerified: async (data) => {
+            console.log("Email verified:", data.message)
             setStatus({
                 type: 'success',
                 title: 'Email verified!',
-                message: message || "Email verified successfully. You can now sign in."
+                message: data.message || "Email verified successfully. You can now sign in."
             })
             redirectWithCountdown("/login", 2)
+            
+            // Don't call defaultHandler since we're handling redirect ourselves
         },
 
-        onLocalPasswordResetSuccess: async ({ message }) => {
-            console.log("Password reset success:", message)
+        onLocalPasswordResetSuccess: async (data) => {
+            console.log("Password reset success:", data.message)
             setStatus({
                 type: 'success',
                 title: 'Password reset successful!',
-                message: message || "Password reset successfully. You can now sign in."
+                message: data.message || "Password reset successfully. You can now sign in."
             })
             redirectWithCountdown("/login", 2)
+            
+            // Don't call defaultHandler since we're handling redirect ourselves
         },
 
         // Logout success handlers
-        onLogoutSuccess: async ({ accountId, message }) => {
-            console.log("Logout success:", accountId, message)
+        onLogoutSuccess: async (data) => {
+            console.log("Logout success:", data.accountId, data.message)
             setStatus({
                 type: 'success',
                 title: 'Logged out successfully',
-                message: message || "You have been logged out successfully."
+                message: data.message || "You have been logged out successfully."
             })
             redirectWithCountdown("/accounts", 2)
+            
+            // Don't call defaultHandler since we're handling redirect ourselves
         },
 
-        onLogoutAllSuccess: async ({ accountIds, message }) => {
-            console.log("Logout all success:", accountIds, message)
+        onLogoutAllSuccess: async (data) => {
+            console.log("Logout all success:", data.accountIds, data.message)
             setStatus({
                 type: 'success',
                 title: 'All accounts logged out',
-                message: message || "All accounts have been logged out successfully."
+                message: data.message || "All accounts have been logged out successfully."
             })
             redirectWithCountdown("/login", 2)
+            
+            // Don't call defaultHandler since we're handling redirect ourselves
         },
 
         // Error handlers with UI updates
-        onOAuthError: async ({ error }) => {
-            console.error("OAuth error:", error)
+        onOAuthError: async (data) => {
+            console.error("OAuth error:", data.error)
             setStatus({
                 type: 'error',
                 title: 'OAuth authentication failed',
-                message: error || "OAuth authentication failed. Please try again."
+                message: data.error || "OAuth authentication failed. Please try again."
             })
             redirectWithCountdown("/login", 4)
+            
+            // Don't call defaultHandler since we're handling redirect ourselves
         },
 
-        onLocalAuthError: async ({ error }) => {
-            console.error("Local auth error:", error)
+        onLocalAuthError: async (data) => {
+            console.error("Local auth error:", data.error)
             setStatus({
                 type: 'error',
                 title: 'Authentication failed',
-                message: error || "Authentication failed. Please try again."
+                message: data.error || "Authentication failed. Please try again."
             })
             redirectWithCountdown("/login", 4)
+            
+            // Don't call defaultHandler since we're handling redirect ourselves
         },
 
-        onPermissionError: async ({ error }) => {
-            console.error("Permission error:", error)
+        onPermissionError: async (data) => {
+            console.error("Permission error:", data.error)
             setStatus({
                 type: 'error',
                 title: 'Permission request failed',
-                message: error || "Permission request failed. Returning to dashboard."
+                message: data.error || "Permission request failed. Returning to dashboard."
             })
             redirectWithCountdown(config.homeUrl || "/dashboard", 4)
+            
+            // Don't call defaultHandler since we're handling redirect ourselves
         },
 
         onUserNotFound: async () => {
@@ -189,6 +212,8 @@ export default function AuthCallbackPage() {
                 message: 'Please sign up for an account first.'
             })
             redirectWithCountdown("/signup", 3)
+            
+            // Don't call defaultHandler since we're handling redirect ourselves
         },
 
         onUserExists: async () => {
@@ -199,6 +224,8 @@ export default function AuthCallbackPage() {
                 message: 'Please sign in to your existing account.'
             })
             redirectWithCountdown("/login", 3)
+            
+            // Don't call defaultHandler since we're handling redirect ourselves
         },
 
         onTokenExpired: async () => {
@@ -209,38 +236,21 @@ export default function AuthCallbackPage() {
                 message: 'Your session has expired. Please sign in again.'
             })
             redirectWithCountdown("/login", 3)
+            
+            // Don't call defaultHandler since we're handling redirect ourselves
         },
 
         // Special flow handlers
-        onPermissionReauthorize: async ({ accountId }) => {
-            console.log("Permission reauthorize:", accountId)
+        onPermissionReauthorize: async (data, defaultHandler) => {
+            console.log("Permission reauthorize:", data.accountId)
             setStatus({
                 type: 'redirecting',
                 title: 'Additional permissions needed',
                 message: 'Redirecting to grant additional permissions...'
             })
-            // The hook will handle the actual reauthorization call
-            // We just need to show the UI feedback
-            setTimeout(() => {
-                // The hook already called client.reauthorizePermissions(accountId)
-                // which will redirect to Google, so this timeout is just for UI
-                setStatus({
-                    type: 'processing',
-                    title: 'Redirecting to Google...',
-                    message: 'Please wait while we redirect you to grant permissions.'
-                })
-            }, 1000)
-        },
-
-        // Generic error handler
-        onError: async (data) => {
-            console.error('Callback error:', data)
-            setStatus({
-                type: 'error',
-                title: 'Authentication failed',
-                message: data.error || "There was a problem processing your authentication."
-            })
-            redirectWithCountdown("/login", 4)
+            
+            // Use default handler for this special case since it involves complex logic
+            await defaultHandler()
         },
 
         // Unknown code handler
@@ -252,6 +262,8 @@ export default function AuthCallbackPage() {
                 message: 'Received an unknown response from authentication.'
             })
             redirectWithCountdown("/login", 4)
+            
+            // Don't call defaultHandler since we're handling redirect ourselves
         }
     })
 
