@@ -6,6 +6,9 @@ export { SocketClient } from "./client/socket-client";
 export { AuthProvider, useAuth } from './context/auth-context';
 export { NotificationsProvider, useNotificationsContext } from './context/notifications-context';
 
+// Components
+export { AuthGuard } from './components/AuthGuard';
+
 // Callback handling
 export { useAuthCallbackHandler } from './hooks/useAuthCallbackHandler';
 export { useAuthRedirectHandler } from './hooks/useAuthRedirectHandler';
@@ -28,6 +31,7 @@ export { useNotifications } from "./hooks/useNotifications";
 export { useRealtimeNotifications } from "./hooks/useRealtimeNotifications";
 export { useSocket } from "./hooks/useSocket";
 export { useAccount } from "./hooks/useAccount";
+export { useAuthGuard } from "./hooks/useAuthGuard";
 
 // Type exports
 export * from './types';
