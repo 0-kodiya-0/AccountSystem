@@ -453,3 +453,39 @@ export enum AuthGuardDecision {
     REDIRECT_CUSTOM = 'redirect_custom'
 }
 
+export enum EmailVerificationStatus {
+    LOADING = 'loading',
+    SUCCESS = 'success', 
+    ERROR = 'error',
+    INVALID_TOKEN = 'invalid_token',
+    EXPIRED_TOKEN = 'expired_token'
+}
+
+export enum PasswordResetStatus {
+    IDLE = 'idle',
+    REQUESTING = 'requesting',
+    REQUEST_SUCCESS = 'request_success',
+    RESETTING = 'resetting', 
+    RESET_SUCCESS = 'reset_success',
+    ERROR = 'error'
+}
+
+export enum TwoFactorSetupStatus {
+    IDLE = 'idle',
+    REQUESTING_SETUP = 'requesting_setup',
+    SETUP_READY = 'setup_ready',
+    VERIFYING_TOKEN = 'verifying_token',
+    GENERATING_BACKUP_CODES = 'generating_backup_codes',
+    COMPLETE = 'complete',
+    ERROR = 'error'
+}
+
+export enum TwoFactorVerificationStatus {
+    IDLE = 'idle',
+    VERIFYING = 'verifying',
+    SUCCESS = 'success',
+    ERROR = 'error',
+    INVALID_TOKEN = 'invalid_token',
+    EXPIRED_SESSION = 'expired_session',
+    LOCKED_OUT = 'locked_out'
+}

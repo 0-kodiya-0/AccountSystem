@@ -9,11 +9,18 @@ export { NotificationsProvider, useNotificationsContext } from './context/notifi
 // Components
 export { AuthGuard } from './components/AuthGuard';
 
-// Callback handling
+// Routing and Protection Hooks
 export { useAuthCallbackHandler } from './hooks/useAuthCallbackHandler';
 export { useAuthRedirectHandler } from './hooks/useAuthRedirectHandler';
+export { useAuthGuard } from "./hooks/useAuthGuard";
 
-// Store exports (updated for session-based approach)
+// Workflow Hooks (NEW)
+export { useEmailVerification } from './hooks/useEmailVerification';
+export { usePasswordReset } from './hooks/usePasswordReset';
+export { use2FASetup } from './hooks/use2FASetup';
+export { use2FAVerification } from './hooks/use2FAVerification';
+
+// Store exports
 export { 
     useAccountStore, 
     useCurrentAccount,
@@ -26,14 +33,13 @@ export {
     useMissingAccountIds
 } from './store/account-store';
 
-// Hook exports
+// Data Management Hooks
 export { useNotifications } from "./hooks/useNotifications";
 export { useRealtimeNotifications } from "./hooks/useRealtimeNotifications";
 export { useSocket } from "./hooks/useSocket";
 export { useAccount } from "./hooks/useAccount";
-export { useAuthGuard } from "./hooks/useAuthGuard";
 
-// Type exports
+// Type exports (with new workflow types)
 export * from './types';
 
 // Utility exports
