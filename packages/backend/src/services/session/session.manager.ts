@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { ApiErrorCode } from '../../types/response.types';
 import { AccountType } from '../../feature/account/Account.types';
-import { refreshGoogleToken, revokeTokens } from '../../feature/google/services/token';
+import { refreshGoogleToken, revokeTokens } from '../../feature/google/services/token/token.services';
 import { createLocalJwtToken } from '../../feature/local_auth';
 import { createOAuthJwtToken } from '../../feature/oauth/OAuth.jwt';
 import { getNodeEnv } from '../../config/env.config';

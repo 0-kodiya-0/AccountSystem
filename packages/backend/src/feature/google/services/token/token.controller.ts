@@ -1,8 +1,8 @@
 import { ApiErrorCode, AuthError, BadRequestError, JsonSuccess, ServerError } from '../../../../types/response.types';
 import { GoogleApiRequest } from '../../types';
-import { getTokenInfo, getTokenScopes, hasScope } from '../../services/token';
 import { buildGoogleScopeUrls, validateScopeNames } from '../../config';
 import { asyncHandler } from '../../../../utils/response';
+import { getTokenInfo, getTokenScopes, hasScope } from './token.services';
 
 /**
  * Get token information for the current user

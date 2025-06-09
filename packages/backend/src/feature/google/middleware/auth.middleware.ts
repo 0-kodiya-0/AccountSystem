@@ -1,6 +1,6 @@
 import { NextFunction, Response, Request } from "express";
 import { ApiErrorCode, AuthError, ServerError } from "../../../types/response.types";
-import { hasScope } from "../services/token";
+import { hasScope } from "../services/token/token.services";
 import { GoogleApiRequest } from "../types";
 import { asyncHandler } from "../../../utils/response";
 import { google } from "googleapis";

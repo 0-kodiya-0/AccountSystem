@@ -9,7 +9,7 @@ import {
     getGoogleAccountScopes,
     hasScope,
     verifyTokenOwnership
-} from '../../google/services/token';
+} from '../../google/services/token/token.services';
 import { buildGoogleScopeUrls } from '../../google/config';
 import db from '../../../config/db';
 import { asyncHandler } from '../../../utils/response';

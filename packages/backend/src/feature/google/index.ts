@@ -1,5 +1,5 @@
 import express from 'express';
-import tokenRoutes from './api/token';
+import tokenRoutes from './services/token/token.route';
 
 // Create the main router for all Google API services
 const router = express.Router({ mergeParams: true });

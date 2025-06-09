@@ -25,7 +25,7 @@ import {
 import {
     getTokenInfo,
     verifyTokenOwnership
-} from '../google/services/token';
+} from '../google/services/token/token.services';
 import { setAccessTokenCookie, setRefreshTokenCookie } from '../../services';
 import { getCallbackUrl } from '../../utils/redirect';
 import { SignUpRequest, SignInRequest, OAuthCallBackRequest } from './OAuth.dto';
