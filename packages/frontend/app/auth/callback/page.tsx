@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { useCallbackHandler } from "@accountsystem/auth-react-sdk"
+import { useAuthCallbackHandler } from "@accountsystem/auth-react-sdk"
 import { getEnvironmentConfig } from "@/lib/utils"
 import { CheckCircle, XCircle, AlertCircle } from "lucide-react"
 
@@ -43,7 +43,7 @@ export default function AuthCallbackPage() {
     }
 
     // Use the callback handler hook with custom overrides and disabled defaults
-    const { handleAuthCallback } = useCallbackHandler({
+    const { handleAuthCallback } = useAuthCallbackHandler({
         // Disable default handlers since we're providing custom implementations
         disableDefaultHandlers: false,
 

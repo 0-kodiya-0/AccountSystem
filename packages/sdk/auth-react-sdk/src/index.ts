@@ -7,7 +7,7 @@ export { AuthProvider, useAuth } from './context/auth-context';
 export { NotificationsProvider, useNotificationsContext } from './context/notifications-context';
 
 // Callback handling
-export { useCallbackHandler } from './hooks/useCallbackHandler';
+export { useAuthCallbackHandler } from './hooks/useAuthCallbackHandler';
 
 // Store exports
 export { 

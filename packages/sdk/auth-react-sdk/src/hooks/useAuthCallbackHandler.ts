@@ -39,7 +39,7 @@ interface UseCallbackHandlerReturn {
     handleAuthCallback: (params: URLSearchParams) => Promise<void>;
 }
 
-export const useCallbackHandler = (options: UseCallbackHandlerOptions = {}): UseCallbackHandlerReturn => {
+export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}): UseCallbackHandlerReturn => {
     const {
         client,
         addAccount,
