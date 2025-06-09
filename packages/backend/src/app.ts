@@ -11,7 +11,11 @@ import socketConfig from './config/socket.config';
 import { applyErrorHandlers, asyncHandler } from './utils/response';
 
 import { router as oauthRoutes } from './feature/oauth';
-import { authenticatedNeedRouter as authNeedAccountRouter, authenticationNotNeedRouter as authNotNeedAccountRouter } from './feature/account';
+import { 
+    authenticatedNeedRouter as authNeedAccountRouter, 
+    authenticationNotNeedRouter as authNotNeedAccountRouter
+} from './feature/account';
+import { sessionRouter } from './services/session/session.routes'; // NEW: Session routes
 import { router as googleRoutes } from './feature/google';
 import { authNotRequiredRouter as localAuthNotRequiredRouter, authRequiredRouter as localAuthRequiredRouter } from './feature/local_auth';
 import notificationRoutes, { NotificationSocketHandler } from './feature/notifications';
@@ -59,8 +63,9 @@ function createMainApp(): express.Application {
         logger.info('OAuth routes disabled');
     }
 
-    // Account routes (always enabled)
+    // Account routes (always enabled) - UPDATED to include session routes
     app.use('/account', autoTrackParentUrl(), authNotNeedAccountRouter);
+    app.use('/account', autoTrackParentUrl(), sessionRouter); // NEW: Session routes
 
     // Local auth routes (enabled unless specifically disabled)
     if (process.env.DISABLE_LOCAL_AUTH !== 'true') {

@@ -25,7 +25,7 @@ import {
     VerifyEmailRequest,
     Account,
 } from '../account/Account.types';
-import { setAccessTokenCookie, setRefreshTokenCookie } from '../../services';
+import { setupCompleteAccountSession } from '../../services';
 import { sendTwoFactorEnabledNotification } from '../email/Email.service';
 import QRCode from 'qrcode';
 import { ValidationUtils } from '../../utils/validation';
@@ -58,7 +58,7 @@ export const signup = asyncHandler(async (req, res, next) => {
 });
 
 /**
- * Login with email/username and password
+ * Login with email/username and password - UPDATED with session integration
  */
 export const login = asyncHandler(async (req, res, next) => {
     const loginData = req.body as LocalAuthRequest;
@@ -90,14 +90,19 @@ export const login = asyncHandler(async (req, res, next) => {
     const accessToken = await createLocalJwtToken(account.id);
     const refreshToken = await createLocalRefreshToken(account.id);
 
-    // Set cookies
-    const expiresIn = account.security.sessionTimeout || 3600;
-    setAccessTokenCookie(req, res, account.id, accessToken, expiresIn * 1000);
-
-    // Set remember me cookie if requested
-    if (loginData.rememberMe) {
-        setRefreshTokenCookie(req, res, account.id, refreshToken);
-    }
+    // Set up complete account session (auth cookies + account session)
+    const expiresIn = (account.security.sessionTimeout || 3600) * 1000;
+    const shouldSetRefreshToken = loginData.rememberMe;
+    
+    setupCompleteAccountSession(
+        req,
+        res,
+        account.id,
+        accessToken,
+        expiresIn,
+        shouldSetRefreshToken ? refreshToken : undefined,
+        true // set as current account
+    );
 
     // Return success response
     next(new JsonSuccess({
@@ -107,7 +112,7 @@ export const login = asyncHandler(async (req, res, next) => {
 });
 
 /**
- * Verify two-factor authentication during login
+ * Verify two-factor authentication during login - UPDATED with session integration
  */
 export const verifyTwoFactor = asyncHandler(async (req, res, next) => {
     const { token, tempToken } = req.body as VerifyTwoFactorRequest & { tempToken: string };
@@ -123,10 +128,20 @@ export const verifyTwoFactor = asyncHandler(async (req, res, next) => {
 
         // Generate JWT token
         const jwtToken = await createLocalJwtToken(account.id);
+        const refreshToken = await createLocalRefreshToken(account.id);
 
-        // Set cookies
-        const expiresIn = account.security.sessionTimeout || 3600;
-        setAccessTokenCookie(req ,res, account.id, jwtToken, expiresIn * 1000);
+        // Set up complete account session (auth cookies + account session)
+        const expiresIn = (account.security.sessionTimeout || 3600) * 1000;
+        
+        setupCompleteAccountSession(
+            req,
+            res,
+            account.id,
+            jwtToken,
+            expiresIn,
+            refreshToken, // Always set refresh token for 2FA verified sessions
+            true // set as current account
+        );
 
         // Return success response
         next(new JsonSuccess({

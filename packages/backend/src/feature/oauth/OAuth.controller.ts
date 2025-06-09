@@ -26,7 +26,7 @@ import {
     getTokenInfo,
     verifyTokenOwnership
 } from '../google/services/token/token.services';
-import { setAccessTokenCookie, setRefreshTokenCookie } from '../../services';
+import { setupCompleteAccountSession } from '../../services';
 import { getCallbackUrl } from '../../utils/redirect';
 import { SignUpRequest, SignInRequest, OAuthCallBackRequest } from './OAuth.dto';
 import { ValidationUtils } from '../../utils/validation';
@@ -59,7 +59,7 @@ export const initiateGoogleAuth = asyncHandler(async (req, res, next) => {
 });
 
 /**
- * Handle sign up process
+ * Handle sign up process - UPDATED with session integration
  */
 export const signup = asyncHandler(async (req: SignUpRequest, res, next) => {
     const provider = req.params.provider as OAuthProviders;
@@ -82,17 +82,16 @@ export const signup = asyncHandler(async (req: SignUpRequest, res, next) => {
             await clearSignUpState(stateDetails.state);
 
             if (result.accessTokenInfo && result.accessTokenInfo.expires_in) {
-                setAccessTokenCookie(
-                    req, 
+                // Set up complete account session (auth cookies + account session)
+                setupCompleteAccountSession(
+                    req,
                     res,
                     result.accountId,
                     result.accessToken,
-                    result.accessTokenInfo.expires_in * 1000
+                    result.accessTokenInfo.expires_in * 1000,
+                    result.refreshToken,
+                    true // set as current account
                 );
-
-                if (result.refreshToken) {
-                    setRefreshTokenCookie(req, res, result.accountId, result.refreshToken);
-                }
             }
 
             const callbackData: CallbackData = {
@@ -128,7 +127,7 @@ export const signup = asyncHandler(async (req: SignUpRequest, res, next) => {
 });
 
 /**
- * Handle sign in process
+ * Handle sign in process - UPDATED with session integration
  */
 export const signin = asyncHandler(async (req: SignInRequest, res, next) => {
     const provider = req.params.provider as OAuthProviders;
@@ -151,17 +150,16 @@ export const signin = asyncHandler(async (req: SignInRequest, res, next) => {
             await clearSignInState(stateDetails.state);
 
             if (result.accessTokenInfo && result.accessTokenInfo.expires_in) {
-                setAccessTokenCookie(
+                // Set up complete account session (auth cookies + account session)
+                setupCompleteAccountSession(
                     req,
                     res,
                     result.userId,
                     result.accessToken,
-                    result.accessTokenInfo.expires_in * 1000
+                    result.accessTokenInfo.expires_in * 1000,
+                    result.refreshToken,
+                    true // set as current account
                 );
-
-                if (result.refreshToken) {
-                    setRefreshTokenCookie(req, res, result.userId, result.refreshToken);
-                }
             }
 
             // Handle additional scopes
@@ -171,7 +169,7 @@ export const signin = asyncHandler(async (req: SignInRequest, res, next) => {
                     accountId: result.userId,
                     name: result.userName,
                     provider,
-                    missingScopes: result.missingScopes // Add missing scopes to callback data
+                    missingScopes: result.missingScopes
                 };
                 next(new Redirect(callbackData, getCallbackUrl()));
             } else {
@@ -269,7 +267,7 @@ export const handleCallback = asyncHandler(async (req: OAuthCallBackRequest, res
 });
 
 /**
- * Handle callback for permission request
+ * Handle callback for permission request - UPDATED with session integration
  */
 export const handlePermissionCallback = asyncHandler(async (req, res, next) => {
     const provider = req.params.provider;
@@ -373,17 +371,17 @@ export const handlePermissionCallback = asyncHandler(async (req, res, next) => {
                 result.tokenDetails.refreshToken
             );
 
-            setAccessTokenCookie(
+            // Set up complete account session (auth cookies + account session)
+            // Note: Don't change current account for permission updates
+            setupCompleteAccountSession(
                 req,
                 res,
                 accountId,
-                jwtAccessToken, // Our JWT token that wraps the OAuth token
-                accessTokenInfo.expires_in * 1000
+                jwtAccessToken,
+                accessTokenInfo.expires_in * 1000,
+                jwtRefreshToken,
+                false // don't set as current account
             );
-
-            if (jwtRefreshToken) {
-                setRefreshTokenCookie(req, res, accountId, jwtRefreshToken); // Our JWT refresh token
-            }
 
             logger.info(`Token updated for ${service} ${scopeLevel}. Processing success callback.`);
 

@@ -1,5 +1,3 @@
-// packages/backend/src/feature/account/Account.controller.ts
-
 import { NextFunction, Request, Response } from 'express';
 import { JsonSuccess, Redirect } from '../../types/response.types';
 import { AccountDocument } from './Account.model';
@@ -7,6 +5,7 @@ import { asyncHandler } from '../../utils/response';
 import * as AccountService from './Account.service';
 import { CallbackCode } from '../../types/response.types';
 import { getCallbackUrl } from '../../utils/redirect';
+import { clearAllAccountsWithSession, clearAccountWithSession } from '../../services';
 
 /**
  * Search for an account by email
@@ -20,13 +19,15 @@ export const searchAccount = asyncHandler(async (req, res, next) => {
 });
 
 /**
- * Logout all accounts (clear entire session)
+ * Logout all accounts (clear entire session) - UPDATED with session integration
  */
 export const logoutAll = (req: Request, res: Response, next: NextFunction) => {
     const { accountIds } = req.query;
 
     const accountIdArray = AccountService.validateAccountIds(accountIds as string[]);
-    AccountService.clearAllAccountSessions(res, accountIdArray);
+    
+    // Clear both auth tokens and account session
+    clearAllAccountsWithSession(req, res, accountIdArray);
 
     // Redirect to auth callback with logout success code
     next(new Redirect(
@@ -40,13 +41,15 @@ export const logoutAll = (req: Request, res: Response, next: NextFunction) => {
 };
 
 /**
- * Logout single account
+ * Logout single account - UPDATED with session integration
  */
 export const logout = (req: Request, res: Response, next: NextFunction) => {
     const { accountId, clearClientAccountState } = req.query;
 
     const validatedAccountId = AccountService.validateSingleAccountId(accountId as string);
-    AccountService.clearSingleAccountSession(res, validatedAccountId);
+    
+    // Always clear from session and auth tokens
+    clearAccountWithSession(req, res, validatedAccountId);
 
     const shouldClearClient = clearClientAccountState !== "false";
 
