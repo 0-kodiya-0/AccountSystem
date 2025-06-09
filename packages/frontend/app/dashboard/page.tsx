@@ -1,30 +1,13 @@
 "use client"
 
-import { useAuth, useAccount, AuthGuard } from "@accountsystem/auth-react-sdk"
+import { useAuth, AuthGuard } from "@accountsystem/auth-react-sdk"
 import { getEnvironmentConfig } from "@/lib/utils"
 import { LoadingSpinner } from "@/components/auth/loading-spinner"
 import { RedirectingSpinner } from "@/components/auth/redirecting-spinner"
 
 export default function DashboardPage() {
-    const {
-        currentAccount: currentAccountFromStore,
-    } = useAuth()
-
+    const { currentAccount } = useAuth();
     const config = getEnvironmentConfig()
-
-    // Use useAccount hook to get current account data
-    const { account: currentAccount, isLoading: accountLoading } = useAccount(
-        currentAccountFromStore?.id,
-        {
-            autoFetch: true,
-            refreshOnMount: false
-        }
-    )
-
-    // Don't render if we're about to redirect
-    if (accountLoading) {
-        return <LoadingSpinner/>
-    }
 
     return (
         <AuthGuard
@@ -33,7 +16,6 @@ export default function DashboardPage() {
             redirectingComponent={RedirectingSpinner}
         >
             <div className="min-h-screen bg-background">
-                {/* Dashboard content */}
                 <div className="container mx-auto px-4 py-8">
                     <div className="text-center space-y-6">
                         <h1 className="text-4xl font-bold text-foreground">
