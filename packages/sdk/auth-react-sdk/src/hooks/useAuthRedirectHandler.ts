@@ -45,24 +45,30 @@ export const useAuthRedirectHandler = (options: UseAuthRedirectHandlerOptions): 
         ...overrideHandlers
     } = options;
 
-    const hasActiveAccounts = useAccountStore(state => state.hasActiveAccounts);
-    
     const {
         isAuthenticated,
-        currentAccount: currentAccountFromStore,
+        hasValidSession,
         isLoading: authLoading
     } = useAuth();
 
+    const {
+        getCurrentAccountId,
+        hasAccounts
+    } = useAccountStore();
+
+    // Get current account info from session
+    const currentAccountId = getCurrentAccountId();
+
     // Use useAccount hook to get current account data if we have an account ID
     const { account: currentAccount, isLoading: accountLoading } = useAccount(
-        currentAccountFromStore?.id,
+        currentAccountId || undefined,
         {
             autoFetch: true,
             refreshOnMount: false
         }
     );
 
-    const isLoading = authLoading || (currentAccountFromStore && accountLoading);
+    const isLoading = authLoading || (currentAccountId && accountLoading);
 
     // Simple navigation helper
     const navigateToUrl = useCallback((url: string) => {
@@ -81,9 +87,18 @@ export const useAuthRedirectHandler = (options: UseAuthRedirectHandlerOptions): 
             };
         }
 
-        // User is authenticated and has active accounts
-        if (isAuthenticated && hasActiveAccounts()) {
-            if (currentAccountFromStore) {
+        // Check if we have a valid session
+        if (!hasValidSession) {
+            return {
+                action: 'redirect',
+                code: RedirectCode.NO_AUTHENTICATION,
+                destination: defaultLoginUrl
+            };
+        }
+
+        // User has valid session and accounts
+        if (isAuthenticated && hasAccounts()) {
+            if (currentAccountId) {
                 if (currentAccount) {
                     // User is fully authenticated with account data
                     return {
@@ -101,7 +116,7 @@ export const useAuthRedirectHandler = (options: UseAuthRedirectHandlerOptions): 
                         action: 'redirect',
                         code: RedirectCode.ACCOUNT_DATA_LOAD_FAILED,
                         destination: defaultAccountsUrl,
-                        data: { accountId: currentAccountFromStore.id }
+                        data: { accountId: currentAccountId }
                     };
                 } else {
                     // Still loading account data
@@ -120,16 +135,16 @@ export const useAuthRedirectHandler = (options: UseAuthRedirectHandlerOptions): 
             }
         } 
         
-        // User has accounts but none currently active
-        else if (hasActiveAccounts()) {
+        // Valid session but no accounts
+        else if (hasValidSession && !hasAccounts()) {
             return {
                 action: 'redirect',
-                code: RedirectCode.HAS_ACCOUNTS_BUT_NONE_ACTIVE,
-                destination: defaultAccountsUrl
+                code: RedirectCode.NO_AUTHENTICATION,
+                destination: defaultLoginUrl
             };
         } 
         
-        // No authentication
+        // No valid session
         else {
             return {
                 action: 'redirect',
@@ -139,9 +154,10 @@ export const useAuthRedirectHandler = (options: UseAuthRedirectHandlerOptions): 
         }
     }, [
         isLoading,
+        hasValidSession,
         isAuthenticated,
-        hasActiveAccounts,
-        currentAccountFromStore,
+        hasAccounts,
+        currentAccountId,
         currentAccount,
         accountLoading,
         defaultHomeUrl,
@@ -202,20 +218,6 @@ export const useAuthRedirectHandler = (options: UseAuthRedirectHandlerOptions): 
                     break;
                 }
 
-                case RedirectCode.HAS_ACCOUNTS_BUT_NONE_ACTIVE: {
-                    // Always run override handler first if provided
-                    if (overrideHandlers.onHasAccountsButNoneActive) {
-                        await overrideHandlers.onHasAccountsButNoneActive();
-                    }
-
-                    // Run default handler unless disabled
-                    if (!disableDefaultHandlers) {
-                        console.log('Has accounts but none active, redirecting to accounts page');
-                        navigateToUrl(decision.destination);
-                    }
-                    break;
-                }
-
                 case RedirectCode.NO_AUTHENTICATION: {
                     // Always run override handler first if provided
                     if (overrideHandlers.onNoAuthentication) {
@@ -266,14 +268,12 @@ export const useAuthRedirectHandler = (options: UseAuthRedirectHandlerOptions): 
         if (decision.action === 'redirect') {
             executeRedirect(decision);
         }
-    }, [autoRedirect, getRedirectDecision, executeRedirect]);
-
-    const decision = getRedirectDecision();
+    }, [autoRedirect]);
 
     return {
         handleRedirect,
         getRedirectDecision,
-        isReady: decision.action !== 'wait',
-        redirectCode: decision.code
+        isReady: getRedirectDecision().action !== 'wait',
+        redirectCode: getRedirectDecision().code
     };
 };

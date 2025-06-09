@@ -13,7 +13,8 @@ import {
     OAuthProviders,
     AuthSDKError,
     TokenCheckResponse,
-    TwoFactorSetupResponse
+    TwoFactorSetupResponse,
+    GetAccountSessionResponse
 } from '../types';
 
 interface AuthContextValue {
@@ -22,19 +23,23 @@ interface AuthContextValue {
 
     // Store selectors
     accounts: Account[];
-    allAccounts: Account[];
-    disabledAccounts: Account[];
     currentAccount: Account | null;
     isLoading: boolean;
     isAuthenticating: boolean;
     error: string | null;
     isAuthenticated: boolean;
+    hasValidSession: boolean;
     oauthState: {
         isInProgress: boolean;
         provider: OAuthProviders | null;
         redirectUrl: string | null;
         tempToken: string | null;
     };
+
+    // Session Management
+    loadSession: () => Promise<GetAccountSessionResponse>;
+    refreshSession: () => Promise<void>;
+    clearSession: () => void;
 
     // Local Authentication
     localSignup: (data: LocalSignupRequest) => Promise<{ accountId: string }>;
@@ -52,15 +57,9 @@ interface AuthContextValue {
     updateAccount: (accountId: string, updates: Partial<Account>) => Promise<Account>;
     changePassword: (accountId: string, data: PasswordChangeRequest) => Promise<void>;
     setupTwoFactor: (accountId: string, data: TwoFactorSetupRequest) => Promise<TwoFactorSetupResponse>;
-    switchAccount: (accountId: string) => void;
-    logout: (accountId?: string, clearClientAccountState?: boolean) => Promise<void>;
+    switchAccount: (accountId: string) => Promise<void>;
+    logout: (accountId?: string) => Promise<void>;
     logoutAll: () => Promise<void>;
-
-    // Account State Management
-    disableAccount: (accountId: string) => void;
-    enableAccount: (accountId: string) => void;
-    removeAccount: (accountId: string) => void;
-    isAccountDisabled: (accountId: string) => boolean;
 
     // Google Permissions
     requestGooglePermission: (accountId: string, scopes: string[]) => void;
@@ -72,8 +71,6 @@ interface AuthContextValue {
     prefetchAccountsData: () => Promise<void>;
 
     // Store actions (exposed for hooks)
-    addAccount: (account: Account) => void;
-    setCurrentAccount: (accountId: string | null) => void;
     setOAuthTempToken: (tempToken: string) => void;
     clearOAuthState: () => void;
     setAuthenticating: (authenticating: boolean) => void;
@@ -90,39 +87,36 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 interface AuthProviderProps {
     children: ReactNode;
     client: HttpClient;
-    autoFetchAccountData?: boolean;
-    prefetchOnMount?: boolean;
+    autoLoadSession?: boolean;
+    prefetchAccountData?: boolean;
 }
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({
     children,
     client,
-    autoFetchAccountData = true,
-    prefetchOnMount = true
+    autoLoadSession = true,
+    prefetchAccountData = true
 }) => {
     const {
-        // State selectors
-        getActiveAccounts,
-        getAccounts,
-        getDisabledAccounts,
         getCurrentAccount,
+        getAccounts,
         isLoading,
         isAuthenticating,
         error,
         oauthState,
-        hasActiveAccounts,
+        hasValidSession,
         isAuthenticated,
         getAccountById,
         hasAccountData,
         needsAccountData,
-        getActiveAccountIds,
+        getAccountIds,
+        getMissingAccountIds,
 
         // Actions
-        addAccount,
+        setSession,
+        clearSession: clearSessionStore,
         setAccountData,
-        updateAccount: updateAccountInStore,
-        removeAccount,
-        setCurrentAccount,
+        updateAccountData,
         setLoading,
         setAuthenticating,
         setError,
@@ -130,18 +124,57 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         setOAuthInProgress,
         setOAuthTempToken,
         clearOAuthState,
-
-        // Account state management
-        disableAccount,
-        enableAccount,
-        isAccountDisabled
     } = useAccountStore();
 
     // Get current data
     const currentAccount = getCurrentAccount();
-    const accounts = getActiveAccounts();
-    const allAccounts = getAccounts();
-    const disabledAccounts = getDisabledAccounts();
+    const accounts = getAccounts();
+
+    // Load session from backend
+    const loadSession = useCallback(async (): Promise<GetAccountSessionResponse> => {
+        try {
+            setLoading(true);
+            clearError();
+
+            const sessionResponse = await client.getAccountSession();
+            
+            // Update session in store
+            setSession(sessionResponse.session);
+            
+            // If session includes account data, populate the store
+            if (sessionResponse.accounts) {
+                sessionResponse.accounts.forEach(account => {
+                    setAccountData(account.id, account);
+                });
+            }
+
+            return sessionResponse;
+        } catch (error) {
+            const message = error instanceof AuthSDKError ? error.message : 'Failed to load session';
+            setError(message);
+            
+            // Clear session on error
+            clearSessionStore();
+            throw error;
+        } finally {
+            setLoading(false);
+        }
+    }, [client, setSession, setAccountData, setLoading, setError, clearError, clearSessionStore]);
+
+    // Refresh session and account data
+    const refreshSession = useCallback(async (): Promise<void> => {
+        await loadSession();
+        
+        // Prefetch any missing account data
+        if (prefetchAccountData) {
+            await prefetchAccountsData();
+        }
+    }, [loadSession, prefetchAccountData]);
+
+    // Clear session
+    const clearSession = useCallback(() => {
+        clearSessionStore();
+    }, [clearSessionStore]);
 
     // Smart account data fetching
     const ensureAccountData = useCallback(async (accountId: string): Promise<Account> => {
@@ -183,23 +216,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     }, [ensureAccountData, refreshAccountData]);
 
     const prefetchAccountsData = useCallback(async () => {
-        const activeAccountIds = getActiveAccountIds();
-        const missingDataIds = activeAccountIds.filter(id => needsAccountData(id));
+        const missingAccountIds = getMissingAccountIds();
 
-        if (missingDataIds.length === 0) return;
+        if (missingAccountIds.length === 0) return;
 
         try {
             setLoading(true);
             await Promise.all(
-                missingDataIds.map(id => ensureAccountData(id))
+                missingAccountIds.map(id => ensureAccountData(id))
             );
         } catch (error) {
-            // Individual account fetches will handle their own errors
             console.warn('Some account data could not be prefetched:', error);
         } finally {
             setLoading(false);
         }
-    }, [getActiveAccountIds, needsAccountData, ensureAccountData, setLoading]);
+    }, [getMissingAccountIds, ensureAccountData, setLoading]);
 
     // Local Authentication Methods
     const localSignup = useCallback(async (data: LocalSignupRequest) => {
@@ -208,6 +239,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
             clearError();
 
             const result = await client.localSignup(data);
+            
+            // Refresh session after signup to get updated state
+            await refreshSession();
+            
             return result;
         } catch (error) {
             const message = error instanceof AuthSDKError ? error.message : 'Signup failed';
@@ -216,7 +251,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         } finally {
             setAuthenticating(false);
         }
-    }, [client, setAuthenticating, clearError, setError]);
+    }, [client, setAuthenticating, clearError, setError, refreshSession]);
 
     const localLogin = useCallback(async (data: LocalLoginRequest) => {
         try {
@@ -228,11 +263,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
             if (result.requiresTwoFactor) {
                 setOAuthTempToken(result.tempToken!);
                 return result;
-            } else if (result.accountId) {
-                // Add account ID and fetch data
-                const account = await client.getAccount(result.accountId);
-                addAccount(account);
-                setCurrentAccount(result.accountId);
+            } else {
+                // Refresh session after successful login
+                await refreshSession();
             }
 
             return result;
@@ -243,7 +276,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         } finally {
             setAuthenticating(false);
         }
-    }, [client, setAuthenticating, clearError, setError, setOAuthTempToken, addAccount, setCurrentAccount]);
+    }, [client, setAuthenticating, clearError, setError, setOAuthTempToken, refreshSession]);
 
     const verifyTwoFactor = useCallback(async (data: TwoFactorVerifyRequest) => {
         try {
@@ -253,10 +286,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
             const result = await client.verifyTwoFactor(data);
 
             if (result.accountId) {
-                const account = await client.getAccount(result.accountId);
-                addAccount(account);
-                setCurrentAccount(result.accountId);
                 clearOAuthState();
+                // Refresh session after successful 2FA
+                await refreshSession();
             }
 
             return result;
@@ -267,7 +299,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         } finally {
             setAuthenticating(false);
         }
-    }, [client, setAuthenticating, clearError, setError, addAccount, setCurrentAccount, clearOAuthState]);
+    }, [client, setAuthenticating, clearError, setError, clearOAuthState, refreshSession]);
 
     const requestPasswordReset = useCallback(async (email: string) => {
         try {
@@ -313,7 +345,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         try {
             setLoading(true);
             const updatedAccount = await client.updateAccount(accountId, updates);
-            updateAccountInStore(accountId, updatedAccount);
+            updateAccountData(accountId, updatedAccount);
             return updatedAccount;
         } catch (error) {
             const message = error instanceof AuthSDKError ? error.message : 'Failed to update account';
@@ -322,7 +354,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         } finally {
             setLoading(false);
         }
-    }, [client, updateAccountInStore, setLoading, setError]);
+    }, [client, updateAccountData, setLoading, setError]);
 
     const changePassword = useCallback(async (accountId: string, data: PasswordChangeRequest) => {
         try {
@@ -354,71 +386,63 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     }, [client, refreshAccountData, setLoading, setError]);
 
     const switchAccount = useCallback(async (accountId: string) => {
-        if (isAccountDisabled(accountId)) return;
-
-        setCurrentAccount(accountId);
-
-        // Ensure we have the account data
-        if (autoFetchAccountData && needsAccountData(accountId)) {
-            try {
+        try {
+            setLoading(true);
+            
+            // Update current account in backend session
+            await client.setCurrentAccountInSession(accountId);
+            
+            // Refresh session to get updated state
+            await refreshSession();
+            
+            // Ensure we have the account data
+            if (needsAccountData(accountId)) {
                 await ensureAccountData(accountId);
-            } catch (error) {
-                console.warn('Failed to fetch account data when switching:', error);
             }
+        } catch (error) {
+            const message = error instanceof AuthSDKError ? error.message : 'Failed to switch account';
+            setError(message);
+            throw error;
+        } finally {
+            setLoading(false);
         }
-    }, [isAccountDisabled, setCurrentAccount, autoFetchAccountData, needsAccountData, ensureAccountData]);
+    }, [client, refreshSession, needsAccountData, ensureAccountData, setLoading, setError]);
 
-    /**
-     * Logout a single account
-     * @param accountId - The account to logout (defaults to current account)
-     * @param clearClientAccountState - Whether to remove from client or just disable (default: true)
-     */
-    const logout = useCallback(async (accountId?: string, clearClientAccountState: boolean = true) => {
+    const logout = useCallback(async (accountId?: string) => {
         try {
             setLoading(true);
             const targetAccountId = accountId || currentAccount?.id;
 
             if (targetAccountId) {
-                // Use the HTTP client's logout method which handles the redirect to backend
-                await client.logout(targetAccountId, clearClientAccountState);
-
-                // Note: The actual account removal/disabling will be handled by the callback
-                // after the backend redirects to /auth/callback with the appropriate callback code
+                await client.logout(targetAccountId);
+                // The backend will handle session updates via callback
             } else {
                 throw new Error('No account ID provided and no current account found');
             }
         } catch (error) {
             const message = error instanceof AuthSDKError ? error.message : 'Logout failed';
             setError(message);
-            setLoading(false); // Reset loading state on error
+            setLoading(false);
         }
-        // Note: Don't set loading to false on success since we're redirecting
     }, [client, currentAccount?.id, setLoading, setError]);
 
-    /**
-     * Logout all active accounts
-     */
     const logoutAll = useCallback(async () => {
         try {
             setLoading(true);
-            const accountIds = getActiveAccountIds();
+            const accountIds = getAccountIds();
             
             if (accountIds.length === 0) {
                 throw new Error('No active accounts to logout');
             }
 
-            // Use the HTTP client's logoutAll method which handles the redirect to backend
             await client.logoutAll(accountIds);
-            
-            // Note: The actual account clearing will be handled by the callback
-            // after the backend redirects to /auth/callback with the appropriate callback code
+            // The backend will handle session updates via callback
         } catch (error) {
             const message = error instanceof AuthSDKError ? error.message : 'Logout all failed';
             setError(message);
-            setLoading(false); // Reset loading state on error
+            setLoading(false);
         }
-        // Note: Don't set loading to false on success since we're redirecting
-    }, [client, getActiveAccountIds, setLoading, setError]);
+    }, [client, getAccountIds, setLoading, setError]);
 
     // Google Permissions
     const requestGooglePermission = useCallback((accountId: string, scopes: string[]) => {
@@ -445,19 +469,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         }
     }, [currentAccount?.id, refreshAccountData]);
 
-    // Auto-prefetch account data on mount
+    // Auto-load session on mount
     useEffect(() => {
-        if (prefetchOnMount && hasActiveAccounts()) {
-            prefetchAccountsData();
+        if (autoLoadSession) {
+            loadSession().catch(console.warn);
         }
     }, []); // Only run on mount
-
-    // Auto-fetch current account data if missing
-    useEffect(() => {
-        if (autoFetchAccountData && currentAccount && needsAccountData(currentAccount.id)) {
-            ensureAccountData(currentAccount.id);
-        }
-    }, [currentAccount?.id, autoFetchAccountData]);
 
     const contextValue: AuthContextValue = {
         // Client
@@ -465,14 +482,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
 
         // State
         accounts,
-        allAccounts,
-        disabledAccounts,
         currentAccount,
         isLoading,
         isAuthenticating,
         error,
         isAuthenticated: isAuthenticated(),
+        hasValidSession: hasValidSession(),
         oauthState,
+
+        // Session Management
+        loadSession,
+        refreshSession,
+        clearSession,
 
         // Local Auth
         localSignup,
@@ -494,12 +515,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         logout,
         logoutAll,
 
-        // Account State Management
-        disableAccount,
-        enableAccount,
-        removeAccount,
-        isAccountDisabled,
-
         // Google Permissions
         requestGooglePermission,
         checkGoogleScopes,
@@ -510,8 +525,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         prefetchAccountsData,
 
         // Store actions (exposed for hooks)
-        addAccount,
-        setCurrentAccount,
         setOAuthTempToken,
         clearOAuthState,
         setAuthenticating,

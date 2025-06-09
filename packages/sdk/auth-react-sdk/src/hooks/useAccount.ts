@@ -32,7 +32,12 @@ export function useAccount(
     } = options;
 
     const { ensureAccountData, refreshAccountData, clearError: clearAuthError } = useAuth();
-    const { getAccountById, getCurrentAccount, needsAccountData } = useAccountStore();
+    const { 
+        getAccountById, 
+        getCurrentAccount, 
+        needsAccountData,
+        getAccountIds // Get account IDs from session
+    } = useAccountStore();
     
     const [isLoading, setIsLoading] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -45,11 +50,13 @@ export function useAccount(
             return currentAccount ? [currentAccount.id] : [];
         }
         if (typeof accountIdOrIds === 'string') {
-            // Single ID
-            return [accountIdOrIds];
+            // Single ID - but only if it's in session
+            const sessionAccountIds = getAccountIds();
+            return sessionAccountIds.includes(accountIdOrIds) ? [accountIdOrIds] : [];
         }
-        // Array of IDs
-        return accountIdOrIds;
+        // Array of IDs - filter to only include accounts in session
+        const sessionAccountIds = getAccountIds();
+        return accountIdOrIds.filter(id => sessionAccountIds.includes(id));
     })();
 
     const accounts = accountIds.map(id => getAccountById(id));
@@ -147,7 +154,7 @@ export function useAccount(
                 fetchMissing();
             }
         }
-    }, [accountIds, autoFetch, refreshOnMount]);
+    }, [accountIds, autoFetch, refreshOnMount]); // Use join for stable dependency
 
     // Auto-refresh interval
     useEffect(() => {
@@ -158,7 +165,7 @@ export function useAccount(
         }, refreshInterval);
 
         return () => clearInterval(interval);
-    }, [accountIds, refreshInterval]);
+    }, [accountIds, refreshInterval]); // Use join for stable dependency
 
     return {
         account,

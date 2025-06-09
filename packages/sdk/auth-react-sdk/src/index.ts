@@ -10,17 +10,17 @@ export { NotificationsProvider, useNotificationsContext } from './context/notifi
 export { useAuthCallbackHandler } from './hooks/useAuthCallbackHandler';
 export { useAuthRedirectHandler } from './hooks/useAuthRedirectHandler';
 
-// Store exports
+// Store exports (updated for session-based approach)
 export { 
     useAccountStore, 
-    useCurrentAccount as useCurrentAccountFromStore, // Rename to avoid confusion with hook
-    useAccounts as useAccountsFromStore, // Rename to avoid confusion with hook
-    useAllAccounts,
-    useDisabledAccounts,
+    useCurrentAccount,
+    useAccounts,
     useAuthState, 
     useOAuthState,
     useAccountDataStatus,
-    useAccountIds
+    useAccountIds,
+    useAccountSession,
+    useMissingAccountIds
 } from './store/account-store';
 
 // Hook exports

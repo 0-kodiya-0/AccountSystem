@@ -19,7 +19,8 @@ import {
     AuthSDKError,
     ErrorCode,
     SecuritySettings,
-    GoogleTokenInfo
+    GoogleTokenInfo,
+    GetAccountSessionResponse
 } from '../types';
 
 export class HttpClient {
@@ -35,7 +36,7 @@ export class HttpClient {
             : config.backendUrl;
 
         this.http = axios.create({
-            baseURL: fullBaseUrl,  // Use full URL with proxy path
+            baseURL: fullBaseUrl,
             timeout: config.timeout || 30000,
             withCredentials: config.withCredentials !== false,
             headers: {
@@ -75,6 +76,17 @@ export class HttpClient {
                 );
             }
         );
+    }
+
+    // Account Session Management (NEW)
+    async getAccountSession(): Promise<GetAccountSessionResponse> {
+        const response = await this.http.get('/account/session');
+        return response.data;
+    }
+
+    async setCurrentAccountInSession(accountId: string | null): Promise<{ message: string; currentAccountId: string | null }> {
+        const response = await this.http.post('/account/session/current', { accountId });
+        return response.data;
     }
 
     // Account Management
@@ -211,12 +223,10 @@ export class HttpClient {
         window.location.href = `${this.getRedirectBaseUrl()}/oauth/signup/${provider}`;
     }
 
-    // Update redirectToOAuthSignin method - remove redirectUrl parameter  
     redirectToOAuthSignin(provider: string): void {
         window.location.href = `${this.getRedirectBaseUrl()}/oauth/signin/${provider}`;
     }
 
-    // Update requestGooglePermission method - remove redirectUrl parameter
     requestGooglePermission(accountId: string, scopeNames: string[]): void {
         const params = new URLSearchParams();
         params.append('accountId', accountId);
@@ -225,7 +235,6 @@ export class HttpClient {
         window.location.href = `${this.getRedirectBaseUrl()}/oauth/permission/${scopes}?${params.toString()}`;
     }
 
-    // Update reauthorizePermissions method - remove redirectUrl parameter
     reauthorizePermissions(accountId: string): void {
         const params = new URLSearchParams();
         params.append('accountId', accountId);

@@ -432,3 +432,15 @@ export enum RedirectCode {
     LOADING_AUTH_STATE = 'loading_auth_state',
     LOADING_ACCOUNT_DATA = 'loading_account_data'
 }
+
+export interface AccountSessionInfo {
+    hasSession: boolean;
+    accountIds: string[];
+    currentAccountId: string | null;
+    isValid: boolean;
+}
+
+export interface GetAccountSessionResponse {
+    session: AccountSessionInfo;
+    accounts?: Account[]; // Will be populated with account data if available
+}

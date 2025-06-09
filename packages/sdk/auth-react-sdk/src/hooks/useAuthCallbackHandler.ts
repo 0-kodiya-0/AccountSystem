@@ -17,7 +17,6 @@ interface UseCallbackHandlerOptions {
 
     // Logout success handlers
     onLogoutSuccess?: (data: { accountId: string; message?: string }) => void | Promise<void>;
-    onLogoutDisableSuccess?: (data: { accountId: string; message?: string }) => void | Promise<void>;
     onLogoutAllSuccess?: (data: { accountIds: string[]; message?: string }) => void | Promise<void>;
 
     // Error handlers
@@ -47,15 +46,12 @@ interface UseCallbackHandlerReturn {
 export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}): UseCallbackHandlerReturn => {
     const {
         client,
-        addAccount,
-        setCurrentAccount,
+        refreshSession, // NEW: Use refreshSession instead of individual store actions
         setOAuthTempToken,
         clearOAuthState,
         setAuthenticating,
         setError,
-        clearError,
-        removeAccount,
-        disableAccount
+        clearError
     } = useAuth();
 
     const {
@@ -101,9 +97,8 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
                     if (!disableDefaultHandlers) {
                         console.log(`OAuth signin successful: ${data.name} (${data.accountId}) via ${data.provider}`);
 
-                        const account = await client.getAccount(data.accountId);
-                        addAccount(account);
-                        setCurrentAccount(data.accountId);
+                        // Refresh session to get updated state from backend
+                        await refreshSession();
                         clearOAuthState();
 
                         navigateToRoot();
@@ -127,9 +122,8 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
                     if (!disableDefaultHandlers) {
                         console.log(`OAuth signup successful: ${data.name} (${data.accountId}) via ${data.provider}`);
 
-                        const account = await client.getAccount(data.accountId);
-                        addAccount(account);
-                        setCurrentAccount(data.accountId);
+                        // Refresh session to get updated state from backend
+                        await refreshSession();
                         clearOAuthState();
 
                         navigateToRoot();
@@ -153,6 +147,10 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
                     // Run default handler unless disabled
                     if (!disableDefaultHandlers) {
                         console.log(`OAuth permission granted: ${data.service} ${data.scopeLevel} for ${data.accountId} via ${data.provider}`);
+                        
+                        // Refresh session to get updated auth state
+                        await refreshSession();
+                        
                         navigateToRoot();
                     }
                     break;
@@ -174,9 +172,8 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
                     if (!disableDefaultHandlers) {
                         console.log(`Local signin successful: ${data.name} (${data.accountId})`);
 
-                        const account = await client.getAccount(data.accountId);
-                        addAccount(account);
-                        setCurrentAccount(data.accountId);
+                        // Refresh session to get updated state from backend
+                        await refreshSession();
 
                         navigateToRoot();
                     }
@@ -270,27 +267,8 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
                     // Run default handler unless disabled
                     if (!disableDefaultHandlers) {
                         console.log(`Account logged out: ${data.accountId} - ${data.message}`);
-                        removeAccount(data.accountId);
-                        navigateToRoot();
-                    }
-                    break;
-                }
-
-                case CallbackCode.LOGOUT_DISABLE_SUCCESS: {
-                    const data = {
-                        accountId: callbackData.accountId!,
-                        message: callbackData.message
-                    };
-
-                    // Always run override handler first if provided
-                    if (overrideHandlers.onLogoutDisableSuccess) {
-                        await overrideHandlers.onLogoutDisableSuccess(data);
-                    }
-
-                    // Run default handler unless disabled
-                    if (!disableDefaultHandlers) {
-                        console.log(`Account logged out and disabled: ${data.accountId} - ${data.message}`);
-                        disableAccount(data.accountId);
+                        // Refresh session to get updated state (account removed)
+                        await refreshSession();
                         navigateToRoot();
                     }
                     break;
@@ -310,8 +288,8 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
                     // Run default handler unless disabled
                     if (!disableDefaultHandlers) {
                         console.log(`All accounts logged out: ${data.accountIds.join(', ')} - ${data.message}`);
-                        // Remove all specified accounts
-                        data.accountIds.forEach(accountId => removeAccount(accountId));
+                        // Refresh session to get updated state (all accounts removed)
+                        await refreshSession();
                         navigateToRoot();
                     }
                     break;
@@ -449,10 +427,8 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
                     if (!disableDefaultHandlers) {
                         console.log(`Permission reauthorization needed for account ${data.accountId}`);
                         
-                        // User is successfully signed in, so save their information
-                        const account = await client.getAccount(data.accountId);
-                        addAccount(account);
-                        setCurrentAccount(data.accountId);
+                        // User is successfully signed in, refresh session
+                        await refreshSession();
                         clearOAuthState();
                         
                         // Now request the missing permissions
@@ -502,7 +478,7 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
             }
         }
     }, [
-        client, addAccount, setCurrentAccount, setOAuthTempToken, clearOAuthState,
+        client, refreshSession, setOAuthTempToken, clearOAuthState,
         setError, disableDefaultHandlers, overrideHandlers, navigateToRoot
     ]);
 
