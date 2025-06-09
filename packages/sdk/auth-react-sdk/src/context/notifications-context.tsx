@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useCallback, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useCallback, ReactNode, useEffect, JSX } from 'react';
 import { useRealtimeNotifications } from '../hooks/useRealtimeNotifications';
 import { useNotifications } from '../hooks/useNotifications';
 import { useCurrentAccount } from '../store/account-store';
@@ -69,7 +69,7 @@ interface NotificationsProviderProps {
     pollingInterval?: number;
 }
 
-export const NotificationsProvider: React.FC<NotificationsProviderProps> = ({
+export const NotificationsProvider = ({
     children,
     socketConfig,
     accountId,
@@ -79,7 +79,7 @@ export const NotificationsProvider: React.FC<NotificationsProviderProps> = ({
     maxRetainedUpdates = 50,
     fetchOnMount = true,
     pollingInterval
-}) => {
+}: NotificationsProviderProps): JSX.Element | null => {
     const currentAccount = useCurrentAccount();
     const targetAccountId = accountId || currentAccount?.id;
 

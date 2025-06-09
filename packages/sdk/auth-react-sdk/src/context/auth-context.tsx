@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useCallback, ReactNode, JSX } from 'react';
 import { HttpClient } from '../client/http-client';
 import { useAccountStore } from '../store/account-store';
 import {
@@ -91,12 +91,12 @@ interface AuthProviderProps {
     prefetchAccountData?: boolean;
 }
 
-export const AuthProvider: React.FC<AuthProviderProps> = ({
+export const AuthProvider = ({
     children,
     client,
     autoLoadSession = true,
     prefetchAccountData = true
-}) => {
+}: AuthProviderProps): JSX.Element | null => {
     const {
         getCurrentAccount,
         getAccounts,
@@ -137,10 +137,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
             clearError();
 
             const sessionResponse = await client.getAccountSession();
-            
+
             // Update session in store
             setSession(sessionResponse.session);
-            
+
             // If session includes account data, populate the store
             if (sessionResponse.accounts) {
                 sessionResponse.accounts.forEach(account => {
@@ -152,7 +152,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         } catch (error) {
             const message = error instanceof AuthSDKError ? error.message : 'Failed to load session';
             setError(message);
-            
+
             // Clear session on error
             clearSessionStore();
             throw error;
@@ -164,7 +164,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     // Refresh session and account data
     const refreshSession = useCallback(async (): Promise<void> => {
         await loadSession();
-        
+
         // Prefetch any missing account data
         if (prefetchAccountData) {
             await prefetchAccountsData();
@@ -239,10 +239,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
             clearError();
 
             const result = await client.localSignup(data);
-            
+
             // Refresh session after signup to get updated state
             await refreshSession();
-            
+
             return result;
         } catch (error) {
             const message = error instanceof AuthSDKError ? error.message : 'Signup failed';
@@ -388,13 +388,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     const switchAccount = useCallback(async (accountId: string) => {
         try {
             setLoading(true);
-            
+
             // Update current account in backend session
             await client.setCurrentAccountInSession(accountId);
-            
+
             // Refresh session to get updated state
             await refreshSession();
-            
+
             // Ensure we have the account data
             if (needsAccountData(accountId)) {
                 await ensureAccountData(accountId);
@@ -430,7 +430,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         try {
             setLoading(true);
             const accountIds = getAccountIds();
-            
+
             if (accountIds.length === 0) {
                 throw new Error('No active accounts to logout');
             }
