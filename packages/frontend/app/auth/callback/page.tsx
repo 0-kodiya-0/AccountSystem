@@ -129,6 +129,37 @@ export default function AuthCallbackPage() {
             redirectWithCountdown("/login", 2)
         },
 
+        // Logout success handlers
+        onLogoutSuccess: async ({ accountId, message }) => {
+            console.log("Logout success:", accountId, message)
+            setStatus({
+                type: 'success',
+                title: 'Logged out successfully',
+                message: message || "You have been logged out successfully."
+            })
+            redirectWithCountdown("/accounts", 2)
+        },
+
+        onLogoutDisableSuccess: async ({ accountId, message }) => {
+            console.log("Logout disable success:", accountId, message)
+            setStatus({
+                type: 'success',
+                title: 'Account logged out',
+                message: message || "Account has been logged out and disabled for reactivation."
+            })
+            redirectWithCountdown("/accounts", 2)
+        },
+
+        onLogoutAllSuccess: async ({ accountIds, message }) => {
+            console.log("Logout all success:", accountIds, message)
+            setStatus({
+                type: 'success',
+                title: 'All accounts logged out',
+                message: message || "All accounts have been logged out successfully."
+            })
+            redirectWithCountdown("/login", 2)
+        },
+
         // Error handlers with UI updates
         onOAuthError: async ({ error }) => {
             console.error("OAuth error:", error)

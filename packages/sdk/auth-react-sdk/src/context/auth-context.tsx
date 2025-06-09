@@ -122,7 +122,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         setAccountData,
         updateAccount: updateAccountInStore,
         removeAccount,
-        clearAccounts,
         setCurrentAccount,
         setLoading,
         setAuthenticating,
@@ -369,41 +368,57 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         }
     }, [isAccountDisabled, setCurrentAccount, autoFetchAccountData, needsAccountData, ensureAccountData]);
 
+    /**
+     * Logout a single account
+     * @param accountId - The account to logout (defaults to current account)
+     * @param clearClientAccountState - Whether to remove from client or just disable (default: true)
+     */
     const logout = useCallback(async (accountId?: string, clearClientAccountState: boolean = true) => {
         try {
             setLoading(true);
             const targetAccountId = accountId || currentAccount?.id;
 
             if (targetAccountId) {
-                await client.logout(targetAccountId);
+                // Use the HTTP client's logout method which handles the redirect to backend
+                await client.logout(targetAccountId, clearClientAccountState);
 
-                if (clearClientAccountState) {
-                    removeAccount(targetAccountId);
-                } else {
-                    disableAccount(targetAccountId);
-                }
+                // Note: The actual account removal/disabling will be handled by the callback
+                // after the backend redirects to /auth/callback with the appropriate callback code
+            } else {
+                throw new Error('No account ID provided and no current account found');
             }
         } catch (error) {
             const message = error instanceof AuthSDKError ? error.message : 'Logout failed';
             setError(message);
-        } finally {
-            setLoading(false);
+            setLoading(false); // Reset loading state on error
         }
-    }, [client, currentAccount?.id, removeAccount, disableAccount, setLoading, setError]);
+        // Note: Don't set loading to false on success since we're redirecting
+    }, [client, currentAccount?.id, setLoading, setError]);
 
+    /**
+     * Logout all active accounts
+     */
     const logoutAll = useCallback(async () => {
         try {
             setLoading(true);
             const accountIds = getActiveAccountIds();
+            
+            if (accountIds.length === 0) {
+                throw new Error('No active accounts to logout');
+            }
+
+            // Use the HTTP client's logoutAll method which handles the redirect to backend
             await client.logoutAll(accountIds);
-            clearAccounts();
+            
+            // Note: The actual account clearing will be handled by the callback
+            // after the backend redirects to /auth/callback with the appropriate callback code
         } catch (error) {
             const message = error instanceof AuthSDKError ? error.message : 'Logout all failed';
             setError(message);
-        } finally {
-            setLoading(false);
+            setLoading(false); // Reset loading state on error
         }
-    }, [client, getActiveAccountIds, clearAccounts, setLoading, setError]);
+        // Note: Don't set loading to false on success since we're redirecting
+    }, [client, getActiveAccountIds, setLoading, setError]);
 
     // Google Permissions
     const requestGooglePermission = useCallback((accountId: string, scopes: string[]) => {
@@ -443,23 +458,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
             ensureAccountData(currentAccount.id);
         }
     }, [currentAccount?.id, autoFetchAccountData]);
-
-    // Handle URL parameters for clearClientAccountState
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        const clearClientAccountState = params.get('clearClientAccountState');
-        const accountId = params.get('accountId');
-
-        if (clearClientAccountState === 'false' && accountId) {
-            disableAccount(accountId);
-
-            // Clean up URL parameters
-            const url = new URL(window.location.href);
-            url.searchParams.delete('clearClientAccountState');
-            url.searchParams.delete('accountId');
-            window.history.replaceState({}, '', url.toString());
-        }
-    }, []);
 
     const contextValue: AuthContextValue = {
         // Client

@@ -15,6 +15,11 @@ interface UseCallbackHandlerOptions {
     onLocalEmailVerified?: (data: { message?: string }) => void | Promise<void>;
     onLocalPasswordResetSuccess?: (data: { message?: string }) => void | Promise<void>;
 
+    // Logout success handlers
+    onLogoutSuccess?: (data: { accountId: string; message?: string }) => void | Promise<void>;
+    onLogoutDisableSuccess?: (data: { accountId: string; message?: string }) => void | Promise<void>;
+    onLogoutAllSuccess?: (data: { accountIds: string[]; message?: string }) => void | Promise<void>;
+
     // Error handlers
     onOAuthError?: (data: { error: string; provider?: OAuthProviders; code?: string }) => void | Promise<void>;
     onLocalAuthError?: (data: { error: string; code?: string }) => void | Promise<void>;
@@ -48,7 +53,9 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
         clearOAuthState,
         setAuthenticating,
         setError,
-        clearError
+        clearError,
+        removeAccount,
+        disableAccount
     } = useAuth();
 
     const {
@@ -243,6 +250,68 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
                     // Run default handler unless disabled
                     if (!disableDefaultHandlers) {
                         console.log(`Password reset successful: ${data.message}`);
+                        navigateToRoot();
+                    }
+                    break;
+                }
+
+                // Logout success cases
+                case CallbackCode.LOGOUT_SUCCESS: {
+                    const data = {
+                        accountId: callbackData.accountId!,
+                        message: callbackData.message
+                    };
+
+                    // Always run override handler first if provided
+                    if (overrideHandlers.onLogoutSuccess) {
+                        await overrideHandlers.onLogoutSuccess(data);
+                    }
+
+                    // Run default handler unless disabled
+                    if (!disableDefaultHandlers) {
+                        console.log(`Account logged out: ${data.accountId} - ${data.message}`);
+                        removeAccount(data.accountId);
+                        navigateToRoot();
+                    }
+                    break;
+                }
+
+                case CallbackCode.LOGOUT_DISABLE_SUCCESS: {
+                    const data = {
+                        accountId: callbackData.accountId!,
+                        message: callbackData.message
+                    };
+
+                    // Always run override handler first if provided
+                    if (overrideHandlers.onLogoutDisableSuccess) {
+                        await overrideHandlers.onLogoutDisableSuccess(data);
+                    }
+
+                    // Run default handler unless disabled
+                    if (!disableDefaultHandlers) {
+                        console.log(`Account logged out and disabled: ${data.accountId} - ${data.message}`);
+                        disableAccount(data.accountId);
+                        navigateToRoot();
+                    }
+                    break;
+                }
+
+                case CallbackCode.LOGOUT_ALL_SUCCESS: {
+                    const data = {
+                        accountIds: callbackData.accountIds!,
+                        message: callbackData.message
+                    };
+
+                    // Always run override handler first if provided
+                    if (overrideHandlers.onLogoutAllSuccess) {
+                        await overrideHandlers.onLogoutAllSuccess(data);
+                    }
+
+                    // Run default handler unless disabled
+                    if (!disableDefaultHandlers) {
+                        console.log(`All accounts logged out: ${data.accountIds.join(', ')} - ${data.message}`);
+                        // Remove all specified accounts
+                        data.accountIds.forEach(accountId => removeAccount(accountId));
                         navigateToRoot();
                     }
                     break;
@@ -455,7 +524,15 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
             // Parse all other parameters and decode them
             for (const [key, value] of params.entries()) {
                 if (key !== 'code') {
-                    callbackData[key] = decodeParam(value);
+                    if (key === 'accountIds') {
+                        // Handle array parameters
+                        callbackData[key] = decodeParam(value).split(',');
+                    } else if (key === 'clearClientAccountState') {
+                        // Handle boolean parameters
+                        callbackData[key] = decodeParam(value) === 'true';
+                    } else {
+                        callbackData[key] = decodeParam(value);
+                    }
                 }
             }
 

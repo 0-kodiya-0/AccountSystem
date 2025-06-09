@@ -117,17 +117,30 @@ export class HttpClient {
         return response.data;
     }
 
-    async logout(accountId: string): Promise<void> {
-        await this.http.get('/account/logout', {
-            params: { accountId }
-        });
+    /**
+     * Logout a single account with options for client state management
+     * @param accountId - The account to logout
+     * @param clearClientAccountState - Whether to remove account from client (default: true)
+     */
+    async logout(accountId: string, clearClientAccountState: boolean = true): Promise<void> {
+        // Use window.location.href for logout to properly handle redirects to auth callback
+        const params = new URLSearchParams();
+        params.append('accountId', accountId);
+        params.append('clearClientAccountState', clearClientAccountState.toString());
+
+        window.location.href = `${this.getRedirectBaseUrl()}/account/logout?${params.toString()}`;
     }
 
+    /**
+     * Logout all specified accounts
+     * @param accountIds - Array of account IDs to logout
+     */
     async logoutAll(accountIds: string[]): Promise<void> {
+        // Use window.location.href for logout to properly handle redirects to auth callback
         const params = new URLSearchParams();
         accountIds.forEach(id => params.append('accountIds', id));
 
-        await this.http.get(`/account/logout/all?${params.toString()}`);
+        window.location.href = `${this.getRedirectBaseUrl()}/account/logout/all?${params.toString()}`;
     }
 
     // Local Authentication

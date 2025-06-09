@@ -380,6 +380,11 @@ export enum CallbackCode {
     LOCAL_EMAIL_VERIFIED = 'local_email_verified',
     LOCAL_PASSWORD_RESET_SUCCESS = 'local_password_reset_success',
     
+    // Logout success codes
+    LOGOUT_SUCCESS = 'logout_success',
+    LOGOUT_DISABLE_SUCCESS = 'logout_disable_success',
+    LOGOUT_ALL_SUCCESS = 'logout_all_success',
+    
     // Error codes
     OAUTH_ERROR = 'oauth_error',
     LOCAL_AUTH_ERROR = 'local_auth_error',
@@ -397,6 +402,7 @@ export enum CallbackCode {
 export interface CallbackData {
     code: CallbackCode;
     accountId?: string;
+    accountIds?: string[];
     name?: string;
     provider?: OAuthProviders;
     tempToken?: string;
@@ -404,6 +410,7 @@ export interface CallbackData {
     scopeLevel?: string;
     error?: string;
     message?: string;
+    clearClientAccountState?: boolean;
     // Additional context data
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     [key: string]: any;

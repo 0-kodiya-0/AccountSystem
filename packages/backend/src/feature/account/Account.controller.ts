@@ -1,8 +1,12 @@
+// packages/backend/src/feature/account/Account.controller.ts
+
 import { NextFunction, Request, Response } from 'express';
 import { JsonSuccess, Redirect } from '../../types/response.types';
 import { AccountDocument } from './Account.model';
 import { asyncHandler } from '../../utils/response';
 import * as AccountService from './Account.service';
+import { CallbackCode } from '../../types/response.types';
+import { getCallbackUrl } from '../../utils/redirect';
 
 /**
  * Search for an account by email
@@ -24,7 +28,15 @@ export const logoutAll = (req: Request, res: Response, next: NextFunction) => {
     const accountIdArray = AccountService.validateAccountIds(accountIds as string[]);
     AccountService.clearAllAccountSessions(res, accountIdArray);
 
-    next(new Redirect(null, "/"));
+    // Redirect to auth callback with logout success code
+    next(new Redirect(
+        {
+            code: CallbackCode.LOGOUT_ALL_SUCCESS,
+            message: "All accounts logged out successfully",
+            accountIds: accountIdArray
+        },
+        getCallbackUrl()
+    ));
 };
 
 /**
@@ -36,9 +48,19 @@ export const logout = (req: Request, res: Response, next: NextFunction) => {
     const validatedAccountId = AccountService.validateSingleAccountId(accountId as string);
     AccountService.clearSingleAccountSession(res, validatedAccountId);
 
+    const shouldClearClient = clearClientAccountState !== "false";
+
+    // Redirect to auth callback with appropriate logout code
     next(new Redirect(
-        { clearClientAccountState: clearClientAccountState === "false" ? false : true },
-        "/"
+        {
+            code: shouldClearClient ? CallbackCode.LOGOUT_SUCCESS : CallbackCode.LOGOUT_DISABLE_SUCCESS,
+            message: shouldClearClient 
+                ? "Account logged out successfully" 
+                : "Account logged out and disabled for reactivation",
+            accountId: validatedAccountId,
+            clearClientAccountState: shouldClearClient
+        },
+        getCallbackUrl()
     ));
 };
 

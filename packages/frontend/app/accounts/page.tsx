@@ -66,22 +66,20 @@ export default function AccountSelectionPage() {
     const handleLogout = async (accountId: string) => {
         try {
             setActioningAccount(accountId)
-            await logout(accountId, false) // Keep in client for reactivation
+            
+            // Use the proper client logout method with clearClientAccountState=false
+            // This will redirect to the backend logout endpoint and then to auth callback
+            await logout(accountId, false) // false = disable account for reactivation
 
-            toast({
-                title: "Account logged out",
-                description: "Account has been logged out but kept for easy reactivation.",
-                variant: "success",
-            })
         } catch (error: unknown) {
             toast({
                 title: "Logout failed",
                 description: error instanceof Error ? error.message : "Please try again.",
                 variant: "destructive",
             })
-        } finally {
-            setActioningAccount(null)
+            setActioningAccount(null) // Reset loading state on error
         }
+        // Note: Don't reset actioningAccount on success since we're redirecting
     }
 
     const handleReactivate = async (accountId: string) => {
@@ -127,8 +125,7 @@ export default function AccountSelectionPage() {
     }
 
     const handleAddOAuthAccount = (provider: OAuthProviders) => {
-        const redirectUrl = "/accounts"
-        startOAuthSignin(provider, redirectUrl)
+        startOAuthSignin(provider)
     }
 
     const getAccountStatusBadge = (account: Account) => {
