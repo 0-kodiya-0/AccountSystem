@@ -2,7 +2,7 @@
 
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { useAuth, useAccount, useAccountStore } from "@accountsystem/auth-react-sdk"
+import { useAuth, useAccount } from "@accountsystem/auth-react-sdk"
 
 interface AuthGuardProps {
   children: React.ReactNode
@@ -17,9 +17,12 @@ export function AuthGuard({
 }: AuthGuardProps) {
   const router = useRouter();
 
-  const hasActiveAccounts = useAccountStore(state => state.hasActiveAccounts);
-
-  const { isAuthenticated, currentAccount: currentAccountFromStore, isLoading: authLoading } = useAuth()
+  const {
+    isAuthenticated,
+    currentAccount: currentAccountFromStore,
+    isLoading: authLoading,
+    accounts
+  } = useAuth()
 
   // Use useAccount hook to get current account data if we have an account ID
   const { account: currentAccount, isLoading: accountLoading } = useAccount(
@@ -35,7 +38,7 @@ export function AuthGuard({
   useEffect(() => {
     if (isLoading) return // Wait for auth state to load
 
-    if (!isAuthenticated || !hasActiveAccounts()) {
+    if (!isAuthenticated || accounts.length === 0) {
       // No authentication or accounts, redirect to login
       router.replace("/login")
       return
@@ -61,6 +64,7 @@ export function AuthGuard({
     isLoading,
     accountLoading,
     requireAccount,
+    accounts.length,
     router
   ])
 
@@ -79,7 +83,7 @@ export function AuthGuard({
   // Show fallback while redirecting or if auth fails
   if (
     !isAuthenticated ||
-    !hasActiveAccounts() ||
+    accounts.length === 0 ||
     (requireAccount && (!currentAccountFromStore || (!currentAccount && !accountLoading)))
   ) {
     return fallback || (

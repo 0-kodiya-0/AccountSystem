@@ -28,11 +28,10 @@ export function AccountDropdown() {
         refreshOnMount: false
     })
 
-    // Get other accounts data
-    const otherAccountIds = accounts
+    // Get other accounts (limit to 3 for dropdown)
+    const otherAccounts = accounts
         .filter(acc => acc.id !== currentAccountFromStore?.id)
-        .map(acc => acc.id)
-        .slice(0, 3) // Show max 3 other accounts
+        .slice(0, 3)
 
     if (!currentAccountFromStore || isLoading) {
         return (
@@ -56,7 +55,7 @@ export function AccountDropdown() {
 
     const handleLogout = async () => {
         try {
-            await logout(currentAccount.id, false)
+            await logout(currentAccount.id)
             router.push("/accounts")
         } catch (error) {
             console.error("Failed to logout:", error)
@@ -134,13 +133,36 @@ export function AccountDropdown() {
                         <DropdownMenuSeparator />
                         <DropdownMenuLabel>Switch Account</DropdownMenuLabel>
 
-                        {/* Render other accounts with their own useAccount hooks */}
-                        {otherAccountIds.map((accountId) => (
-                            <OtherAccountItem
-                                key={accountId}
-                                accountId={accountId}
-                                onSwitch={handleSwitchAccount}
-                            />
+                        {/* Render other accounts */}
+                        {otherAccounts.map((account) => (
+                            <DropdownMenuItem
+                                key={account.id}
+                                onClick={() => handleSwitchAccount(account.id)}
+                            >
+                                <div className="flex items-center space-x-2 w-full">
+                                    <UserAvatar
+                                        name={formatAccountName(
+                                            account.userDetails.firstName,
+                                            account.userDetails.lastName,
+                                            account.userDetails.name
+                                        )}
+                                        imageUrl={account.userDetails.imageUrl}
+                                        size="sm"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm truncate">
+                                            {formatAccountName(
+                                                account.userDetails.firstName,
+                                                account.userDetails.lastName,
+                                                account.userDetails.name
+                                            )}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground truncate">
+                                            {account.userDetails.email}
+                                        </p>
+                                    </div>
+                                </div>
+                            </DropdownMenuItem>
                         ))}
 
                         <DropdownMenuItem
@@ -164,60 +186,5 @@ export function AccountDropdown() {
                 </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>
-    )
-}
-
-// Separate component for other account items to handle individual data fetching
-interface OtherAccountItemProps {
-    accountId: string
-    onSwitch: (accountId: string) => void
-}
-
-function OtherAccountItem({ accountId, onSwitch }: OtherAccountItemProps) {
-    const { account, isLoading } = useAccount(accountId, {
-        autoFetch: true,
-        refreshOnMount: false
-    })
-
-    if (isLoading || !account) {
-        return (
-            <DropdownMenuItem disabled>
-                <div className="flex items-center space-x-2 w-full">
-                    <div className="w-6 h-6 rounded-full bg-gray-200 animate-pulse" />
-                    <div className="flex-1 min-w-0">
-                        <div className="h-3 bg-gray-200 rounded animate-pulse mb-1" />
-                        <div className="h-2 bg-gray-200 rounded animate-pulse w-2/3" />
-                    </div>
-                </div>
-            </DropdownMenuItem>
-        )
-    }
-
-    const displayName = formatAccountName(
-        account.userDetails.firstName,
-        account.userDetails.lastName,
-        account.userDetails.name
-    )
-
-    return (
-        <DropdownMenuItem
-            onClick={() => onSwitch(account.id)}
-        >
-            <div className="flex items-center space-x-2 w-full">
-                <UserAvatar
-                    name={displayName}
-                    imageUrl={account.userDetails.imageUrl}
-                    size="sm"
-                />
-                <div className="flex-1 min-w-0">
-                    <p className="text-sm truncate">
-                        {displayName}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">
-                        {account.userDetails.email}
-                    </p>
-                </div>
-            </div>
-        </DropdownMenuItem>
     )
 }

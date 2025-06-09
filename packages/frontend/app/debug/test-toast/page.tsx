@@ -1,4 +1,3 @@
-// Create this file: packages/frontend/app/test-toast/page.tsx
 "use client"
 
 import { Button } from "@/components/ui/button"

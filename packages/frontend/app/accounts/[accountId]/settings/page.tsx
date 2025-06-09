@@ -28,7 +28,7 @@ export default function AccountSettingsPage() {
         refreshOnMount: true // Force refresh on mount for settings page
     })
 
-    const { removeAccount } = useAuth()
+    const { logout } = useAuth()
     const config = getEnvironmentConfig()
 
     const [deleteConfirm, setDeleteConfirm] = useState(false)
@@ -73,23 +73,23 @@ export default function AccountSettingsPage() {
         account.userDetails.name
     )
 
-    const handleDeleteAccount = async () => {
+    const handleLogoutAccount = async () => {
         if (!deleteConfirm) {
             setDeleteConfirm(true)
             return
         }
 
         try {
-            await removeAccount(accountId)
+            await logout(accountId)
             toast({
-                title: "Account removed",
-                description: "Your account has been removed from this device.",
+                title: "Account logged out",
+                description: "You have been logged out of this account.",
                 variant: "success",
             })
-            router.push("/accounts")
+            // Note: logout will handle the redirect
         } catch (error: unknown) {
             toast({
-                title: "Failed to remove account",
+                title: "Failed to logout",
                 description: error instanceof Error ? error.message : "Please try again.",
                 variant: "destructive",
             })
@@ -302,7 +302,7 @@ export default function AccountSettingsPage() {
                             <CardHeader>
                                 <CardTitle>Data Management</CardTitle>
                                 <CardDescription>
-                                    Export or delete your account data
+                                    Export or logout from your account
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
@@ -324,25 +324,25 @@ export default function AccountSettingsPage() {
                                     </Button>
                                 </div>
 
-                                {/* Delete Account */}
+                                {/* Logout Account */}
                                 <div className="flex items-center justify-between p-4 border border-destructive/20 rounded-lg bg-destructive/5">
                                     <div className="space-y-1">
-                                        <h4 className="font-medium text-destructive">Remove Account</h4>
+                                        <h4 className="font-medium text-destructive">Logout Account</h4>
                                         <p className="text-sm text-muted-foreground">
                                             {deleteConfirm
-                                                ? "This will remove the account from this device only. Click again to confirm."
-                                                : "Remove this account from this device (does not delete the account)"
+                                                ? "This will log you out of this account. Click again to confirm."
+                                                : "Log out of this account and return to account selection"
                                             }
                                         </p>
                                     </div>
                                     <Button
                                         variant={deleteConfirm ? "destructive" : "outline"}
                                         size="sm"
-                                        onClick={handleDeleteAccount}
+                                        onClick={handleLogoutAccount}
                                         onBlur={() => setTimeout(() => setDeleteConfirm(false), 3000)}
                                     >
                                         <Trash2 className="w-4 h-4 mr-2" />
-                                        {deleteConfirm ? "Confirm Remove" : "Remove Account"}
+                                        {deleteConfirm ? "Confirm Logout" : "Logout"}
                                     </Button>
                                 </div>
                             </CardContent>

@@ -2,17 +2,16 @@
 
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { useAuth, useAccount, useAccountStore } from "@accountsystem/auth-react-sdk"
+import { useAuth, useAccount } from "@accountsystem/auth-react-sdk"
 import { getEnvironmentConfig } from "@/lib/utils"
 
 export default function DashboardPage() {
     const router = useRouter()
 
-    const hasActiveAccounts = useAccountStore(state => state.hasActiveAccounts);
-
     const {
         isAuthenticated,
-        currentAccount: currentAccountFromStore
+        currentAccount: currentAccountFromStore,
+        accounts
     } = useAuth()
 
     const config = getEnvironmentConfig()
@@ -34,7 +33,7 @@ export default function DashboardPage() {
         }
 
         // If not authenticated, redirect to login
-        if (!isAuthenticated || !hasActiveAccounts()) {
+        if (!isAuthenticated || accounts.length === 0) {
             router.replace("/login")
             return
         }
@@ -55,6 +54,7 @@ export default function DashboardPage() {
         currentAccountFromStore,
         currentAccount,
         accountLoading,
+        accounts.length,
         config.homeUrl,
         router
     ])

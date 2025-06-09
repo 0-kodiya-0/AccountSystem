@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/components/ui/use-toast"
 import { ThemeToggle } from "@/components/theme/theme-toggle"
-import { Account, OAuthProviders, useAccountStore, useAuth } from "@accountsystem/auth-react-sdk"
+import { Account, OAuthProviders, useAuth } from "@accountsystem/auth-react-sdk"
 import { getEnvironmentConfig } from "@/lib/utils"
 import AccountCard from "@/components/ui/account-card"
 
@@ -21,17 +21,10 @@ export default function AccountSelectionPage() {
     const [switchingTo, setSwitchingTo] = useState<string | null>(null)
     const [actioningAccount, setActioningAccount] = useState<string | null>(null)
 
-    const hasActiveAccounts = useAccountStore(state => state.hasActiveAccounts);
-    const hasDisabledAccounts = useAccountStore(state => state.hasDisabledAccounts);
-
     const {
         accounts,
-        allAccounts,
-        disabledAccounts,
         switchAccount,
         logout,
-        enableAccount,
-        removeAccount,
         startOAuthSignin,
     } = useAuth()
 
@@ -67,9 +60,8 @@ export default function AccountSelectionPage() {
         try {
             setActioningAccount(accountId)
             
-            // Use the proper client logout method with clearClientAccountState=false
-            // This will redirect to the backend logout endpoint and then to auth callback
-            await logout(accountId, false) // false = disable account for reactivation
+            // Use the proper client logout method
+            await logout(accountId)
 
         } catch (error: unknown) {
             toast({
@@ -82,47 +74,7 @@ export default function AccountSelectionPage() {
         // Note: Don't reset actioningAccount on success since we're redirecting
     }
 
-    const handleReactivate = async (accountId: string) => {
-        try {
-            setActioningAccount(accountId)
-            await enableAccount(accountId)
 
-            toast({
-                title: "Account reactivated",
-                description: "Account is now available for sign in.",
-                variant: "success",
-            })
-        } catch (error: unknown) {
-            toast({
-                title: "Reactivation failed",
-                description: error instanceof Error ? error.message : "Please try again.",
-                variant: "destructive",
-            })
-        } finally {
-            setActioningAccount(null)
-        }
-    }
-
-    const handleRemove = async (accountId: string) => {
-        try {
-            setActioningAccount(accountId)
-            await removeAccount(accountId)
-
-            toast({
-                title: "Account removed",
-                description: "Account has been permanently removed from this device.",
-                variant: "success",
-            })
-        } catch (error: unknown) {
-            toast({
-                title: "Remove failed",
-                description: error instanceof Error ? error.message : "Please try again.",
-                variant: "destructive",
-            })
-        } finally {
-            setActioningAccount(null)
-        }
-    }
 
     const handleAddOAuthAccount = (provider: OAuthProviders) => {
         startOAuthSignin(provider)
@@ -190,26 +142,16 @@ export default function AccountSelectionPage() {
                         <div className="flex items-center justify-center space-x-6 text-sm text-muted-foreground">
                             <div className="flex items-center space-x-1">
                                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                <span>{accounts.length} active</span>
-                            </div>
-                            {hasDisabledAccounts() && (
-                                <div className="flex items-center space-x-1">
-                                    <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                                    <span>{disabledAccounts.length} inactive</span>
-                                </div>
-                            )}
-                            <div className="flex items-center space-x-1">
-                                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                                <span>{allAccounts.length} total</span>
+                                <span>{accounts.length} account{accounts.length !== 1 ? 's' : ''}</span>
                             </div>
                         </div>
                     </div>
 
                     {/* Active Accounts */}
-                    {hasActiveAccounts() && (
+                    {accounts.length > 0 && (
                         <section className="space-y-6">
                             <div className="flex items-center justify-between">
-                                <h2 className="text-xl font-semibold">Active accounts</h2>
+                                <h2 className="text-xl font-semibold">Your accounts</h2>
                                 <Badge variant="secondary" className="bg-green-50 text-green-700 dark:bg-green-900 dark:text-green-200">
                                     Ready to use
                                 </Badge>
@@ -226,34 +168,6 @@ export default function AccountSelectionPage() {
                                         actioningAccount={actioningAccount}
                                         getAccountStatusBadge={getAccountStatusBadge}
                                         isActive={true}
-                                    />
-                                ))}
-                            </div>
-                        </section>
-                    )}
-
-                    {/* Disabled Accounts */}
-                    {hasDisabledAccounts() && (
-                        <section className="space-y-6">
-                            <div className="flex items-center justify-between">
-                                <h2 className="text-xl font-semibold text-muted-foreground">
-                                    Inactive accounts
-                                </h2>
-                                <Badge variant="outline" className="border-yellow-200 text-yellow-700 dark:border-yellow-800 dark:text-yellow-400">
-                                    Requires reactivation
-                                </Badge>
-                            </div>
-
-                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                                {disabledAccounts.map((account) => (
-                                    <AccountCard
-                                        key={account.id}
-                                        accountId={account.id}
-                                        onReactivate={handleReactivate}
-                                        onRemove={handleRemove}
-                                        actioningAccount={actioningAccount}
-                                        getAccountStatusBadge={getAccountStatusBadge}
-                                        isActive={false}
                                     />
                                 ))}
                             </div>
@@ -333,7 +247,7 @@ export default function AccountSelectionPage() {
                     <section className="border-t pt-8 space-y-4">
                         <div className="text-center">
                             <p className="text-sm text-muted-foreground mb-4">
-                                Already have an account saved on this device?
+                                Already have an account?
                             </p>
                             <Link href="/login">
                                 <Button variant="ghost" disabled={!!switchingTo}>
@@ -345,8 +259,7 @@ export default function AccountSelectionPage() {
                         {/* Help text */}
                         <div className="text-center text-xs text-muted-foreground max-w-2xl mx-auto">
                             <p>
-                                Inactive accounts are kept for easy reactivation. You can permanently remove them
-                                by clicking the trash icon. For help, {config.supportEmail ? (
+                                For help, {config.supportEmail ? (
                                     <Link href={`mailto:${config.supportEmail}`} className="text-primary hover:underline">
                                         contact support
                                     </Link>

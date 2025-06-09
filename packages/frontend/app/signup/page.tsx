@@ -85,8 +85,7 @@ export default function SignupPage() {
 
     const handleOAuthSignup = (provider: OAuthProviders) => {
         try {
-            const redirectUrl = config.homeUrl || "/dashboard"
-            signupWithProvider(provider, redirectUrl)
+            signupWithProvider(provider)
         } catch (error: unknown) {
             toast({
                 title: "OAuth sign up failed",
