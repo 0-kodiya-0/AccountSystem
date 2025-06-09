@@ -12,9 +12,10 @@ import { useToast } from "@/components/ui/use-toast"
 import { AccountDropdown } from "@/components/auth/account-dropdown"
 import { UserAvatar } from "@/components/auth/user-avatar"
 import { ThemeToggle } from "@/components/theme/theme-toggle"
-import { AuthGuard } from "@/components/auth/auth-guard"
-import { useAccount, useAuth } from "@accountsystem/auth-react-sdk"
+import { AuthGuard, useAccount, useAuth } from "@accountsystem/auth-react-sdk"
 import { formatAccountName, getEnvironmentConfig } from "@/lib/utils"
+import { LoadingSpinner } from "@/components/auth/loading-spinner"
+import { RedirectingSpinner } from "@/components/auth/redirecting-spinner"
 
 export default function AccountSettingsPage() {
     const params = useParams()
@@ -128,7 +129,11 @@ export default function AccountSettingsPage() {
     }
 
     return (
-        <AuthGuard>
+        <AuthGuard
+            requireAccount={true}
+            loadingComponent={LoadingSpinner}
+            redirectingComponent={RedirectingSpinner}
+        >
             <div className="min-h-screen bg-background">
                 {/* Header */}
                 <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
