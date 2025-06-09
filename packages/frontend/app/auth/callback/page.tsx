@@ -140,16 +140,6 @@ export default function AuthCallbackPage() {
             redirectWithCountdown("/accounts", 2)
         },
 
-        onLogoutDisableSuccess: async ({ accountId, message }) => {
-            console.log("Logout disable success:", accountId, message)
-            setStatus({
-                type: 'success',
-                title: 'Account logged out',
-                message: message || "Account has been logged out and disabled for reactivation."
-            })
-            redirectWithCountdown("/accounts", 2)
-        },
-
         onLogoutAllSuccess: async ({ accountIds, message }) => {
             console.log("Logout all success:", accountIds, message)
             setStatus({
