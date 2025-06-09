@@ -1,6 +1,6 @@
 import React, { JSX } from 'react';
-import { useAuthGuard } from '../hooks/useAuthGuard';
-import { AuthGuardDecision, AuthGuardOptions } from '../types';
+import { AuthGuardOptions, useAuthGuard } from '../hooks/useAuthGuard';
+import { AuthGuardDecision } from '../types';
 
 interface AuthGuardProps extends AuthGuardOptions {
     children: React.ReactNode;

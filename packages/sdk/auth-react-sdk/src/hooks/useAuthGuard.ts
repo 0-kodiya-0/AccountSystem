@@ -1,7 +1,84 @@
 import { useEffect, useCallback } from 'react';
 import { useAuth } from '../context/auth-context';
 import { useAccount } from './useAccount';
-import { AuthGuardDecision, AuthGuardOptions, AuthGuardResult } from '../types';
+import { Account, AuthGuardDecision } from '../types';
+
+export interface AuthGuardOptions {
+    /**
+     * Whether account selection is required
+     * @default true
+     */
+    requireAccount?: boolean;
+    
+    /**
+     * Whether email verification is required
+     * @default false
+     */
+    requireEmailVerified?: boolean;
+    
+    /**
+     * Whether to allow guest (unauthenticated) access
+     * @default false
+     */
+    allowGuests?: boolean;
+    
+    /**
+     * Custom redirect URLs
+     */
+    customRedirects?: {
+        loginUrl?: string;
+        accountsUrl?: string;
+        customUrl?: string;
+    };
+    
+    /**
+     * Callback when redirect is triggered
+     */
+    onRedirect?: (destination: string, reason: AuthGuardDecision) => void;
+    
+    /**
+     * Whether to automatically redirect or manual control
+     * @default true
+     */
+    autoRedirect?: boolean;
+}
+
+export interface AuthGuardResult {
+    /**
+     * The current auth decision
+     */
+    decision: AuthGuardDecision;
+    
+    /**
+     * Whether auth checks are complete (not loading)
+     */
+    isReady: boolean;
+    
+    /**
+     * Where to redirect if decision requires redirect
+     */
+    redirectDestination?: string;
+    
+    /**
+     * Human-readable reason for the decision
+     */
+    redirectReason?: string;
+    
+    /**
+     * Current account data if available
+     */
+    currentAccount: Account | null;
+    
+    /**
+     * Manual redirect function
+     */
+    redirect: (destination: string) => void;
+    
+    /**
+     * Check if content should be shown
+     */
+    forceShowContent: () => boolean;
+}
 
 export const useAuthGuard = (options: AuthGuardOptions = {}): AuthGuardResult => {
     const {
