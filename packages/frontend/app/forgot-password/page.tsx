@@ -1,20 +1,17 @@
 "use client"
 
-import * as React from "react"
 import { useState } from "react"
-import Link from "next/link"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { ArrowLeft, Mail } from "lucide-react"
+import { ArrowLeft, Mail, RefreshCw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useToast } from "@/components/ui/use-toast"
 import { AuthLayout } from "@/components/layout/auth-layout"
-import { useLocalAuth } from "@/hooks/useLocalAuth"
 import { getEnvironmentConfig } from "@/lib/utils"
+import { usePasswordReset, PasswordResetStatus, useAuth } from "@accountsystem/auth-react-sdk"
 
 const forgotPasswordSchema = z.object({
     email: z.string().email("Please enter a valid email address"),
@@ -23,50 +20,56 @@ const forgotPasswordSchema = z.object({
 type ForgotPasswordFormData = z.infer<typeof forgotPasswordSchema>
 
 export default function ForgotPasswordPage() {
-    const { toast } = useToast()
-    const [isSubmitted, setIsSubmitted] = useState(false)
-
-    const { requestPasswordReset, isAuthenticating } = useLocalAuth()
     const config = getEnvironmentConfig()
+    const { isAuthenticated } = useAuth()
+
+    const {
+        status,
+        message,
+        error,
+        isLoading,
+        requestReset,
+        redirect
+    } = usePasswordReset({
+        redirectAfterRequest: undefined, // Don't auto-redirect, show success UI
+        onRequestSuccess: (message) => {
+            console.log("Password reset requested:", message)
+        },
+        onError: (error) => {
+            console.error("Password reset failed:", error)
+        }
+    })
 
     const {
         register,
         handleSubmit,
-        formState: { errors, isSubmitting },
+        formState: { errors },
         getValues,
     } = useForm<ForgotPasswordFormData>({
         resolver: zodResolver(forgotPasswordSchema),
     })
 
-    const onSubmit = async (data: ForgotPasswordFormData) => {
-        try {
-            await requestPasswordReset(data.email)
-            setIsSubmitted(true)
-
-            toast({
-                title: "Reset link sent!",
-                description: "Check your email for password reset instructions.",
-                variant: "success",
-            })
-
-        } catch (error: unknown) {
-            const errorMessage = error instanceof Error ? error.message : "Please try again later."
-            toast({
-                title: "Failed to send reset email",
-                description: errorMessage,
-                variant: "destructive",
-            })
+    // Redirect authenticated users away from this page
+    // (They don't need password reset if they're logged in)
+    useState(() => {
+        if (isAuthenticated) {
+            redirect(config.homeUrl || "/dashboard")
         }
+    })
+
+    const onSubmit = async (data: ForgotPasswordFormData) => {
+        await requestReset(data.email)
     }
 
     const handleResend = async () => {
         const email = getValues("email")
         if (email) {
-            await onSubmit({ email })
+            await requestReset(email)
         }
     }
 
-    if (isSubmitted) {
+    // Show success state
+    if (status === PasswordResetStatus.REQUEST_SUCCESS) {
         return (
             <AuthLayout
                 title="Check your email"
@@ -81,8 +84,7 @@ export default function ForgotPasswordPage() {
                         <div className="space-y-2">
                             <h3 className="text-lg font-medium">Password reset email sent</h3>
                             <p className="text-sm text-muted-foreground">
-                                We&apos;ve sent a password reset link to <strong>{getValues("email")}</strong>.
-                                Click the link in the email to reset your password.
+                                {message || `We've sent a password reset link to ${getValues("email")}. Click the link in the email to reset your password.`}
                             </p>
                         </div>
                     </div>
@@ -105,19 +107,21 @@ export default function ForgotPasswordPage() {
                             variant="outline"
                             className="w-full"
                             onClick={handleResend}
-                            disabled={isSubmitting || isAuthenticating}
-                            loading={isSubmitting || isAuthenticating}
+                            disabled={isLoading}
                         >
+                            <RefreshCw className="w-4 h-4 mr-2" />
                             Resend email
                         </Button>
 
                         <div className="text-center">
-                            <Link href="/login">
-                                <Button variant="ghost" className="text-sm">
-                                    <ArrowLeft className="w-4 h-4 mr-2" />
-                                    Back to sign in
-                                </Button>
-                            </Link>
+                            <Button 
+                                variant="ghost" 
+                                className="text-sm"
+                                onClick={() => redirect("/login")}
+                            >
+                                <ArrowLeft className="w-4 h-4 mr-2" />
+                                Back to sign in
+                            </Button>
                         </div>
                     </div>
                 </div>
@@ -125,6 +129,7 @@ export default function ForgotPasswordPage() {
         )
     }
 
+    // Show request form
     return (
         <AuthLayout
             title="Forgot your password?"
@@ -139,13 +144,16 @@ export default function ForgotPasswordPage() {
                         id="email"
                         type="email"
                         placeholder="Enter your email address"
-                        error={!!errors.email}
-                        disabled={isSubmitting || isAuthenticating}
+                        error={!!errors.email || !!error}
+                        disabled={isLoading}
                         {...register("email")}
                         autoComplete="email"
                     />
                     {errors.email && (
                         <p className="text-sm text-destructive">{errors.email.message}</p>
+                    )}
+                    {error && (
+                        <p className="text-sm text-destructive">{error}</p>
                     )}
                     <p className="text-xs text-muted-foreground">
                         We&apos;ll send reset instructions to this email address
@@ -156,8 +164,8 @@ export default function ForgotPasswordPage() {
                 <Button
                     type="submit"
                     className="w-full"
-                    loading={isSubmitting || isAuthenticating}
-                    disabled={isSubmitting || isAuthenticating}
+                    disabled={isLoading}
+                    loading={isLoading}
                 >
                     Send reset email
                 </Button>
@@ -165,12 +173,14 @@ export default function ForgotPasswordPage() {
 
             {/* Back to login */}
             <div className="text-center">
-                <Link href="/login">
-                    <Button variant="ghost" className="text-sm">
-                        <ArrowLeft className="w-4 h-4 mr-2" />
-                        Back to sign in
-                    </Button>
-                </Link>
+                <Button 
+                    variant="ghost" 
+                    className="text-sm"
+                    onClick={() => redirect("/login")}
+                >
+                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    Back to sign in
+                </Button>
             </div>
         </AuthLayout>
     )
