@@ -20,7 +20,6 @@ export interface OAuthState {
 
 // Add a new type for permission requests
 export interface PermissionState extends OAuthState {
-    redirectUrl: string;
     accountId: string;
     service: string;
     scopeLevel: string;
