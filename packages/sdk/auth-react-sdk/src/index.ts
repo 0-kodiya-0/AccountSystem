@@ -8,6 +8,7 @@ export { NotificationsProvider, useNotificationsContext } from './context/notifi
 
 // Callback handling
 export { useAuthCallbackHandler } from './hooks/useAuthCallbackHandler';
+export { useAuthRedirectHandler } from './hooks/useAuthRedirectHandler';
 
 // Store exports
 export { 

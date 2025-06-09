@@ -1,75 +1,41 @@
 "use client"
 
-import { useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { useAuth, useAccount, useAccountStore } from "@accountsystem/auth-react-sdk"
+import { useAuthRedirectHandler, RedirectCode } from "@accountsystem/auth-react-sdk"
 import { getEnvironmentConfig } from "@/lib/utils"
 
 export default function AuthRedirect() {
-    const router = useRouter()
-
-    const hasActiveAccounts = useAccountStore(state => state.hasActiveAccounts);
-
-    const {
-        isAuthenticated,
-        currentAccount: currentAccountFromStore,
-        isLoading: authLoading
-    } = useAuth()
-
     const config = getEnvironmentConfig()
 
-    // Use useAccount hook to get current account data if we have an account ID
-    const { account: currentAccount, isLoading: accountLoading } = useAccount(
-        currentAccountFromStore?.id,
-        {
-            autoFetch: true,
-            refreshOnMount: false
+    // Use the auth redirect handler with minimal configuration
+    // All redirect logic is handled by the SDK's default handlers
+    const { redirectCode } = useAuthRedirectHandler({
+        defaultHomeUrl: config.homeUrl || "/dashboard",
+        defaultLoginUrl: "/login",
+        defaultAccountsUrl: "/accounts",
+        autoRedirect: true,
+        disableDefaultHandlers: false
+    })
+
+    // Get user-friendly message based on redirect code
+    const getStatusMessage = (code: RedirectCode | null): string => {
+        switch (code) {
+            case RedirectCode.LOADING_AUTH_STATE:
+                return "Loading authentication state..."
+            case RedirectCode.LOADING_ACCOUNT_DATA:
+                return "Loading account data..."
+            default:
+                return "Redirecting..."
         }
-    )
+    }
 
-    const isLoading = authLoading || (currentAccountFromStore && accountLoading)
-
-    useEffect(() => {
-        if (isLoading) return // Wait for auth state to load
-
-        if (isAuthenticated && hasActiveAccounts()) {
-            if (currentAccountFromStore) {
-                if (currentAccount) {
-                    // User is fully authenticated with account data, redirect to home
-                    const redirectUrl = config.homeUrl || "/dashboard"
-                    router.replace(redirectUrl)
-                } else if (!accountLoading) {
-                    // Account ID exists but failed to load data, go to account selection
-                    router.replace("/accounts")
-                }
-                // If still loading account data, wait
-            } else {
-                // Has accounts but no current account selected, go to account selection
-                router.replace("/accounts")
-            }
-        } else if (hasActiveAccounts()) {
-            // User has accounts but none currently active, go to account selection
-            router.replace("/accounts")
-        } else {
-            // No authentication, redirect to login
-            router.replace("/login")
-        }
-    }, [
-        isAuthenticated,
-        currentAccountFromStore,
-        currentAccount,
-        isLoading,
-        accountLoading,
-        router,
-        config.homeUrl
-    ])
-
-    // Show loading spinner while redirecting
+    // Show loading spinner while determining redirect
     return (
         <div className="min-h-screen flex items-center justify-center bg-background">
             <div className="text-center space-y-4">
                 <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
-                <p className="text-sm text-muted-foreground">Redirecting...</p>
+                <p className="text-sm text-muted-foreground">
+                    {getStatusMessage(redirectCode)}
+                </p>
             </div>
         </div>
     )

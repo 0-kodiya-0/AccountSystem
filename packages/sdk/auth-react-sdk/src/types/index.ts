@@ -408,3 +408,20 @@ export interface CallbackData {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     [key: string]: any;
 }
+
+export enum RedirectCode {
+    // Success redirects
+    AUTHENTICATED_WITH_ACCOUNT = 'authenticated_with_account',
+    
+    // Account management redirects
+    ACCOUNT_SELECTION_REQUIRED = 'account_selection_required',
+    ACCOUNT_DATA_LOAD_FAILED = 'account_data_load_failed',
+    HAS_ACCOUNTS_BUT_NONE_ACTIVE = 'has_accounts_but_none_active',
+    
+    // Auth failure redirects
+    NO_AUTHENTICATION = 'no_authentication',
+    
+    // Loading states
+    LOADING_AUTH_STATE = 'loading_auth_state',
+    LOADING_ACCOUNT_DATA = 'loading_account_data'
+}
