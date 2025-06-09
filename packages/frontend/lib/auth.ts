@@ -22,7 +22,7 @@ export const socketConfig = {
     maxReconnectAttempts: 5,
     reconnectDelay: 1000,
     timeout: 5000,
-    transports: ['websocket', 'polling'] as const,
+    transports: ['websocket', 'polling'] as ('websocket' | 'polling')[],
 }
 
 // Auth configuration object

@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -32,13 +31,11 @@ type VerificationFormData = z.infer<typeof verificationSchema>
 type BackupCodeFormData = z.infer<typeof backupCodeSchema>
 
 export default function TwoFactorVerifyPage() {
-    const router = useRouter()
     const { toast } = useToast()
     const config = getEnvironmentConfig()
     
     const [isBackupCode, setIsBackupCode] = useState(false)
 
-    // ✅ All 2FA verification logic now in SDK hook
     const {
         status,
         message,
@@ -51,7 +48,6 @@ export default function TwoFactorVerifyPage() {
         useBackupCode,
         clearError,
         redirect,
-        startOver
     } = use2FAVerification({
         redirectAfterSuccess: config.homeUrl || "/dashboard",
         redirectDelay: 2000,
@@ -64,7 +60,7 @@ export default function TwoFactorVerifyPage() {
                 variant: "success",
             })
         },
-        onError: (error, remaining) => {
+        onError: (error) => {
             toast({
                 title: "Verification failed",
                 description: error,

@@ -65,7 +65,7 @@ export default function TwoFactorSetupPage() {
         accountId,
         autoGenerateBackupCodes: false, // Manual generation for better UX
         redirectAfterComplete: undefined, // Stay on page to show backup codes
-        onSetupReady: (qrCode, secret) => {
+        onSetupReady: () => {
             toast({
                 title: "2FA Setup Ready",
                 description: "Scan the QR code with your authenticator app.",
@@ -132,7 +132,7 @@ export default function TwoFactorSetupPage() {
                     description: "Secret key copied to clipboard.",
                     variant: "success",
                 })
-            } catch () {
+            } catch {
                 toast({
                     title: "Copy Failed",
                     description: "Failed to copy secret to clipboard.",
