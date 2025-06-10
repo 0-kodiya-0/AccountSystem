@@ -188,7 +188,7 @@ export const useSocket = (
         };
 
         connectAsync();
-    }, [autoConnect, isSupported]);
+    }, [connectionState]);
 
     // Auto-subscribe to account
     useEffect(() => {
@@ -205,7 +205,7 @@ export const useSocket = (
         };
 
         subscribeToAccount();
-    }, [autoSubscribe, accountId, connectionState, isSupported]);
+    }, [accountId, connectionState]);
 
     return {
         // Connection state

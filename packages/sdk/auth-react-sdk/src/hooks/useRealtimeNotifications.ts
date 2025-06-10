@@ -341,7 +341,7 @@ export const useRealtimeNotifications = (
                 console.warn(`Auto-subscription failed for ${targetAccountId}:`, error);
             });
         }
-    }, [autoSubscribe, targetAccountId, isConnected]);
+    }, [targetAccountId, isConnected]);
 
     // Cleanup on unmount
     useEffect(() => {
