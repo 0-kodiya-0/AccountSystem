@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { AuthLayout } from "@/components/layout/auth-layout"
 import { getEnvironmentConfig } from "@/lib/utils"
-import { usePasswordReset, PasswordResetStatus, useAuth } from "@accountsystem/auth-react-sdk"
+import { usePasswordReset, PasswordResetStatus, useAuth } from "../../../sdk/auth-react-sdk/src"
 
 const forgotPasswordSchema = z.object({
     email: z.string().email("Please enter a valid email address"),

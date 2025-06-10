@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { useAuthCallbackHandler } from "@accountsystem/auth-react-sdk"
+import { useAuthCallbackHandler } from "../../../../sdk/auth-react-sdk/src"
 import { getEnvironmentConfig } from "@/lib/utils"
 import { CheckCircle, XCircle, AlertCircle } from "lucide-react"
 

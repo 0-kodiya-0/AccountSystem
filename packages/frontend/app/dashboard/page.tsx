@@ -1,6 +1,6 @@
 "use client"
 
-import { useAuth, AuthGuard } from "@accountsystem/auth-react-sdk"
+import { useAuth, AuthGuard } from "../../../sdk/auth-react-sdk/src"
 import { getEnvironmentConfig } from "@/lib/utils"
 import { LoadingSpinner } from "@/components/auth/loading-spinner"
 import { RedirectingSpinner } from "@/components/auth/redirecting-spinner"

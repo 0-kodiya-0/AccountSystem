@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/components/ui/use-toast"
 import { ThemeToggle } from "@/components/theme/theme-toggle"
-import { Account, OAuthProviders, useAuth } from "@accountsystem/auth-react-sdk"
+import { Account, OAuthProviders, useAuth } from "../../../sdk/auth-react-sdk/src"
 import { getEnvironmentConfig } from "@/lib/utils"
 import { UserAvatar } from "@/components/auth/user-avatar"
 import { LoadingSpinner } from "@/components/auth/loading-spinner"

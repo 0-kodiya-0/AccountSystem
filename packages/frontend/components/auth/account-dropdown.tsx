@@ -15,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { UserAvatar } from "./user-avatar"
-import { useAuth, useAccount } from "@accountsystem/auth-react-sdk"
+import { useAuth, useAccount } from "../../../sdk/auth-react-sdk/src"
 import { formatAccountName } from "@/lib/utils"
 
 export function AccountDropdown() {

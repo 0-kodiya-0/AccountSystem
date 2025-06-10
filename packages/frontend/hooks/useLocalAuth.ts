@@ -4,7 +4,7 @@ import {
     LocalLoginRequest,
     LocalLoginResponse,
     ResetPasswordRequest
-} from "@accountsystem/auth-react-sdk"
+} from "../../sdk/auth-react-sdk/src"
 
 export function useLocalAuth() {
     const {

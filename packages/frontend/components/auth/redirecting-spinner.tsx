@@ -1,4 +1,4 @@
-import { AuthGuardDecision } from "@accountsystem/auth-react-sdk"
+import { AuthGuardDecision } from "../../../sdk/auth-react-sdk/src"
 
 interface RedirectingSpinnerProps {
     destination?: string

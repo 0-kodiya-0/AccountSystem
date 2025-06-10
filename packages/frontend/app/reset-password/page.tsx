@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { AuthLayout } from "@/components/layout/auth-layout"
 import { PasswordStrengthIndicator } from "@/components/auth/password-strength-indicator"
-import { usePasswordReset, PasswordResetStatus } from "@accountsystem/auth-react-sdk"
+import { usePasswordReset, PasswordResetStatus } from "../../../sdk/auth-react-sdk/src"
 import { validatePasswordStrength } from "@/lib/utils"
 
 const resetPasswordSchema = z.object({

@@ -14,7 +14,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { NotificationList } from "./notification-list"
-import { useNotifications } from "@accountsystem/auth-react-sdk"
+import { useNotifications } from "../../../sdk/auth-react-sdk/src"
 
 interface NotificationBellProps {
     className?: string

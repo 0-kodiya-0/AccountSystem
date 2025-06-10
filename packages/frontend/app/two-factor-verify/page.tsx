@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
 import { AuthLayout } from "@/components/layout/auth-layout"
-import { use2FAVerification, TwoFactorVerificationStatus } from "@accountsystem/auth-react-sdk"
+import { use2FAVerification, TwoFactorVerificationStatus } from "../../../sdk/auth-react-sdk/src"
 import { getEnvironmentConfig } from "@/lib/utils"
 
 const verificationSchema = z.object({

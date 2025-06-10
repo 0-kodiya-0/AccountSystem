@@ -4,7 +4,7 @@ import "./globals.css"
 
 import { ThemeProvider } from "@/components/theme/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
-import { AuthProvider } from "@accountsystem/auth-react-sdk"
+import { AuthProvider } from "../../sdk/auth-react-sdk/src"
 import { authClient } from "@/lib/auth"
 import { getEnvironmentConfig } from "@/lib/utils"
 

@@ -3,7 +3,7 @@
 import * as React from "react"
 import { NotificationItem } from "./notification-item"
 import { Loader2, Bell } from "lucide-react"
-import { useNotifications } from "@accountsystem/auth-react-sdk"
+import { useNotifications } from "../../../sdk/auth-react-sdk/src"
 
 interface NotificationListProps {
     maxHeight?: string

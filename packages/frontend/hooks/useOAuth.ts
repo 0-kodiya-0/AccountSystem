@@ -1,4 +1,4 @@
-import { useAuth , OAuthProviders } from "@accountsystem/auth-react-sdk"
+import { useAuth , OAuthProviders } from "../../sdk/auth-react-sdk/src"
 
 export function useOAuth() {
     const { 

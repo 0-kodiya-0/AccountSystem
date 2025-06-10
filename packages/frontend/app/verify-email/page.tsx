@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation"
 import { CheckCircle, XCircle, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { AuthLayout } from "@/components/layout/auth-layout"
-import { useEmailVerification, EmailVerificationStatus } from "@accountsystem/auth-react-sdk"
+import { useEmailVerification, EmailVerificationStatus } from "../../../sdk/auth-react-sdk/src"
 
 export default function EmailVerificationPage() {
     const searchParams = useSearchParams()

@@ -22,7 +22,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Notification, NotificationType, useNotifications } from "@accountsystem/auth-react-sdk"
+import { Notification, NotificationType, useNotifications } from "../../../sdk/auth-react-sdk/src"
 import { cn } from "@/lib/utils"
 
 interface NotificationItemProps {

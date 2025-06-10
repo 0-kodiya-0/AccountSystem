@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { NotificationList } from "./notification-list"
-import { useNotifications, useRealtimeNotifications } from "@accountsystem/auth-react-sdk"
+import { useNotifications, useRealtimeNotifications } from "../../../sdk/auth-react-sdk/src"
 import { socketConfig } from "@/lib/auth"
 
 export function NotificationCenter() {

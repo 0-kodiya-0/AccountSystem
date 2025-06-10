@@ -1,6 +1,6 @@
 "use client"
 
-import { useAuthRedirectHandler, RedirectCode } from "@accountsystem/auth-react-sdk"
+import { useAuthRedirectHandler, RedirectCode } from "../../../../sdk/auth-react-sdk/src"
 import { getEnvironmentConfig } from "@/lib/utils"
 
 export default function AuthRedirect() {
