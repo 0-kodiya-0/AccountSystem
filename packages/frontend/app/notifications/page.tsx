@@ -29,7 +29,6 @@ export default function NotificationsPage() {
                 autoSubscribe={true}
                 enableSound={true}
                 enableBrowserNotifications={true}
-                fetchOnMount={true}
             >
                 <div className="min-h-screen bg-background">
                     {/* Header */}

@@ -65,7 +65,6 @@ interface NotificationsProviderProps {
     enableSound?: boolean;
     enableBrowserNotifications?: boolean;
     maxRetainedUpdates?: number;
-    fetchOnMount?: boolean;
     pollingInterval?: number;
 }
 
@@ -77,7 +76,6 @@ export const NotificationsProvider = ({
     enableSound = true,
     enableBrowserNotifications = true,
     maxRetainedUpdates = 50,
-    fetchOnMount = true,
     pollingInterval
 }: NotificationsProviderProps): JSX.Element | null => {
     const currentAccount = useCurrentAccount();
@@ -263,14 +261,7 @@ export const NotificationsProvider = ({
         }, pollingInterval);
 
         return () => clearInterval(interval);
-    }, [pollingInterval, isConnected]);
-
-    // Auto-fetch on mount
-    useEffect(() => {
-        if (fetchOnMount && targetAccountId && !loading) {
-            refetch().catch(console.warn);
-        }
-    }, [fetchOnMount, targetAccountId, loading]);
+    }, [isConnected]);
 
     const contextValue: NotificationsContextValue = {
         // Current notifications state
