@@ -56,8 +56,8 @@ export default function RootLayout({
           {/* @ts-ignore - AuthProvider types issue with Next.js 13+ */}
           <AuthProvider
             client={authClient}
-            autoFetchAccountData={true}
-            prefetchOnMount={true}
+            autoLoadSession
+            prefetchAccountData
           >
             {children}
             <Toaster />

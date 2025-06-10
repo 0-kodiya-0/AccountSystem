@@ -34,20 +34,18 @@ export function useAccount(
     const { ensureAccountData, refreshAccountData, clearError: clearAuthError } = useAuth();
     const { 
         getAccountById, 
-        getCurrentAccount, 
         needsAccountData,
         getAccountIds // Get account IDs from session
     } = useAccountStore();
     
     const [isLoading, setIsLoading] = useState(false);
+    const [isAccountFetched, setIsAccountFetched] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
 
     // Normalize input to always work with array of IDs
     const accountIds: string[] = (() => {
         if (!accountIdOrIds) {
-            // No input - use current account
-            const currentAccount = getCurrentAccount();
-            return currentAccount ? [currentAccount.id] : [];
+            return [];
         }
         if (typeof accountIdOrIds === 'string') {
             // Single ID - but only if it's in session
@@ -142,20 +140,6 @@ export function useAccount(
         clearAuthError();
     };
 
-    // Auto-fetch on mount or when accountIds change
-    useEffect(() => {
-        if (accountIds.length === 0) return;
-
-        if (refreshOnMount) {
-            refreshAll();
-        } else if (autoFetch) {
-            const needsFetch = accountIds.some(id => needsAccountData(id));
-            if (needsFetch) {
-                fetchMissing();
-            }
-        }
-    }, [accountIds, autoFetch, refreshOnMount]); // Use join for stable dependency
-
     // Auto-refresh interval
     useEffect(() => {
         if (accountIds.length === 0 || refreshInterval <= 0) return;
@@ -165,7 +149,22 @@ export function useAccount(
         }, refreshInterval);
 
         return () => clearInterval(interval);
-    }, [accountIds, refreshInterval]); // Use join for stable dependency
+    }, [accountIds]); // Use join for stable dependency
+
+    // Auto-fetch on mount or when accountIds change
+    useEffect(() => {
+        if (accountIds.length === 0 || isAccountFetched) return;
+
+        if (refreshOnMount) {
+            refreshAll();
+        } else if (autoFetch) {
+            const needsFetch = accountIds.some(id => needsAccountData(id));
+            if (needsFetch) {
+                fetchMissing();
+            }
+        }
+        setIsAccountFetched(true)
+    }, [accountIds]); // Use join for stable dependency
 
     return {
         account,

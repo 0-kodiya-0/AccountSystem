@@ -8,11 +8,11 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { UserAvatar } from "@/components/auth/user-avatar"
-import { Account, useAccount } from "@accountsystem/auth-react-sdk"
+import { Account } from "@accountsystem/auth-react-sdk"
 import { formatAccountName } from "@/lib/utils"
 
 interface AccountCardProps {
-    accountId: string
+    account: Account
     onSwitch?: (accountId: string) => void
     onLogout?: (accountId: string) => void
     onRemove?: (accountId: string) => void
@@ -23,7 +23,7 @@ interface AccountCardProps {
 }
 
 export default function AccountCard({
-    accountId,
+    account,
     onSwitch,
     onLogout,
     onRemove,
@@ -32,34 +32,6 @@ export default function AccountCard({
     getAccountStatusBadge
 }: AccountCardProps) {
     const router = useRouter()
-
-    // Use useAccount hook to get account data
-    const { account, isLoading } = useAccount(accountId, {
-        autoFetch: true,
-        refreshOnMount: false
-    })
-
-    if (isLoading || !account) {
-        return (
-            <Card className="group cursor-pointer">
-                <CardHeader className="pb-4">
-                    <div className="flex items-start justify-between">
-                        <div className="flex items-center space-x-3">
-                            <div className="w-10 h-10 rounded-full bg-gray-200 animate-pulse" />
-                            <div className="flex-1 min-w-0">
-                                <div className="h-4 bg-gray-200 rounded animate-pulse mb-2" />
-                                <div className="h-3 bg-gray-200 rounded animate-pulse w-2/3" />
-                            </div>
-                        </div>
-                    </div>
-                </CardHeader>
-                <CardContent className="pt-0">
-                    <div className="h-8 bg-gray-200 rounded animate-pulse" />
-                </CardContent>
-            </Card>
-        )
-    }
-
     const displayName = formatAccountName(
         account.userDetails.firstName,
         account.userDetails.lastName,

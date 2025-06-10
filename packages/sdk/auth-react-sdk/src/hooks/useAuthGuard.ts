@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { useAuth } from '../context/auth-context';
 import { useAccount } from './useAccount';
 import { Account, AuthGuardDecision } from '../types';
@@ -33,14 +33,29 @@ export interface AuthGuardOptions {
     
     /**
      * Callback when redirect is triggered
+     * If provided, the default redirect is NOT automatically executed
+     * Call the defaultRedirect function to perform the default behavior
      */
-    onRedirect?: (destination: string, reason: AuthGuardDecision) => void;
+    onRedirect?: (destination: string, decision: AuthGuardDecision, defaultRedirect: () => void) => void;
+    
+    /**
+     * Callback that runs on every decision change
+     * Called whenever decision, destination, or reason changes
+     */
+    onDecisionChange?: (decision: AuthGuardDecision, destination?: string, reason?: string) => void;
     
     /**
      * Whether to automatically redirect or manual control
      * @default true
      */
     autoRedirect?: boolean;
+
+    /**
+     * Delay before redirecting (in milliseconds)
+     * Useful to prevent flashing content
+     * @default 0
+     */
+    redirectDelay?: number;
 }
 
 export interface AuthGuardResult {
@@ -80,6 +95,12 @@ export interface AuthGuardResult {
     forceShowContent: () => boolean;
 }
 
+interface AuthDecisionResult {
+    decision: AuthGuardDecision;
+    destination?: string;
+    reason?: string;
+}
+
 export const useAuthGuard = (options: AuthGuardOptions = {}): AuthGuardResult => {
     const {
         requireAccount = true,
@@ -87,7 +108,9 @@ export const useAuthGuard = (options: AuthGuardOptions = {}): AuthGuardResult =>
         allowGuests = false,
         customRedirects = {},
         onRedirect,
-        autoRedirect = true
+        onDecisionChange,
+        autoRedirect = true,
+        redirectDelay = 0
     } = options;
 
     // Get auth state from SDK
@@ -104,11 +127,19 @@ export const useAuthGuard = (options: AuthGuardOptions = {}): AuthGuardResult =>
         currentAccountFromStore?.id,
         {
             autoFetch: true,
-            refreshOnMount: false
+            refreshOnMount: true
         }
     );
 
     const isLoading = authLoading || (currentAccountFromStore && accountLoading);
+
+    // State to store the current auth decision
+    const [authDecision, setAuthDecision] = useState<AuthDecisionResult>({
+        decision: AuthGuardDecision.LOADING,
+        reason: 'Initializing authentication'
+    });
+
+    const { decision, destination, reason } = authDecision;
 
     // Manual redirect function
     const redirect = useCallback((destination: string) => {
@@ -117,112 +148,137 @@ export const useAuthGuard = (options: AuthGuardOptions = {}): AuthGuardResult =>
         }
     }, []);
 
-    // Determine the auth decision
-    const getAuthDecision = useCallback((): {
-        decision: AuthGuardDecision;
-        destination?: string;
-        reason?: string;
-    } => {
-        // Still loading auth state
-        if (isLoading) {
-            return {
-                decision: AuthGuardDecision.LOADING,
-                reason: 'Loading authentication state'
-            };
-        }
-
-        // Allow guests and no valid session
-        if (allowGuests && !hasValidSession) {
-            return {
-                decision: AuthGuardDecision.SHOW_CONTENT,
-                reason: 'Guest access allowed'
-            };
-        }
-
-        // No valid session or not authenticated
-        if (!hasValidSession || !isAuthenticated || accounts.length === 0) {
-            return {
-                decision: AuthGuardDecision.REDIRECT_TO_LOGIN,
-                destination: customRedirects.loginUrl || '/login',
-                reason: 'User not authenticated'
-            };
-        }
-
-        // Require account but none selected
-        if (requireAccount && !currentAccountFromStore) {
-            return {
-                decision: AuthGuardDecision.REDIRECT_TO_ACCOUNTS,
-                destination: customRedirects.accountsUrl || '/accounts',
-                reason: 'No account selected'
-            };
-        }
-
-        // Require account but data failed to load
-        if (requireAccount && currentAccountFromStore && !currentAccount && !accountLoading) {
-            return {
-                decision: AuthGuardDecision.REDIRECT_TO_ACCOUNTS,
-                destination: customRedirects.accountsUrl || '/accounts',
-                reason: 'Account data failed to load'
-            };
-        }
-
-        // Still loading account data
-        if (requireAccount && accountLoading) {
-            return {
-                decision: AuthGuardDecision.LOADING,
-                reason: 'Loading account data'
-            };
-        }
-
-        // Email verification required
-        if (requireEmailVerified && currentAccount && !currentAccount.userDetails.emailVerified) {
-            return {
-                decision: AuthGuardDecision.REDIRECT_CUSTOM,
-                destination: customRedirects.customUrl || '/verify-email',
-                reason: 'Email verification required'
-            };
-        }
-
-        // All checks passed - show content
-        return {
-            decision: AuthGuardDecision.SHOW_CONTENT,
-            reason: 'Authentication checks passed'
-        };
-    }, [
-        isLoading,
-        allowGuests,
-        hasValidSession,
-        isAuthenticated,
-        requireAccount,
-        currentAccountFromStore,
-        currentAccount,
-        accountLoading,
-        requireEmailVerified,
-        customRedirects,
-        accounts
-    ]);
-
-    const { decision, destination, reason } = getAuthDecision();
-
-    // Auto-redirect effect
-    useEffect(() => {
-        if (autoRedirect && destination && 
-            (decision === AuthGuardDecision.REDIRECT_TO_LOGIN ||
-             decision === AuthGuardDecision.REDIRECT_TO_ACCOUNTS ||
-             decision === AuthGuardDecision.REDIRECT_CUSTOM)) {
-            
-            // Call onRedirect callback if provided
-            onRedirect?.(destination, decision);
-            
-            // Perform redirect
-            redirect(destination);
-        }
-    }, [autoRedirect, destination, decision]);
-
+     
     // Force show content function (for manual override)
     const forceShowContent = useCallback(() => {
         return decision === AuthGuardDecision.SHOW_CONTENT;
     }, [decision]);
+
+    // Callback for decision changes - runs on every decision/destination/reason change
+    useEffect(() => {
+        if (onDecisionChange) {
+            onDecisionChange(decision, destination, reason);
+        }
+    }, [decision, destination, reason]);
+
+    // Auto-redirect effect with improved logic
+    useEffect(() => {
+        // Don't redirect if auto-redirect is disabled
+        if (!autoRedirect || isLoading) return;
+
+        // Don't redirect if still loading or showing content
+        if (decision === AuthGuardDecision.LOADING || decision === AuthGuardDecision.SHOW_CONTENT) {
+            return;
+        }
+
+        // Only redirect for actual redirect decisions with destinations
+        if (destination && (
+            decision === AuthGuardDecision.REDIRECT_TO_LOGIN ||
+            decision === AuthGuardDecision.REDIRECT_TO_ACCOUNTS ||
+            decision === AuthGuardDecision.REDIRECT_CUSTOM
+        )) {
+            const performRedirect = () => {
+                // Create default redirect function
+                const defaultRedirect = () => redirect(destination);
+
+                if (onRedirect) {
+                    // Call onRedirect with default redirect function - user controls if/when to redirect
+                    onRedirect(destination, decision, defaultRedirect);
+                } else {
+                    // No custom handler - perform default redirect
+                    defaultRedirect();
+                }
+            };
+
+            // Apply delay if specified
+            if (redirectDelay > 0) {
+                const timer = setTimeout(performRedirect, redirectDelay);
+                return () => clearTimeout(timer);
+            } else {
+                performRedirect();
+            }
+        }
+    }, [
+        decision,
+        destination
+    ]);
+
+    
+    // Effect to calculate and update auth decision when dependencies change
+    useEffect(() => {
+        const calculateAuthDecision = (): AuthDecisionResult => {
+            // Still loading auth state - wait before making any decisions
+            if (isLoading) {
+                return {
+                    decision: AuthGuardDecision.LOADING,
+                    reason: 'Loading authentication state'
+                };
+            }
+
+            // Allow guests and no valid session
+            if (allowGuests && !hasValidSession) {
+                return {
+                    decision: AuthGuardDecision.SHOW_CONTENT,
+                    reason: 'Guest access allowed'
+                };
+            }
+
+            // No valid session or not authenticated
+            if (!hasValidSession || !isAuthenticated || accounts.length === 0) {
+                return {
+                    decision: AuthGuardDecision.REDIRECT_TO_LOGIN,
+                    destination: customRedirects.loginUrl || '/login',
+                    reason: 'User not authenticated'
+                };
+            }
+
+            // Require account but none selected
+            if (requireAccount && !currentAccountFromStore) {
+                return {
+                    decision: AuthGuardDecision.REDIRECT_TO_ACCOUNTS,
+                    destination: customRedirects.accountsUrl || '/accounts',
+                    reason: 'No account selected'
+                };
+            }
+
+            // Still loading account data when account is required
+            if (requireAccount && currentAccountFromStore && accountLoading) {
+                return {
+                    decision: AuthGuardDecision.LOADING,
+                    reason: 'Loading account data'
+                };
+            }
+
+            // Require account but data failed to load (only check after loading is complete)
+            if (requireAccount && currentAccountFromStore && !currentAccount && !accountLoading) {
+                return {
+                    decision: AuthGuardDecision.REDIRECT_TO_ACCOUNTS,
+                    destination: customRedirects.accountsUrl || '/accounts',
+                    reason: 'Account data failed to load'
+                };
+            }
+
+            // Email verification required (only check when we have account data)
+            if (requireEmailVerified && currentAccount && !currentAccount.userDetails.emailVerified) {
+                return {
+                    decision: AuthGuardDecision.REDIRECT_CUSTOM,
+                    destination: customRedirects.customUrl || '/verify-email',
+                    reason: 'Email verification required'
+                };
+            }
+
+            // All checks passed - show content
+            return {
+                decision: AuthGuardDecision.SHOW_CONTENT,
+                reason: 'Authentication checks passed'
+            };
+        };
+
+        const newDecision = calculateAuthDecision();
+        setAuthDecision(newDecision);
+    }, [
+        accountLoading
+    ]);
 
     return {
         decision,

@@ -76,8 +76,6 @@ export default function AccountSelectionPage() {
         // Note: Don't reset actioningAccount on success since we're redirecting
     }
 
-
-
     const handleAddOAuthAccount = (provider: OAuthProviders) => {
         startOAuthSignin(provider)
     }
@@ -100,11 +98,18 @@ export default function AccountSelectionPage() {
         }
     }
 
+    React.useEffect(() => {
+        console.log(accounts)
+    }, [accounts])
+
     return (
         <AuthGuard
             requireAccount={true}
             loadingComponent={LoadingSpinner}
             redirectingComponent={RedirectingSpinner}
+            onDecisionChange={(decision, destination, reason) => {
+                console.log(decision, destination, reason)
+            }}
         >
             <div className="min-h-screen bg-background">
                 {/* Header */}
@@ -168,7 +173,7 @@ export default function AccountSelectionPage() {
                                     {accounts.map((account) => (
                                         <AccountCard
                                             key={account.id}
-                                            accountId={account.id}
+                                            account={account}
                                             onSwitch={handleSwitchAccount}
                                             onLogout={handleLogout}
                                             switchingTo={switchingTo}
