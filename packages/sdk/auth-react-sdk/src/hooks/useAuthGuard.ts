@@ -67,7 +67,7 @@ export interface AuthGuardResult {
     /**
      * Whether auth checks are complete (not loading)
      */
-    isReady: boolean;
+    isLoading: boolean;
     
     /**
      * Where to redirect if decision requires redirect
@@ -118,20 +118,19 @@ export const useAuthGuard = (options: AuthGuardOptions = {}): AuthGuardResult =>
         isAuthenticated,
         hasValidSession,
         currentAccount: currentAccountFromStore,
-        isLoading: authLoading,
+        isReady: isAuthReady,
         accounts
     } = useAuth();
 
     // Get current account data if we have an account ID
-    const { account: currentAccount, isLoading: accountLoading } = useAccount(
+    const { account: currentAccount, isReady: isAccountReady } = useAccount(
         currentAccountFromStore?.id,
         {
-            autoFetch: true,
             refreshOnMount: true
         }
     );
 
-    const isLoading = authLoading || (currentAccountFromStore && accountLoading);
+    const isReady = isAuthReady && isAccountReady;
 
     // State to store the current auth decision
     const [authDecision, setAuthDecision] = useState<AuthDecisionResult>({
@@ -148,7 +147,6 @@ export const useAuthGuard = (options: AuthGuardOptions = {}): AuthGuardResult =>
         }
     }, []);
 
-     
     // Force show content function (for manual override)
     const forceShowContent = useCallback(() => {
         return decision === AuthGuardDecision.SHOW_CONTENT;
@@ -164,7 +162,7 @@ export const useAuthGuard = (options: AuthGuardOptions = {}): AuthGuardResult =>
     // Auto-redirect effect with improved logic
     useEffect(() => {
         // Don't redirect if auto-redirect is disabled
-        if (!autoRedirect || isLoading) return;
+        if (!autoRedirect || !isReady) return;
 
         // Don't redirect if still loading or showing content
         if (decision === AuthGuardDecision.LOADING || decision === AuthGuardDecision.SHOW_CONTENT) {
@@ -208,7 +206,7 @@ export const useAuthGuard = (options: AuthGuardOptions = {}): AuthGuardResult =>
     useEffect(() => {
         const calculateAuthDecision = (): AuthDecisionResult => {
             // Still loading auth state - wait before making any decisions
-            if (isLoading) {
+            if (!isReady) {
                 return {
                     decision: AuthGuardDecision.LOADING,
                     reason: 'Loading authentication state'
@@ -242,7 +240,7 @@ export const useAuthGuard = (options: AuthGuardOptions = {}): AuthGuardResult =>
             }
 
             // Still loading account data when account is required
-            if (requireAccount && currentAccountFromStore && accountLoading) {
+            if (requireAccount && currentAccountFromStore) {
                 return {
                     decision: AuthGuardDecision.LOADING,
                     reason: 'Loading account data'
@@ -250,7 +248,7 @@ export const useAuthGuard = (options: AuthGuardOptions = {}): AuthGuardResult =>
             }
 
             // Require account but data failed to load (only check after loading is complete)
-            if (requireAccount && currentAccountFromStore && !currentAccount && !accountLoading) {
+            if (requireAccount && currentAccountFromStore && !currentAccount) {
                 return {
                     decision: AuthGuardDecision.REDIRECT_TO_ACCOUNTS,
                     destination: customRedirects.accountsUrl || '/accounts',
@@ -277,12 +275,12 @@ export const useAuthGuard = (options: AuthGuardOptions = {}): AuthGuardResult =>
         const newDecision = calculateAuthDecision();
         setAuthDecision(newDecision);
     }, [
-        accountLoading
+        isReady
     ]);
 
     return {
         decision,
-        isReady: decision !== AuthGuardDecision.LOADING,
+        isLoading: decision !== AuthGuardDecision.LOADING,
         redirectDestination: destination,
         redirectReason: reason,
         currentAccount,

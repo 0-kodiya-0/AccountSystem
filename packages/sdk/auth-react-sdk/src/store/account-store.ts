@@ -15,13 +15,6 @@ interface AccountState {
     // Runtime account data (fetched based on session accountIds)
     accountsData: Map<string, StoredAccount>;
 
-    // Loading states
-    isLoading: boolean;
-    isAuthenticating: boolean;
-
-    // Error state
-    error: string | null;
-
     // Temporary token for local auth 2FA (only thing we actually need)
     tempToken: string | null;
 }
@@ -37,14 +30,6 @@ interface AccountActions {
     updateAccountData: (accountId: string, updates: Partial<Account>) => void;
     removeAccountData: (accountId: string) => void;
     clearAllAccountData: () => void;
-
-    // Loading states
-    setLoading: (loading: boolean) => void;
-    setAuthenticating: (authenticating: boolean) => void;
-
-    // Error handling
-    setError: (error: string | null) => void;
-    clearError: () => void;
 
     // Temp token management (for local auth 2FA only)
     setTempToken: (tempToken: string) => void;
@@ -87,8 +72,7 @@ export const useAccountStore = create<AccountStore>()((set, get) => ({
 
     clearSession: () => set({ 
         session: null,
-        accountsData: new Map(),
-        error: null
+        accountsData: new Map()
     }),
 
     // Account data management
@@ -136,17 +120,8 @@ export const useAccountStore = create<AccountStore>()((set, get) => ({
     }),
 
     clearAllAccountData: () => set({
-        accountsData: new Map(),
-        error: null
+        accountsData: new Map()
     }),
-
-    // Loading states
-    setLoading: (loading) => set({ isLoading: loading }),
-    setAuthenticating: (authenticating) => set({ isAuthenticating: authenticating }),
-
-    // Error handling
-    setError: (error) => set({ error }),
-    clearError: () => set({ error: null }),
 
     // Temp token management (for local auth 2FA only)
     setTempToken: (tempToken) => set({ tempToken }),
@@ -256,9 +231,6 @@ export const useCurrentAccount = () => useAccountStore(state => state.getCurrent
 export const useAccounts = () => useAccountStore(state => state.getAccounts());
 
 export const useAuthState = () => useAccountStore(state => ({
-    isLoading: state.isLoading,
-    isAuthenticating: state.isAuthenticating,
-    error: state.error,
     isAuthenticated: state.isAuthenticated(),
     hasAccounts: state.hasAccounts(),
     hasValidSession: state.hasValidSession()

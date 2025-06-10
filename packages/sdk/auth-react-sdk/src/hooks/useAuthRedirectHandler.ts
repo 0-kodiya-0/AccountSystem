@@ -50,7 +50,7 @@ export const useAuthRedirectHandler = (options: UseAuthRedirectHandlerOptions): 
     const {
         isAuthenticated,
         hasValidSession,
-        isLoading: authLoading
+        isReady: isAuthReady
     } = useAuth();
 
     const {
@@ -59,12 +59,12 @@ export const useAuthRedirectHandler = (options: UseAuthRedirectHandlerOptions): 
     } = useAccountStore();
 
     const currentAccountId = getCurrentAccountId();
-    const { account: currentAccount, isLoading: accountLoading } = useAccount(
+    const { account: currentAccount, isReady: isAccountReady } = useAccount(
         currentAccountId || undefined,
         { autoFetch: true, refreshOnMount: false }
     );
 
-    const isLoading = authLoading || (currentAccountId && accountLoading);
+    const isReady = isAuthReady || (currentAccountId && isAccountReady);
 
     // Simple navigation helper
     const navigateToUrl = useCallback((url: string) => {
@@ -96,7 +96,7 @@ export const useAuthRedirectHandler = (options: UseAuthRedirectHandlerOptions): 
 
     // Core redirect decision logic
     const getRedirectDecision = useCallback((): RedirectDecision => {
-        if (isLoading) {
+        if (isReady) {
             return {
                 action: 'wait',
                 code: RedirectCode.LOADING_AUTH_STATE
@@ -123,7 +123,7 @@ export const useAuthRedirectHandler = (options: UseAuthRedirectHandlerOptions): 
                             redirectUrl: defaultHomeUrl
                         }
                     };
-                } else if (!accountLoading) {
+                } else if (!isAccountReady) {
                     return {
                         action: 'redirect',
                         code: RedirectCode.ACCOUNT_DATA_LOAD_FAILED,
@@ -151,8 +151,8 @@ export const useAuthRedirectHandler = (options: UseAuthRedirectHandlerOptions): 
             };
         }
     }, [
-        isLoading, hasValidSession, isAuthenticated, hasAccounts,
-        currentAccountId, currentAccount, accountLoading,
+        isReady, hasValidSession, isAuthenticated, hasAccounts,
+        currentAccountId, currentAccount, isAccountReady,
         defaultHomeUrl, defaultAccountsUrl, defaultLoginUrl
     ]);
 
@@ -243,7 +243,7 @@ export const useAuthRedirectHandler = (options: UseAuthRedirectHandlerOptions): 
         if (decision.action === 'redirect') {
             executeRedirect(decision);
         }
-    }, [autoRedirect]);
+    }, []);
 
     return {
         handleRedirect,

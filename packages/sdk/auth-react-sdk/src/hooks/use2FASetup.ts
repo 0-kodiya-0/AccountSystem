@@ -45,7 +45,7 @@ export const use2FASetup = (options: Use2FASetupOptions = {}): Use2FASetupResult
         onError
     } = options;
 
-    const { client, currentAccount, setError, clearError } = useAuth();
+    const { client, currentAccount } = useAuth();
     const accountId = providedAccountId || currentAccount?.id;
 
     const [status, setStatus] = useState<TwoFactorSetupStatus>(TwoFactorSetupStatus.IDLE);
@@ -53,7 +53,7 @@ export const use2FASetup = (options: Use2FASetupOptions = {}): Use2FASetupResult
     const [secret, setSecret] = useState<string | null>(null);
     const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
     const [message, setMessage] = useState<string | null>(null);
-    const [error, setErrorState] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
 
     const redirect = useCallback((url: string) => {
         if (typeof window !== 'undefined') {
@@ -64,7 +64,6 @@ export const use2FASetup = (options: Use2FASetupOptions = {}): Use2FASetupResult
     const startSetup = useCallback(async (password: string) => {
         if (!accountId) {
             const errorMsg = 'No account ID available for 2FA setup';
-            setErrorState(errorMsg);
             setError(errorMsg);
             onError?.(errorMsg);
             return;
@@ -72,8 +71,7 @@ export const use2FASetup = (options: Use2FASetupOptions = {}): Use2FASetupResult
 
         try {
             setStatus(TwoFactorSetupStatus.REQUESTING_SETUP);
-            setErrorState(null);
-            clearError();
+            setError(null);
 
             const setupData: TwoFactorSetupRequest = {
                 password,
@@ -92,16 +90,14 @@ export const use2FASetup = (options: Use2FASetupOptions = {}): Use2FASetupResult
         } catch (err: any) {
             const errorMsg = err.message || 'Failed to initialize 2FA setup';
             setStatus(TwoFactorSetupStatus.ERROR);
-            setErrorState(errorMsg);
             setError(errorMsg);
             onError?.(errorMsg);
         }
-    }, [accountId, client, clearError, setError, onSetupReady, onError]);
+    }, [accountId, client, setError, onSetupReady, onError]);
 
     const verifySetup = useCallback(async (token: string) => {
         if (!accountId) {
             const errorMsg = 'No account ID available for 2FA verification';
-            setErrorState(errorMsg);
             setError(errorMsg);
             onError?.(errorMsg);
             return;
@@ -109,8 +105,7 @@ export const use2FASetup = (options: Use2FASetupOptions = {}): Use2FASetupResult
 
         try {
             setStatus(TwoFactorSetupStatus.VERIFYING_TOKEN);
-            setErrorState(null);
-            clearError();
+            setError(null);
 
             const response = await client.verifyTwoFactorSetup(accountId, token);
             
@@ -142,16 +137,14 @@ export const use2FASetup = (options: Use2FASetupOptions = {}): Use2FASetupResult
         } catch (err: any) {
             const errorMsg = err.message || 'Failed to verify 2FA setup';
             setStatus(TwoFactorSetupStatus.ERROR);
-            setErrorState(errorMsg);
             setError(errorMsg);
             onError?.(errorMsg);
         }
-    }, [accountId, client, clearError, setError, autoGenerateBackupCodes, onVerified, onComplete, onError, redirectAfterComplete, redirectDelay, redirect]);
+    }, [accountId, client, setError, autoGenerateBackupCodes, onVerified, onComplete, onError, redirectAfterComplete, redirectDelay, redirect]);
 
     const generateBackupCodes = useCallback(async (password: string) => {
         if (!accountId) {
             const errorMsg = 'No account ID available for backup code generation';
-            setErrorState(errorMsg);
             setError(errorMsg);
             onError?.(errorMsg);
             return;
@@ -159,8 +152,7 @@ export const use2FASetup = (options: Use2FASetupOptions = {}): Use2FASetupResult
 
         try {
             setStatus(TwoFactorSetupStatus.GENERATING_BACKUP_CODES);
-            setErrorState(null);
-            clearError();
+            setError(null);
 
             const response = await client.generateBackupCodes(accountId, password);
             
@@ -181,11 +173,10 @@ export const use2FASetup = (options: Use2FASetupOptions = {}): Use2FASetupResult
         } catch (err: any) {
             const errorMsg = err.message || 'Failed to generate backup codes';
             setStatus(TwoFactorSetupStatus.ERROR);
-            setErrorState(errorMsg);
             setError(errorMsg);
             onError?.(errorMsg);
         }
-    }, [accountId, client, clearError, setError, onBackupCodesGenerated, onComplete, onError, redirectAfterComplete, redirectDelay, redirect]);
+    }, [accountId, client, setError, onBackupCodesGenerated, onComplete, onError, redirectAfterComplete, redirectDelay, redirect]);
 
     const downloadBackupCodes = useCallback((filename: string = 'backup-codes.txt') => {
         if (!backupCodes || backupCodes.length === 0) {
@@ -222,9 +213,8 @@ export const use2FASetup = (options: Use2FASetupOptions = {}): Use2FASetupResult
         setSecret(null);
         setBackupCodes(null);
         setMessage(null);
-        setErrorState(null);
-        clearError();
-    }, [clearError]);
+        setError(null)
+    }, []);
 
     return {
         status,

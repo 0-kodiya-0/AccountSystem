@@ -1,10 +1,11 @@
+"use client"
+
 // Main exports
 export { HttpClient } from './client/http-client';
 export { SocketClient } from "./client/socket-client";
 
 // Context and Provider
 export { AuthProvider, useAuth } from './context/auth-context';
-export { NotificationsProvider, useNotificationsContext } from './context/notifications-context';
 
 // Components
 export { AuthGuard } from './components/AuthGuard';

@@ -33,13 +33,13 @@ export const useEmailVerification = (options: UseEmailVerificationOptions): UseE
         onError
     } = options;
 
-    const { client, setError, clearError } = useAuth();
+    const { client } = useAuth();
     
     const [status, setStatus] = useState<EmailVerificationStatus>(
         token ? EmailVerificationStatus.LOADING : EmailVerificationStatus.INVALID_TOKEN
     );
     const [message, setMessage] = useState<string | null>(null);
-    const [error, setErrorState] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
 
     const redirect = useCallback((url: string) => {
         if (typeof window !== 'undefined') {
@@ -50,14 +50,12 @@ export const useEmailVerification = (options: UseEmailVerificationOptions): UseE
     const verify = useCallback(async () => {
         if (!token) {
             setStatus(EmailVerificationStatus.INVALID_TOKEN);
-            setErrorState('No verification token provided');
+            setError('No verification token provided');
             return;
         }
 
         try {
             setStatus(EmailVerificationStatus.LOADING);
-            setErrorState(null);
-            clearError();
 
             await client.verifyEmail(token);
             
@@ -90,12 +88,11 @@ export const useEmailVerification = (options: UseEmailVerificationOptions): UseE
             }
 
             setStatus(errorStatus);
-            setErrorState(errorMessage);
             setError(errorMessage);
             
             onError?.(errorMessage);
         }
-    }, [token, client, clearError, setError, onSuccess, onError, redirectAfterSuccess, redirectDelay, redirect]);
+    }, [token, client, setError, onSuccess, onError, redirectAfterSuccess, redirectDelay, redirect]);
 
     const retry = useCallback(async () => {
         await verify();

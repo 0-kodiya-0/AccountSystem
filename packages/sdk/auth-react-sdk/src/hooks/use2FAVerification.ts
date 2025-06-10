@@ -45,7 +45,7 @@ export const use2FAVerification = (options: Use2FAVerificationOptions = {}): Use
         autoRedirectOnSuccess = true
     } = options;
 
-    const { verifyTwoFactor, refreshSession, setError, clearError: clearAuthError, tempToken: savedTempToken } = useAuth();
+    const { verifyTwoFactor, refreshSession, tempToken: savedTempToken } = useAuth();
     
     // Use tempToken from options or from auth state
     const activeTempToken = tempToken || savedTempToken;
@@ -54,7 +54,7 @@ export const use2FAVerification = (options: Use2FAVerificationOptions = {}): Use
         activeTempToken ? TwoFactorVerificationStatus.IDLE : TwoFactorVerificationStatus.EXPIRED_SESSION
     );
     const [message, setMessage] = useState<string | null>(null);
-    const [error, setErrorState] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
     const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(maxAttempts);
     const [lockoutTimeRemaining, setLockoutTimeRemaining] = useState<number | null>(null);
     const [lockoutTimer, setLockoutTimer] = useState<NodeJS.Timeout | null>(null);
@@ -66,9 +66,8 @@ export const use2FAVerification = (options: Use2FAVerificationOptions = {}): Use
     }, []);
 
     const clearError = useCallback(() => {
-        setErrorState(null);
-        clearAuthError();
-    }, [clearAuthError]);
+        setError(null);
+    }, [setError]);
 
     const startLockout = useCallback((duration: number) => {
         setStatus(TwoFactorVerificationStatus.LOCKED_OUT);
@@ -98,7 +97,7 @@ export const use2FAVerification = (options: Use2FAVerificationOptions = {}): Use
     const verify = useCallback(async (token: string, isBackupCode: boolean = false) => {
         if (!activeTempToken) {
             setStatus(TwoFactorVerificationStatus.EXPIRED_SESSION);
-            setErrorState('Session expired. Please sign in again.');
+            setError('Session expired. Please sign in again.');
             setError('Session expired. Please sign in again.');
             return;
         }
@@ -109,8 +108,8 @@ export const use2FAVerification = (options: Use2FAVerificationOptions = {}): Use
 
         try {
             setStatus(TwoFactorVerificationStatus.VERIFYING);
-            setErrorState(null);
-            clearAuthError();
+            setError(null);
+
 
             const verifyRequest: TwoFactorVerifyRequest = {
                 token,
@@ -166,14 +165,12 @@ export const use2FAVerification = (options: Use2FAVerificationOptions = {}): Use
             }
 
             setStatus(errorStatus);
-            setErrorState(errorMessage);
             setError(errorMessage);
-            
             onError?.(errorMessage, newAttemptsRemaining);
         }
     }, [
         activeTempToken, status, attemptsRemaining, maxAttempts, verifyTwoFactor, 
-        refreshSession, clearAuthError, setError, onSuccess, onError, 
+        refreshSession, setError, onSuccess, onError, 
         autoRedirectOnSuccess, redirectAfterSuccess, redirectDelay, redirect, 
         startLockout, lockoutDuration
     ]);
@@ -197,17 +194,16 @@ export const use2FAVerification = (options: Use2FAVerificationOptions = {}): Use
         
         setStatus(activeTempToken ? TwoFactorVerificationStatus.IDLE : TwoFactorVerificationStatus.EXPIRED_SESSION);
         setMessage(null);
-        setErrorState(null);
+        setError(null);
         setAttemptsRemaining(maxAttempts);
         setLockoutTimeRemaining(null);
-        clearAuthError();
-    }, [lockoutTimer, activeTempToken, maxAttempts, clearAuthError]);
+    }, [lockoutTimer, activeTempToken, maxAttempts, ]);
 
     // Check for expired session on mount
     useEffect(() => {
         if (!activeTempToken) {
             setStatus(TwoFactorVerificationStatus.EXPIRED_SESSION);
-            setErrorState('No active 2FA session found. Please sign in again.');
+            setError('No active 2FA session found. Please sign in again.');
         }
     }, [activeTempToken]);
 
@@ -218,7 +214,7 @@ export const use2FAVerification = (options: Use2FAVerificationOptions = {}): Use
                 clearInterval(lockoutTimer);
             }
         };
-    }, [lockoutTimer]);
+    }, []);
 
     return {
         status,

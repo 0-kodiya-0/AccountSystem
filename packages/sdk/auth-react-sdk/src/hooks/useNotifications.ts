@@ -1,106 +1,172 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { Notification, AuthSDKError, CreateNotificationRequest } from '../types';
 import { useAuth } from '../context/auth-context';
 import { useCurrentAccount } from '../store/account-store';
+import { useDataLoading } from '../hooks/useLoading';
 
 /**
- * Hook for managing notifications
+ * Hook for managing notifications with enhanced loading states
  */
 export const useNotifications = (accountId?: string) => {
     const { client } = useAuth();
     const currentAccount = useCurrentAccount();
     const targetAccountId = accountId || currentAccount?.id;
 
+    // Initialize loading state with contextual entity name
+    const entityName = targetAccountId ? 'notifications' : 'notifications (no account)';
+    
+    const {
+        loadingInfo,
+        isPending,
+        isReady,
+        hasError,
+        setPending,
+        setReady,
+        setError: setLoadingError,
+        updateLoadingReason,
+        clearError: clearLoadingError
+    } = useDataLoading(entityName);
+
+    // Local state for notifications data
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
 
     const fetchNotifications = useCallback(async () => {
-        if (!targetAccountId) return;
+        if (!targetAccountId) {
+            setLoadingError('No account ID available for fetching notifications');
+            return;
+        }
 
         try {
-            setLoading(true);
-            setError(null);
+            setPending('Loading notifications');
+            clearLoadingError();
+            
+            updateLoadingReason('Fetching notifications from server');
             const response = await client.getNotifications(targetAccountId);
+            
+            updateLoadingReason('Processing notification data');
             setNotifications(response.notifications);
             setUnreadCount(response.unreadCount);
+            
+            setReady(`Loaded ${response.notifications.length} notifications (${response.unreadCount} unread)`);
         } catch (err) {
             const message = err instanceof AuthSDKError ? err.message : 'Failed to fetch notifications';
-            setError(message);
-        } finally {
-            setLoading(false);
+            setLoadingError(message);
         }
-    }, [client, targetAccountId]);
+    }, [client, targetAccountId, setPending, setReady, setLoadingError, updateLoadingReason, clearLoadingError]);
 
     const markAsRead = useCallback(async (notificationId: string) => {
-        if (!targetAccountId) return;
+        if (!targetAccountId) {
+            setLoadingError('No account ID available for marking notification as read');
+            throw new Error('No account ID available');
+        }
 
         try {
+            updateLoadingReason('Marking notification as read');
             await client.markNotificationAsRead(targetAccountId, notificationId);
+            
             setNotifications(prev =>
                 prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
             );
             setUnreadCount(prev => Math.max(0, prev - 1));
+            
+            if (isReady) {
+                updateLoadingReason(`${notifications.length} notifications loaded`);
+            }
         } catch (err) {
             const message = err instanceof AuthSDKError ? err.message : 'Failed to mark notification as read';
-            setError(message);
+            setLoadingError(message);
             throw err;
         }
-    }, [client, targetAccountId]);
+    }, [client, targetAccountId, notifications.length, isReady, updateLoadingReason, setLoadingError]);
 
     const markAllAsRead = useCallback(async () => {
-        if (!targetAccountId) return;
+        if (!targetAccountId) {
+            setLoadingError('No account ID available for marking all notifications as read');
+            throw new Error('No account ID available');
+        }
 
         try {
+            updateLoadingReason('Marking all notifications as read');
             await client.markAllNotificationsAsRead(targetAccountId);
+            
             setNotifications(prev => prev.map(n => ({ ...n, read: true })));
             setUnreadCount(0);
+            
+            if (isReady) {
+                updateLoadingReason(`All ${notifications.length} notifications marked as read`);
+            }
         } catch (err) {
             const message = err instanceof AuthSDKError ? err.message : 'Failed to mark all notifications as read';
-            setError(message);
+            setLoadingError(message);
             throw err;
         }
-    }, [client, targetAccountId]);
+    }, [client, targetAccountId, notifications.length, isReady, updateLoadingReason, setLoadingError]);
 
     const deleteNotification = useCallback(async (notificationId: string) => {
-        if (!targetAccountId) return;
+        if (!targetAccountId) {
+            setLoadingError('No account ID available for deleting notification');
+            throw new Error('No account ID available');
+        }
 
         try {
+            updateLoadingReason('Deleting notification');
             await client.deleteNotification(targetAccountId, notificationId);
-            setNotifications(prev => prev.filter(n => n.id !== notificationId));
+            
             // Update unread count if the deleted notification was unread
             const notification = notifications.find(n => n.id === notificationId);
             if (notification && !notification.read) {
                 setUnreadCount(prev => Math.max(0, prev - 1));
             }
+            
+            setNotifications(prev => prev.filter(n => n.id !== notificationId));
+            
+            if (isReady) {
+                const remainingCount = notifications.length - 1;
+                updateLoadingReason(`${remainingCount} notifications remaining`);
+            }
         } catch (err) {
             const message = err instanceof AuthSDKError ? err.message : 'Failed to delete notification';
-            setError(message);
+            setLoadingError(message);
             throw err;
         }
-    }, [client, targetAccountId, notifications]);
+    }, [client, targetAccountId, notifications, isReady, updateLoadingReason, setLoadingError]);
 
     const deleteAllNotifications = useCallback(async () => {
-        if (!targetAccountId) return;
+        if (!targetAccountId) {
+            setLoadingError('No account ID available for deleting all notifications');
+            throw new Error('No account ID available');
+        }
 
         try {
+            updateLoadingReason('Deleting all notifications');
             const result = await client.deleteAllNotifications(targetAccountId);
+            
             setNotifications([]);
             setUnreadCount(0);
+            
+            if (isReady) {
+                updateLoadingReason(`Deleted ${result.deletedCount} notifications`);
+            }
+            
             return result;
         } catch (err) {
             const message = err instanceof AuthSDKError ? err.message : 'Failed to delete all notifications';
-            setError(message);
+            setLoadingError(message);
             throw err;
         }
-    }, [client, targetAccountId]);
+    }, [client, targetAccountId, isReady, updateLoadingReason, setLoadingError]);
 
     const updateNotification = useCallback(async (notificationId: string, updates: Partial<Notification>) => {
-        if (!targetAccountId) return;
+        if (!targetAccountId) {
+            setLoadingError('No account ID available for updating notification');
+            throw new Error('No account ID available');
+        }
 
         try {
+            updateLoadingReason('Updating notification');
             const updated = await client.updateNotification(targetAccountId, notificationId, updates);
+            
             setNotifications(prev =>
                 prev.map(n => n.id === notificationId ? updated : n)
             );
@@ -117,40 +183,82 @@ export const useNotifications = (accountId?: string) => {
                 }
             }
             
+            if (isReady) {
+                updateLoadingReason(`${notifications.length} notifications loaded`);
+            }
+            
             return updated;
         } catch (err) {
             const message = err instanceof AuthSDKError ? err.message : 'Failed to update notification';
-            setError(message);
+            setLoadingError(message);
             throw err;
         }
-    }, [client, targetAccountId, notifications]);
+    }, [client, targetAccountId, notifications, isReady, updateLoadingReason, setLoadingError]);
 
     const createNotification = useCallback(async (notification: CreateNotificationRequest) => {
-        if (!targetAccountId) return;
+        if (!targetAccountId) {
+            setLoadingError('No account ID available for creating notification');
+            throw new Error('No account ID available');
+        }
 
         try {
+            updateLoadingReason('Creating new notification');
             const created = await client.createNotification(targetAccountId, notification);
+            
             setNotifications(prev => [created, ...prev]);
             if (!created.read) {
                 setUnreadCount(prev => prev + 1);
             }
+            
+            if (isReady) {
+                const totalCount = notifications.length + 1;
+                const unreadTotal = unreadCount + (created.read ? 0 : 1);
+                updateLoadingReason(`${totalCount} notifications loaded (${unreadTotal} unread)`);
+            }
+            
             return created;
         } catch (err) {
             const message = err instanceof AuthSDKError ? err.message : 'Failed to create notification';
-            setError(message);
+            setLoadingError(message);
             throw err;
         }
-    }, [client, targetAccountId]);
+    }, [client, targetAccountId, notifications.length, unreadCount, isReady, updateLoadingReason, setLoadingError]);
 
+    const clearErrors = useCallback(() => {
+        clearLoadingError();
+    }, [clearLoadingError]);
+
+    // Monitor for account changes and update loading reason
     useEffect(() => {
-        fetchNotifications();
-    }, []);
+        if (targetAccountId && isReady && notifications.length >= 0) {
+            updateLoadingReason(`${notifications.length} notifications loaded (${unreadCount} unread)`);
+        }
+    }, [targetAccountId, notifications, unreadCount, isReady]);
+
+     // Auto-fetch notifications when account changes or on mount
+    useEffect(() => {
+        if (!targetAccountId) {
+            setLoadingError('No account available for loading notifications');
+            return;
+        }
+
+        fetchNotifications().catch(error => {
+            console.warn('Failed to fetch notifications on mount:', error);
+        });
+    }, [targetAccountId]);
 
     return {
+        // Data
         notifications,
         unreadCount,
-        loading,
-        error,
+        
+        // New loading states
+        loadingInfo,
+        isPending,
+        isReady,
+        hasError,
+        
+        // Actions
         refetch: fetchNotifications,
         markAsRead,
         markAllAsRead,
@@ -158,6 +266,7 @@ export const useNotifications = (accountId?: string) => {
         deleteAllNotifications,
         updateNotification,
         createNotification,
-        clearError: () => setError(null)
+        clearError: clearErrors,
+        clearErrors
     };
 };

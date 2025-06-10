@@ -14,8 +14,10 @@ import {
     AuthSDKError,
     TokenCheckResponse,
     TwoFactorSetupResponse,
-    GetAccountSessionResponse
+    GetAccountSessionResponse,
+    LoadingInfo
 } from '../types';
+import { useLoading } from '../hooks/useLoading';
 
 interface AuthContextValue {
     // Client instance
@@ -24,12 +26,15 @@ interface AuthContextValue {
     // Store selectors
     accounts: Account[];
     currentAccount: Account | null;
-    isLoading: boolean;
-    isAuthenticating: boolean;
-    error: string | null;
     isAuthenticated: boolean;
     hasValidSession: boolean;
     tempToken: string | null;
+
+    // Three-state loading info (NEW)
+    loadingInfo: LoadingInfo;
+    isReady: boolean;
+    isPending: boolean;
+    hasError: boolean;
 
     // Session Management
     loadSession: () => Promise<GetAccountSessionResponse>;
@@ -68,10 +73,6 @@ interface AuthContextValue {
     // Store actions (exposed for hooks)
     setTempToken: (tempToken: string) => void;
     clearTempToken: () => void;
-    setAuthenticating: (authenticating: boolean) => void;
-    setError: (error: string | null) => void;
-    clearError: () => void;
-    setLoading: (loading: boolean) => void;
 
     // Utilities
     refreshCurrentAccount: () => Promise<void>;
@@ -95,9 +96,6 @@ export const AuthProvider = ({
     const {
         getCurrentAccount,
         getAccounts,
-        isLoading,
-        isAuthenticating,
-        error,
         tempToken,
         hasValidSession,
         isAuthenticated,
@@ -113,13 +111,21 @@ export const AuthProvider = ({
         setAccountData,
         setSessionAccountData,
         updateAccountData,
-        setLoading,
-        setAuthenticating,
-        setError,
-        clearError,
         setTempToken,
         clearTempToken,
     } = useAccountStore();
+
+    // Loading management using reusable hook (NEW)
+    const {
+        loadingInfo,
+        isPending,
+        isReady,
+        hasError,
+        updateLoadingReason,
+        setPending,
+        setReady,
+        setError
+    } = useLoading();
 
     // Get current data
     const currentAccount = getCurrentAccount();
@@ -128,8 +134,7 @@ export const AuthProvider = ({
     // Load session from backend
     const loadSession = useCallback(async (): Promise<GetAccountSessionResponse> => {
         try {
-            setLoading(true);
-            clearError();
+            setPending('Loading authentication session');
 
             const sessionResponse = await client.getAccountSession();
 
@@ -139,11 +144,13 @@ export const AuthProvider = ({
             // If session includes account data, populate the store with session account data
             // This is minimal data - full account data will be fetched separately when needed
             if (sessionResponse.accounts) {
+                updateLoadingReason('Processing account data');
                 sessionResponse.accounts.forEach(partialAccount => {
                     setSessionAccountData(partialAccount.id!, partialAccount);
                 });
             }
 
+            setReady('Authentication session loaded successfully');
             return sessionResponse;
         } catch (error) {
             const message = error instanceof AuthSDKError ? error.message : 'Failed to load session';
@@ -152,10 +159,8 @@ export const AuthProvider = ({
             // Clear session on error
             clearSessionStore();
             throw error;
-        } finally {
-            setLoading(false);
         }
-    }, [client, setSession, setSessionAccountData, setLoading, setError, clearError, clearSessionStore]);
+    }, [client, setSession, setSessionAccountData, setError, clearSessionStore, updateLoadingReason]);
 
     // Smart account data fetching - now differentiates between session data and full account data
     const ensureAccountData = useCallback(async (accountId: string): Promise<Account> => {
@@ -167,6 +172,7 @@ export const AuthProvider = ({
 
         // Otherwise fetch full account data
         try {
+            updateLoadingReason(`Loading account data for ${accountId}`);
             const account = await client.getAccount(accountId);
             setAccountData(accountId, account);
             return account;
@@ -175,25 +181,38 @@ export const AuthProvider = ({
             setError(message);
             throw error;
         }
-    }, [client, getAccountById, hasFullAccountData, setAccountData, setError]);
+    }, [client, getAccountById, hasFullAccountData, setAccountData, setError, updateLoadingReason]);
 
     // Refresh session and account data
     const refreshSession = useCallback(async (): Promise<void> => {
-        await loadSession();
+        setPending('Refreshing authentication session');
 
-        // Prefetch any missing account data
-        if (prefetchAccountData) {
-            await prefetchAccountsData();
+        try {
+            await loadSession();
+
+            // Prefetch any missing account data
+            if (prefetchAccountData) {
+                updateLoadingReason('Prefetching account data');
+                await prefetchAccountsData();
+            }
+
+            setReady('Session refresh completed');
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to refresh session';
+            setError(message);
+            throw error;
         }
-    }, [loadSession, prefetchAccountData]);
+    }, [loadSession, prefetchAccountData, updateLoadingReason]);
 
     // Clear session
     const clearSession = useCallback(() => {
         clearSessionStore();
+        setReady('Session cleared');
     }, [clearSessionStore]);
 
     const refreshAccountData = useCallback(async (accountId: string): Promise<Account> => {
         try {
+            updateLoadingReason(`Refreshing account data for ${accountId}`);
             const account = await client.getAccount(accountId);
             setAccountData(accountId, account);
             return account;
@@ -202,7 +221,7 @@ export const AuthProvider = ({
             setError(message);
             throw error;
         }
-    }, [client, setAccountData, setError]);
+    }, [client, setAccountData, setError, updateLoadingReason]);
 
     const fetchAccount = useCallback(async (accountId: string, force: boolean = false): Promise<Account> => {
         if (force) {
@@ -218,26 +237,24 @@ export const AuthProvider = ({
         if (missingAccountIds.length === 0) return;
 
         try {
-            setLoading(true);
+            updateLoadingReason(`Prefetching data for ${missingAccountIds.length} accounts`);
+
             await Promise.all(
                 missingAccountIds.map(id => ensureAccountData(id))
             );
         } catch (error) {
             console.warn('Some account data could not be prefetched:', error);
-        } finally {
-            setLoading(false);
         }
-    }, [getMissingAccountIds, ensureAccountData, setLoading]);
+    }, [getMissingAccountIds, ensureAccountData, updateLoadingReason]);
 
     // Local Authentication Methods
     const localSignup = useCallback(async (data: LocalSignupRequest) => {
         try {
-            setAuthenticating(true);
-            clearError();
-
+            setPending('Creating new account');
             const result = await client.localSignup(data);
 
             // Refresh session after signup to get updated state
+            updateLoadingReason('Finalizing account setup');
             await refreshSession();
 
             return result;
@@ -245,23 +262,22 @@ export const AuthProvider = ({
             const message = error instanceof AuthSDKError ? error.message : 'Signup failed';
             setError(message);
             throw error;
-        } finally {
-            setAuthenticating(false);
         }
-    }, [client, setAuthenticating, clearError, setError, refreshSession]);
+    }, [client, setError, refreshSession, updateLoadingReason]);
 
     const localLogin = useCallback(async (data: LocalLoginRequest) => {
         try {
-            setAuthenticating(true);
-            clearError();
+            setPending('Authenticating user');
 
             const result = await client.localLogin(data);
 
             if (result.requiresTwoFactor) {
                 setTempToken(result.tempToken!);
+                setReady('Two-factor authentication required');
                 return result;
             } else {
                 // Refresh session after successful login
+                updateLoadingReason('Finalizing authentication');
                 await refreshSession();
             }
 
@@ -270,21 +286,19 @@ export const AuthProvider = ({
             const message = error instanceof AuthSDKError ? error.message : 'Login failed';
             setError(message);
             throw error;
-        } finally {
-            setAuthenticating(false);
         }
-    }, [client, setAuthenticating, clearError, setError, setTempToken, refreshSession]);
+    }, [client, setError, setTempToken, refreshSession, updateLoadingReason]);
 
     const verifyTwoFactor = useCallback(async (data: TwoFactorVerifyRequest) => {
         try {
-            setAuthenticating(true);
-            clearError();
+            setPending('Verifying two-factor authentication');
 
             const result = await client.verifyTwoFactor(data);
 
             if (result.accountId) {
                 clearTempToken();
                 // Refresh session after successful 2FA
+                updateLoadingReason('Finalizing two-factor authentication');
                 await refreshSession();
             }
 
@@ -293,52 +307,51 @@ export const AuthProvider = ({
             const message = error instanceof AuthSDKError ? error.message : '2FA verification failed';
             setError(message);
             throw error;
-        } finally {
-            setAuthenticating(false);
         }
-    }, [client, setAuthenticating, clearError, setError, clearTempToken, refreshSession]);
+    }, [client, setError, clearTempToken, refreshSession, updateLoadingReason]);
 
     const requestPasswordReset = useCallback(async (email: string) => {
         try {
-            setLoading(true);
-            clearError();
+            setPending('Sending password reset email');
+
             await client.requestPasswordReset({ email });
+            setReady('Password reset email sent');
         } catch (error) {
             const message = error instanceof AuthSDKError ? error.message : 'Password reset request failed';
             setError(message);
             throw error;
-        } finally {
-            setLoading(false);
         }
-    }, [client, setLoading, clearError, setError]);
+    }, [client, setError]);
 
     const resetPassword = useCallback(async (token: string, data: ResetPasswordRequest) => {
         try {
-            setLoading(true);
-            clearError();
+            setPending('Resetting password');
+
             await client.resetPassword(token, data);
+            setReady('Password reset successfully');
         } catch (error) {
             const message = error instanceof AuthSDKError ? error.message : 'Password reset failed';
             setError(message);
             throw error;
-        } finally {
-            setLoading(false);
         }
-    }, [client, setLoading, clearError, setError]);
+    }, [client, setError]);
 
     // OAuth methods
     const startOAuthSignup = useCallback((provider: OAuthProviders) => {
+        setPending(`Redirecting to ${provider} for signup`);
         client.redirectToOAuthSignup(provider);
     }, [client]);
 
     const startOAuthSignin = useCallback((provider: OAuthProviders) => {
+        setPending(`Redirecting to ${provider} for signin`);
         client.redirectToOAuthSignin(provider);
     }, [client]);
 
     // Account Management Methods
     const updateAccount = useCallback(async (accountId: string, updates: Partial<Account>): Promise<Account> => {
         try {
-            setLoading(true);
+            updateLoadingReason(`Updating account ${accountId}`);
+
             const updatedAccount = await client.updateAccount(accountId, updates);
             updateAccountData(accountId, updatedAccount);
             return updatedAccount;
@@ -346,27 +359,24 @@ export const AuthProvider = ({
             const message = error instanceof AuthSDKError ? error.message : 'Failed to update account';
             setError(message);
             throw error;
-        } finally {
-            setLoading(false);
         }
-    }, [client, updateAccountData, setLoading, setError]);
+    }, [client, updateAccountData, setError, updateLoadingReason]);
 
     const changePassword = useCallback(async (accountId: string, data: PasswordChangeRequest) => {
         try {
-            setLoading(true);
+            updateLoadingReason('Changing password');
             await client.changePassword(accountId, data);
         } catch (error) {
             const message = error instanceof AuthSDKError ? error.message : 'Password change failed';
             setError(message);
             throw error;
-        } finally {
-            setLoading(false);
         }
-    }, [client, setLoading, setError]);
+    }, [client, setError, updateLoadingReason]);
 
     const setupTwoFactor = useCallback(async (accountId: string, data: TwoFactorSetupRequest) => {
         try {
-            setLoading(true);
+            updateLoadingReason('Setting up two-factor authentication');
+
             const result = await client.setupTwoFactor(accountId, data);
             // Refresh account to get updated security settings
             await refreshAccountData(accountId);
@@ -375,37 +385,38 @@ export const AuthProvider = ({
             const message = error instanceof AuthSDKError ? error.message : '2FA setup failed';
             setError(message);
             throw error;
-        } finally {
-            setLoading(false);
         }
-    }, [client, refreshAccountData, setLoading, setError]);
+    }, [client, refreshAccountData, setError, updateLoadingReason]);
 
     const switchAccount = useCallback(async (accountId: string) => {
         try {
-            setLoading(true);
+            setPending(`Switching to account ${accountId}`);
 
             // Update current account in backend session
             await client.setCurrentAccountInSession(accountId);
 
             // Refresh session to get updated state
+            updateLoadingReason('Updating session');
             await refreshSession();
 
             // Ensure we have the account data
             if (needsAccountData(accountId)) {
+                updateLoadingReason('Loading account data');
                 await ensureAccountData(accountId);
             }
+
+            setReady('Account switched successfully');
         } catch (error) {
             const message = error instanceof AuthSDKError ? error.message : 'Failed to switch account';
             setError(message);
             throw error;
-        } finally {
-            setLoading(false);
         }
-    }, [client, refreshSession, needsAccountData, ensureAccountData, setLoading, setError]);
+    }, [client, refreshSession, needsAccountData, ensureAccountData, setError, updateLoadingReason]);
 
     const logout = useCallback(async (accountId?: string) => {
         try {
-            setLoading(true);
+            setPending('Logging out');
+
             const targetAccountId = accountId || currentAccount?.id;
 
             if (targetAccountId) {
@@ -417,13 +428,13 @@ export const AuthProvider = ({
         } catch (error) {
             const message = error instanceof AuthSDKError ? error.message : 'Logout failed';
             setError(message);
-            setLoading(false);
         }
-    }, [client, currentAccount?.id, setLoading, setError]);
+    }, [client, currentAccount?.id, setError]);
 
     const logoutAll = useCallback(async () => {
         try {
-            setLoading(true);
+            setPending('Logging out all accounts');
+
             const accountIds = getAccountIds();
 
             if (accountIds.length === 0) {
@@ -435,27 +446,25 @@ export const AuthProvider = ({
         } catch (error) {
             const message = error instanceof AuthSDKError ? error.message : 'Logout all failed';
             setError(message);
-            setLoading(false);
         }
-    }, [client, getAccountIds, setLoading, setError]);
+    }, [client, getAccountIds, setError]);
 
     // Google Permissions
     const requestGooglePermission = useCallback((accountId: string, scopes: string[]) => {
+        setPending('Requesting Google permissions');
         client.requestGooglePermission(accountId, scopes);
     }, [client]);
 
     const checkGoogleScopes = useCallback(async (accountId: string, scopes: string[]) => {
         try {
-            setLoading(true);
+            updateLoadingReason('Checking Google permissions');
             return await client.checkGoogleScopes(accountId, scopes);
         } catch (error) {
             const message = error instanceof AuthSDKError ? error.message : 'Failed to check scopes';
             setError(message);
             throw error;
-        } finally {
-            setLoading(false);
         }
-    }, [client, setLoading, setError]);
+    }, [client, setError, updateLoadingReason]);
 
     // Utilities
     const refreshCurrentAccount = useCallback(async () => {
@@ -464,10 +473,16 @@ export const AuthProvider = ({
         }
     }, [currentAccount?.id, refreshAccountData]);
 
-    // Auto-load session on mount
+    // Auto-load session on mount with proper state management
     useEffect(() => {
         if (autoLoadSession) {
-            loadSession().catch(console.warn);
+            loadSession().catch(error => {
+                console.warn('Auto-load session failed:', error);
+                setError('Failed to initialize authentication');
+            });
+        } else {
+            // If not auto-loading, set to ready immediately
+            setReady('Authentication system ready');
         }
     }, []); // Only run on mount
 
@@ -478,12 +493,15 @@ export const AuthProvider = ({
         // State
         accounts,
         currentAccount,
-        isLoading,
-        isAuthenticating,
-        error,
         isAuthenticated: isAuthenticated(),
         hasValidSession: hasValidSession(),
         tempToken,
+
+        // Three-state loading info (NEW)
+        loadingInfo,
+        isReady,
+        isPending,
+        hasError,
 
         // Session Management
         loadSession,
@@ -522,10 +540,6 @@ export const AuthProvider = ({
         // Store actions (exposed for hooks)
         setTempToken,
         clearTempToken,
-        setAuthenticating,
-        setError,
-        clearError,
-        setLoading,
 
         // Utilities
         refreshCurrentAccount

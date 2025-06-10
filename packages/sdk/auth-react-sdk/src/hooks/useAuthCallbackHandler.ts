@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useAuth } from '../context/auth-context';
 import { CallbackCode, CallbackData, OAuthProviders, Account } from '../types';
 
@@ -10,16 +10,16 @@ interface UseCallbackHandlerOptions {
     onOAuthSigninSuccess?: HandlerWithDefault<{ accountId: string; name: string; provider: OAuthProviders; account?: Account }>;
     onOAuthSignupSuccess?: HandlerWithDefault<{ accountId: string; name: string; provider: OAuthProviders; account?: Account }>;
     onOAuthPermissionSuccess?: HandlerWithDefault<{ accountId: string; service?: string; scopeLevel?: string; provider: OAuthProviders }>;
-    
+
     onLocalSigninSuccess?: HandlerWithDefault<{ accountId: string; name: string; account?: Account }>;
     onLocalSignupSuccess?: HandlerWithDefault<{ accountId: string; message?: string }>;
     onLocal2FARequired?: HandlerWithDefault<{ tempToken: string; accountId: string; message?: string }>;
     onLocalEmailVerified?: HandlerWithDefault<{ message?: string }>;
     onLocalPasswordResetSuccess?: HandlerWithDefault<{ message?: string }>;
-    
+
     onLogoutSuccess?: HandlerWithDefault<{ accountId: string; message?: string }>;
     onLogoutAllSuccess?: HandlerWithDefault<{ accountIds: string[]; message?: string }>;
-    
+
     // Error handlers
     onOAuthError?: HandlerWithDefault<{ error: string; provider?: OAuthProviders; code?: string }>;
     onLocalAuthError?: HandlerWithDefault<{ error: string; code?: string }>;
@@ -27,13 +27,14 @@ interface UseCallbackHandlerOptions {
     onUserNotFound?: HandlerWithDefault<{ error: string }>;
     onUserExists?: HandlerWithDefault<{ error: string }>;
     onTokenExpired?: HandlerWithDefault<{ error: string }>;
-    
+
     // Special cases
     onPermissionReauthorize?: HandlerWithDefault<{ accountId: string; missingScopes?: string[] }>;
     onUnknownCode?: HandlerWithDefault<CallbackData>;
 }
 
 interface UseCallbackHandlerReturn {
+    error: string | null;
     handleAuthCallback: (params: URLSearchParams) => Promise<void>;
 }
 
@@ -41,11 +42,9 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
     const {
         client,
         refreshSession,
-        setAuthenticating,
-        setError,
-        clearError,
         setTempToken
     } = useAuth();
+    const [error, setError] = useState<string | null>(null);
 
     // Simple navigation helper
     const navigateToRoot = useCallback(() => {
@@ -414,16 +413,13 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
 
     const handleAuthCallback = useCallback(async (params: URLSearchParams) => {
         try {
-            setAuthenticating(true);
-            clearError();
-
             const code = params.get('code');
             if (!code) {
                 throw new Error('No callback code found');
             }
 
             const callbackData: CallbackData = { code: code as CallbackCode };
-            
+
             // Parse other parameters
             for (const [key, value] of params.entries()) {
                 if (key !== 'code') {
@@ -443,15 +439,12 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
             const url = new URL(window.location.href);
             url.search = '';
             window.history.replaceState({}, '', url.toString());
-
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Auth callback failed';
             setError(message);
             console.error('Auth callback error:', error);
-        } finally {
-            setAuthenticating(false);
         }
-    }, [executeCallbackHandler, setAuthenticating, setError, clearError]);
+    }, [executeCallbackHandler, setError]);
 
-    return { handleAuthCallback };
+    return { error, handleAuthCallback };
 };

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '../context/auth-context';
 import { PasswordResetStatus } from '../types';
 
@@ -34,11 +34,11 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}): UsePass
         onError
     } = options;
 
-    const { client, setError, clearError } = useAuth();
+    const { client } = useAuth();
     
     const [status, setStatus] = useState<PasswordResetStatus>(PasswordResetStatus.IDLE);
     const [message, setMessage] = useState<string | null>(null);
-    const [error, setErrorState] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
 
     const redirect = useCallback((url: string) => {
         if (typeof window !== 'undefined') {
@@ -49,8 +49,6 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}): UsePass
     const requestReset = useCallback(async (email: string) => {
         try {
             setStatus(PasswordResetStatus.REQUESTING);
-            setErrorState(null);
-            clearError();
 
             await client.requestPasswordReset({ email });
             
@@ -70,17 +68,14 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}): UsePass
         } catch (err: any) {
             const errorMessage = err.message || 'Failed to send password reset email';
             setStatus(PasswordResetStatus.ERROR);
-            setErrorState(errorMessage);
             setError(errorMessage);
             onError?.(errorMessage);
         }
-    }, [client, clearError, setError, onRequestSuccess, onError, redirectAfterRequest, redirectDelay, redirect]);
+    }, [client, setError, onRequestSuccess, onError, redirectAfterRequest, redirectDelay, redirect]);
 
     const resetPassword = useCallback(async (token: string, password: string, confirmPassword: string) => {
         try {
             setStatus(PasswordResetStatus.RESETTING);
-            setErrorState(null);
-            clearError();
 
             await client.resetPassword(token, { password, confirmPassword });
             
@@ -96,23 +91,20 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}): UsePass
                     redirect(redirectAfterReset);
                 }, redirectDelay);
             }
-
         } catch (err: any) {
             const errorMessage = err.message || 'Failed to reset password';
             setStatus(PasswordResetStatus.ERROR);
-            setErrorState(errorMessage);
             setError(errorMessage);
             onError?.(errorMessage);
         }
-    }, [client, clearError, setError, onResetSuccess, onError, redirectAfterReset, redirectDelay, redirect]);
+    }, [client, setError, onResetSuccess, onError, redirectAfterReset, redirectDelay, redirect]);
 
     const clearState = useCallback(() => {
         setStatus(PasswordResetStatus.IDLE);
         setMessage(null);
-        setErrorState(null);
-        clearError();
-    }, [clearError]);
-
+        setError(null);
+    }, []);
+    
     return {
         status,
         message,

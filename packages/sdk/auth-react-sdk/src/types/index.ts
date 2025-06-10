@@ -506,3 +506,23 @@ export enum TwoFactorVerificationStatus {
     EXPIRED_SESSION = 'expired_session',
     LOCKED_OUT = 'locked_out'
 }
+
+/**
+ * Loading states for async operations
+ * Prevents flash of content by using proper state transitions
+ */
+export enum LoadingState {
+    PENDING = 'pending',     // Initial state - still loading/initializing
+    READY = 'ready',         // Data loaded successfully - show content
+    ERROR = 'error'          // Failed to load - show error state
+}
+
+/**
+ * Extended loading state with additional context
+ */
+export interface LoadingInfo {
+    state: LoadingState;
+    reason?: string;         // Human-readable reason for the state
+    lastUpdated?: number;    // Timestamp of last state change
+    metadata?: Record<string, unknown>; // Additional context data
+}
