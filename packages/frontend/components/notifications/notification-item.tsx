@@ -22,8 +22,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { useNotificationsContext } from "@accountsystem/auth-react-sdk"
-import { Notification, NotificationType } from "@accountsystem/auth-react-sdk"
+import { Notification, NotificationType, useNotifications } from "@accountsystem/auth-react-sdk"
 import { cn } from "@/lib/utils"
 
 interface NotificationItemProps {
@@ -33,8 +32,8 @@ interface NotificationItemProps {
 }
 
 export function NotificationItem({ notification, showActions = true, onClick }: NotificationItemProps) {
-    const [isDeleting, setIsDeleting] = useState(false)
-    const { markAsRead, deleteNotification } = useNotificationsContext()
+    const [isDeleting, setIsDeleting] = useState(false);
+    const { markAsRead, deleteNotification } = useNotifications();
 
     const getNotificationIcon = (type: NotificationType) => {
         const iconClass = "h-4 w-4"

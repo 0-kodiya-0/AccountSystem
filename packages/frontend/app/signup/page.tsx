@@ -42,7 +42,7 @@ export default function SignupPage() {
     const [showPassword, setShowPassword] = useState(false)
     const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
-    const { signup, isAuthenticating } = useLocalAuth()
+    const { signup } = useLocalAuth()
     const { signupWithProvider } = useOAuth()
     const config = getEnvironmentConfig()
 
@@ -110,7 +110,7 @@ export default function SignupPage() {
                             variant="outline"
                             className="w-full"
                             onClick={() => handleOAuthSignup(OAuthProviders.Google)}
-                            disabled={isSubmitting || isAuthenticating}
+                            disabled={isSubmitting}
                         >
                             <Chrome className="mr-2 h-4 w-4" />
                             Continue with Google
@@ -137,7 +137,7 @@ export default function SignupPage() {
                                     id="firstName"
                                     placeholder="John"
                                     error={!!errors.firstName}
-                                    disabled={isSubmitting || isAuthenticating}
+                                    disabled={isSubmitting}
                                     {...register("firstName")}
                                 />
                                 {errors.firstName && (
@@ -151,7 +151,7 @@ export default function SignupPage() {
                                     id="lastName"
                                     placeholder="Doe"
                                     error={!!errors.lastName}
-                                    disabled={isSubmitting || isAuthenticating}
+                                    disabled={isSubmitting}
                                     {...register("lastName")}
                                 />
                                 {errors.lastName && (
@@ -168,7 +168,7 @@ export default function SignupPage() {
                                 type="email"
                                 placeholder="john@example.com"
                                 error={!!errors.email}
-                                disabled={isSubmitting || isAuthenticating}
+                                disabled={isSubmitting}
                                 {...register("email")}
                             />
                             {errors.email && (
@@ -183,7 +183,7 @@ export default function SignupPage() {
                                 id="username"
                                 placeholder="johndoe"
                                 error={!!errors.username}
-                                disabled={isSubmitting || isAuthenticating}
+                                disabled={isSubmitting}
                                 {...register("username")}
                             />
                             {errors.username && (
@@ -203,7 +203,7 @@ export default function SignupPage() {
                                     type={showPassword ? "text" : "password"}
                                     placeholder="Create a strong password"
                                     error={!!errors.password}
-                                    disabled={isSubmitting || isAuthenticating}
+                                    disabled={isSubmitting}
                                     {...register("password")}
                                 />
                                 <Button
@@ -212,7 +212,7 @@ export default function SignupPage() {
                                     size="icon"
                                     className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                                     onClick={() => setShowPassword(!showPassword)}
-                                    disabled={isSubmitting || isAuthenticating}
+                                    disabled={isSubmitting}
                                 >
                                     {showPassword ? (
                                         <EyeOff className="h-4 w-4 text-muted-foreground" />
@@ -238,7 +238,7 @@ export default function SignupPage() {
                                     type={showConfirmPassword ? "text" : "password"}
                                     placeholder="Confirm your password"
                                     error={!!errors.confirmPassword}
-                                    disabled={isSubmitting || isAuthenticating}
+                                    disabled={isSubmitting}
                                     {...register("confirmPassword")}
                                 />
                                 <Button
@@ -247,7 +247,7 @@ export default function SignupPage() {
                                     size="icon"
                                     className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                    disabled={isSubmitting || isAuthenticating}
+                                    disabled={isSubmitting}
                                 >
                                     {showConfirmPassword ? (
                                         <EyeOff className="h-4 w-4 text-muted-foreground" />
@@ -268,7 +268,7 @@ export default function SignupPage() {
                                 id="birthdate"
                                 type="date"
                                 error={!!errors.birthdate}
-                                disabled={isSubmitting || isAuthenticating}
+                                disabled={isSubmitting}
                                 {...register("birthdate")}
                             />
                             {errors.birthdate && (
@@ -283,7 +283,7 @@ export default function SignupPage() {
                                     id="agreeToTerms"
                                     type="checkbox"
                                     className="mt-0.5 rounded border-gray-300 text-primary focus:ring-primary"
-                                    disabled={isSubmitting || isAuthenticating}
+                                    disabled={isSubmitting}
                                     {...register("agreeToTerms")}
                                 />
                                 <Label htmlFor="agreeToTerms" className="text-sm leading-5">
@@ -314,8 +314,8 @@ export default function SignupPage() {
                         <Button
                             type="submit"
                             className="w-full"
-                            loading={isSubmitting || isAuthenticating}
-                            disabled={isSubmitting || isAuthenticating || !passwordStrength?.isValid}
+                            loading={isSubmitting}
+                            disabled={isSubmitting || !passwordStrength?.isValid}
                         >
                             Create account
                         </Button>

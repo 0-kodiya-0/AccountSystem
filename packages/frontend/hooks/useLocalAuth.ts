@@ -1,5 +1,5 @@
-import { useAuth } from "@accountsystem/auth-react-sdk"
 import {
+    useAuth,
     LocalSignupRequest,
     LocalLoginRequest,
     LocalLoginResponse,
@@ -13,9 +13,12 @@ export function useLocalAuth() {
         verifyTwoFactor,
         requestPasswordReset,
         resetPassword,
-        isAuthenticating,
-        error,
-        tempToken
+        tempToken,
+        isAuthenticated,
+        loadingInfo,
+        isPending,
+        isReady,
+        hasError
     } = useAuth()
 
     const signup = async (data: LocalSignupRequest) => {
@@ -51,8 +54,11 @@ export function useLocalAuth() {
         verify2FA,
         requestPasswordReset: requestReset,
         resetPassword: resetPass,
-        isAuthenticating,
-        error,
-        requires2FA: !!tempToken
+        requires2FA: !!tempToken,
+        loadingInfo,
+        isPending,
+        isReady,
+        isAuthenticated,
+        hasError
     }
 }

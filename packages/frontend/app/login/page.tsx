@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
 import { AuthLayout } from "@/components/layout/auth-layout"
-import { OAuthProviders } from "@accountsystem/auth-react-sdk" // cSpell:ignore accountsystem
+import { OAuthProviders } from "../../../sdk/auth-react-sdk/src" // cSpell:ignore accountsystem
 import { useLocalAuth } from "@/hooks/useLocalAuth"
 import { useOAuth } from "@/hooks/useOAuth"
 import { getEnvironmentConfig } from "@/lib/utils"
@@ -65,7 +65,7 @@ export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false)
     const [useEmail, setUseEmail] = useState(true)
 
-    const { login, isAuthenticating } = useLocalAuth()
+    const { login } = useLocalAuth()
     const { signinWithProvider } = useOAuth()
     const config = getEnvironmentConfig()
 
@@ -73,7 +73,6 @@ export default function LoginPage() {
         register,
         handleSubmit,
         formState: { errors, isSubmitting },
-        watch,
         setValue,
         clearErrors,
         setError,
@@ -88,14 +87,6 @@ export default function LoginPage() {
             loginType: "email",
         }
     })
-
-    // Debug: Watch form values
-    const watchedValues = watch()
-    console.log("Current mode:", useEmail ? "email" : "username")
-    console.log("Form values:", watchedValues)
-    console.log("Form errors:", errors)
-    console.log("Is submitting:", isSubmitting)
-    console.log("Is authenticating:", isAuthenticating)
 
     const handleInputTypeChange = async (newUseEmail: boolean) => {
         setUseEmail(newUseEmail)
@@ -208,23 +199,6 @@ export default function LoginPage() {
             description="Sign in to your account to continue"
             showBackToHome={!!config.homeUrl}
         >
-            {/* Debug Info */}
-            {config.debugMode && (
-                <div className="mb-4 p-3 bg-gray-100 dark:bg-gray-800 rounded text-xs">
-                    <div><strong>Debug Info:</strong></div>
-                    <div>Use Email: {useEmail ? 'Yes' : 'No'}</div>
-                    <div>Login Type: {watchedValues.loginType}</div>
-                    <div>Email: {watchedValues.email || 'empty'}</div>
-                    <div>Username: {watchedValues.username || 'empty'}</div>
-                    <div>Password: {watchedValues.password ? '*'.repeat(watchedValues.password.length) : 'empty'}</div>
-                    <div>Remember Me: {watchedValues.rememberMe ? 'Yes' : 'No'}</div>
-                    <div>Is Submitting: {isSubmitting ? 'Yes' : 'No'}</div>
-                    <div>Is Authenticating: {isAuthenticating ? 'Yes' : 'No'}</div>
-                    <div>Form Valid: {Object.keys(errors).length === 0 ? 'Yes' : 'No'}</div>
-                    <div>Errors: {JSON.stringify(errors)}</div>
-                </div>
-            )}
-
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
                 {/* Hidden field for login type */}
                 <input type="hidden" {...register("loginType")} />
@@ -237,7 +211,7 @@ export default function LoginPage() {
                             variant="outline"
                             className="w-full"
                             onClick={() => handleOAuthLogin(OAuthProviders.Google)}
-                            disabled={isSubmitting || isAuthenticating}
+                            disabled={isSubmitting}
                         >
                             <Chrome className="mr-2 h-4 w-4" />
                             Continue with Google
@@ -290,7 +264,7 @@ export default function LoginPage() {
                                 type="email"
                                 placeholder="Enter your email"
                                 error={!!errors.email}
-                                disabled={isSubmitting || isAuthenticating}
+                                disabled={isSubmitting}
                                 {...register("email")}
                                 autoComplete="email"
                             />
@@ -300,7 +274,7 @@ export default function LoginPage() {
                                 type="text"
                                 placeholder="Enter your username"
                                 error={!!errors.username}
-                                disabled={isSubmitting || isAuthenticating}
+                                disabled={isSubmitting}
                                 {...register("username")}
                                 autoComplete="username"
                             />
@@ -336,7 +310,7 @@ export default function LoginPage() {
                                 type={showPassword ? "text" : "password"}
                                 placeholder="Enter your password"
                                 error={!!errors.password}
-                                disabled={isSubmitting || isAuthenticating}
+                                disabled={isSubmitting}
                                 {...register("password")}
                                 autoComplete="current-password"
                             />
@@ -346,7 +320,7 @@ export default function LoginPage() {
                                 size="icon"
                                 className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                                 onClick={() => setShowPassword(!showPassword)}
-                                disabled={isSubmitting || isAuthenticating}
+                                disabled={isSubmitting}
                             >
                                 {showPassword ? (
                                     <EyeOff className="h-4 w-4 text-muted-foreground" />
@@ -373,7 +347,7 @@ export default function LoginPage() {
                             id="rememberMe"
                             type="checkbox"
                             className="rounded border-gray-300 text-primary focus:ring-primary"
-                            disabled={isSubmitting || isAuthenticating}
+                            disabled={isSubmitting}
                             {...register("rememberMe")}
                         />
                         <Label htmlFor="rememberMe" className="text-sm">
@@ -387,8 +361,8 @@ export default function LoginPage() {
                     <Button
                         type="submit"
                         className="w-full"
-                        loading={isSubmitting || isAuthenticating}
-                        disabled={isSubmitting || isAuthenticating}
+                        loading={isSubmitting}
+                        disabled={isSubmitting}
                         onClick={() => console.log("Sign in button clicked, form valid:", Object.keys(errors).length === 0)}
                     >
                         Sign in

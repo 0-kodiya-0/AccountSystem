@@ -10,24 +10,32 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { NotificationList } from "./notification-list"
-import { useNotificationsContext } from "@accountsystem/auth-react-sdk"
+import { useNotifications, useRealtimeNotifications } from "@accountsystem/auth-react-sdk"
+import { socketConfig } from "@/lib/auth"
 
 export function NotificationCenter() {
     const [showSettings, setShowSettings] = useState(false)
-    const {
-        notifications,
-        unreadCount,
-        isConnected,
+     const { isConnected,
         connectionState,
         soundEnabled,
         setSoundEnabled,
         browserNotificationsEnabled,
         requestBrowserPermission,
-        markAllAsRead,
-        deleteAllNotifications,
         clearUpdates,
         updateCount
-    } = useNotificationsContext()
+    } = useRealtimeNotifications({
+        socketConfig: socketConfig,
+        autoSubscribe: true,
+        enableSound: true,
+        enableBrowserNotifications: true
+    });
+    
+    const {
+        notifications,
+        unreadCount,
+        markAllAsRead,
+        deleteAllNotifications,
+    } = useNotifications();
 
     const handleToggleSound = () => {
         setSoundEnabled(!soundEnabled)
@@ -101,7 +109,7 @@ export function NotificationCenter() {
                         </div>
                     </CardContent>
                 </Card>
-                
+
                 <Card>
                     <CardContent className="p-4">
                         <div className="flex items-center space-x-2">
@@ -113,7 +121,7 @@ export function NotificationCenter() {
                         </div>
                     </CardContent>
                 </Card>
-                
+
                 <Card>
                     <CardContent className="p-4">
                         <div className="flex items-center space-x-2">
@@ -125,7 +133,7 @@ export function NotificationCenter() {
                         </div>
                     </CardContent>
                 </Card>
-                
+
                 <Card>
                     <CardContent className="p-4">
                         <div className="flex items-center space-x-2">

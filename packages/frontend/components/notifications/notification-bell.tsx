@@ -14,7 +14,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { NotificationList } from "./notification-list"
-import { useNotificationsContext } from "@accountsystem/auth-react-sdk"
+import { useNotifications } from "@accountsystem/auth-react-sdk"
 
 interface NotificationBellProps {
     className?: string
@@ -25,9 +25,8 @@ export function NotificationBell({ className }: NotificationBellProps) {
     const {
         unreadCount,
         markAllAsRead,
-        deleteAllNotifications,
-        isConnected
-    } = useNotificationsContext()
+        deleteAllNotifications
+    } = useNotifications()
 
     const handleMarkAllAsRead = async () => {
         try {
@@ -60,9 +59,6 @@ export function NotificationBell({ className }: NotificationBellProps) {
                                 {unreadCount > 99 ? "99+" : unreadCount}
                             </Badge>
                         )}
-                        {!isConnected && (
-                            <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-yellow-500 rounded-full border-2 border-background" />
-                        )}
                     </div>
                 </Button>
             </DropdownMenuTrigger>
@@ -70,11 +66,6 @@ export function NotificationBell({ className }: NotificationBellProps) {
                 <div className="flex items-center justify-between p-4 border-b">
                     <h3 className="font-semibold">Notifications</h3>
                     <div className="flex items-center space-x-2">
-                        {!isConnected && (
-                            <Badge variant="outline" className="text-yellow-600">
-                                Offline
-                            </Badge>
-                        )}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="sm">

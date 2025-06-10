@@ -6,8 +6,11 @@ export function useOAuth() {
         startOAuthSignin,
         requestGooglePermission,
         checkGoogleScopes,
-        isAuthenticating,
-        error,
+        loadingInfo,
+        hasError,
+        isPending,
+        isReady,
+        isAuthenticated
     } = useAuth()
 
     const signupWithProvider = (provider: OAuthProviders) => {
@@ -23,7 +26,10 @@ export function useOAuth() {
         signinWithProvider,
         requestGooglePermission,
         checkGoogleScopes,
-        isAuthenticating,
-        error,
+        loadingInfo,
+        hasError,
+        isPending,
+        isReady,
+        isAuthenticated
     }
 }

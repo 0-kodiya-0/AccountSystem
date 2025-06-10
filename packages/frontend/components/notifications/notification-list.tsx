@@ -2,8 +2,8 @@
 
 import * as React from "react"
 import { NotificationItem } from "./notification-item"
-import { useNotificationsContext } from "@accountsystem/auth-react-sdk"
 import { Loader2, Bell } from "lucide-react"
+import { useNotifications } from "@accountsystem/auth-react-sdk"
 
 interface NotificationListProps {
     maxHeight?: string
@@ -12,11 +12,11 @@ interface NotificationListProps {
 }
 
 export function NotificationList({ maxHeight = "600px", showActions = true, limit }: NotificationListProps) {
-    const { notifications, loading, error } = useNotificationsContext()
+    const { notifications, isPending, hasError, loadingInfo } = useNotifications()
 
     const displayNotifications = limit ? notifications.slice(0, limit) : notifications
 
-    if (loading) {
+    if (!isPending) {
         return (
             <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -24,11 +24,11 @@ export function NotificationList({ maxHeight = "600px", showActions = true, limi
         )
     }
 
-    if (error) {
+    if (hasError) {
         return (
             <div className="text-center py-8 text-destructive">
                 <p className="text-sm">Failed to load notifications</p>
-                <p className="text-xs text-muted-foreground mt-1">{error}</p>
+                <p className="text-xs text-muted-foreground mt-1">{loadingInfo.reason}</p>
             </div>
         )
     }
