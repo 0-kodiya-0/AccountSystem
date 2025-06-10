@@ -45,10 +45,10 @@ export const use2FAVerification = (options: Use2FAVerificationOptions = {}): Use
         autoRedirectOnSuccess = true
     } = options;
 
-    const { verifyTwoFactor, refreshSession, setError, clearError: clearAuthError, oauthState } = useAuth();
+    const { verifyTwoFactor, refreshSession, setError, clearError: clearAuthError, tempToken: savedTempToken } = useAuth();
     
     // Use tempToken from options or from auth state
-    const activeTempToken = tempToken || oauthState.tempToken;
+    const activeTempToken = tempToken || savedTempToken;
 
     const [status, setStatus] = useState<TwoFactorVerificationStatus>(
         activeTempToken ? TwoFactorVerificationStatus.IDLE : TwoFactorVerificationStatus.EXPIRED_SESSION

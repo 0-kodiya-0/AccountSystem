@@ -70,8 +70,6 @@ export interface Account {
     provider?: OAuthProviders; // Required when accountType === 'oauth'
 }
 
-export type AccountDTO = Account;
-
 // Auth request interfaces
 export interface LocalAuthRequest {
     email?: string;

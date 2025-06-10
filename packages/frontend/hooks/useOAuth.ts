@@ -8,7 +8,6 @@ export function useOAuth() {
         checkGoogleScopes,
         isAuthenticating,
         error,
-        oauthState
     } = useAuth()
 
     const signupWithProvider = (provider: OAuthProviders) => {
@@ -26,6 +25,5 @@ export function useOAuth() {
         checkGoogleScopes,
         isAuthenticating,
         error,
-        oauthState
     }
 }

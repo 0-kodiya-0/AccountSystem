@@ -433,6 +433,23 @@ export enum RedirectCode {
     LOADING_ACCOUNT_DATA = 'loading_account_data'
 }
 
+/**
+ * Minimal account data returned in session responses
+ * Only contains essential information needed for session management
+ */
+export interface SessionAccount {
+    id: string;
+    accountType: AccountType;
+    status: AccountStatus;
+    userDetails: {
+        name: string;
+        email?: string;
+        username?: string;
+        imageUrl?: string;
+    };
+    provider?: OAuthProviders;
+}
+
 export interface AccountSessionInfo {
     hasSession: boolean;
     accountIds: string[];
@@ -442,7 +459,7 @@ export interface AccountSessionInfo {
 
 export interface GetAccountSessionResponse {
     session: AccountSessionInfo;
-    accounts?: Account[]; // Will be populated with account data if available
+    accounts?: SessionAccount[]; // Minimal account data for session management
 }
 
 export enum AuthGuardDecision {

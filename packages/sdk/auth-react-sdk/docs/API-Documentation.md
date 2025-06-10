@@ -96,7 +96,7 @@ const {
   isAuthenticating,
   error,
   isAuthenticated,
-  oauthState,
+  authState,
 
   // Local Authentication
   localSignup,
@@ -138,7 +138,7 @@ const {
 - `isAuthenticating` (boolean): Authentication in progress
 - `error` (string | null): Current error message
 - `isAuthenticated` (boolean): Whether user is authenticated
-- `oauthState` (OAuthState): OAuth flow state
+- `authState` (authState): OAuth flow state
 
 **Methods:**
 

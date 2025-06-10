@@ -29,12 +29,7 @@ interface AuthContextValue {
     error: string | null;
     isAuthenticated: boolean;
     hasValidSession: boolean;
-    oauthState: {
-        isInProgress: boolean;
-        provider: OAuthProviders | null;
-        redirectUrl: string | null;
-        tempToken: string | null;
-    };
+    tempToken: string | null;
 
     // Session Management
     loadSession: () => Promise<GetAccountSessionResponse>;
@@ -71,8 +66,8 @@ interface AuthContextValue {
     prefetchAccountsData: () => Promise<void>;
 
     // Store actions (exposed for hooks)
-    setOAuthTempToken: (tempToken: string) => void;
-    clearOAuthState: () => void;
+    setTempToken: (tempToken: string) => void;
+    clearTempToken: () => void;
     setAuthenticating: (authenticating: boolean) => void;
     setError: (error: string | null) => void;
     clearError: () => void;
@@ -103,11 +98,11 @@ export const AuthProvider = ({
         isLoading,
         isAuthenticating,
         error,
-        oauthState,
+        tempToken,
         hasValidSession,
         isAuthenticated,
         getAccountById,
-        hasAccountData,
+        hasFullAccountData,
         needsAccountData,
         getAccountIds,
         getMissingAccountIds,
@@ -116,14 +111,14 @@ export const AuthProvider = ({
         setSession,
         clearSession: clearSessionStore,
         setAccountData,
+        setSessionAccountData,
         updateAccountData,
         setLoading,
         setAuthenticating,
         setError,
         clearError,
-        setOAuthInProgress,
-        setOAuthTempToken,
-        clearOAuthState,
+        setTempToken,
+        clearTempToken,
     } = useAccountStore();
 
     // Get current data
@@ -141,10 +136,11 @@ export const AuthProvider = ({
             // Update session in store
             setSession(sessionResponse.session);
 
-            // If session includes account data, populate the store
+            // If session includes account data, populate the store with session account data
+            // This is minimal data - full account data will be fetched separately when needed
             if (sessionResponse.accounts) {
-                sessionResponse.accounts.forEach(account => {
-                    setAccountData(account.id, account);
+                sessionResponse.accounts.forEach(partialAccount => {
+                    setSessionAccountData(partialAccount.id!, partialAccount);
                 });
             }
 
@@ -159,7 +155,27 @@ export const AuthProvider = ({
         } finally {
             setLoading(false);
         }
-    }, [client, setSession, setAccountData, setLoading, setError, clearError, clearSessionStore]);
+    }, [client, setSession, setSessionAccountData, setLoading, setError, clearError, clearSessionStore]);
+
+    // Smart account data fetching - now differentiates between session data and full account data
+    const ensureAccountData = useCallback(async (accountId: string): Promise<Account> => {
+        // If we already have full account data, return it
+        const existingAccount = getAccountById(accountId);
+        if (existingAccount && hasFullAccountData(accountId)) {
+            return existingAccount;
+        }
+
+        // Otherwise fetch full account data
+        try {
+            const account = await client.getAccount(accountId);
+            setAccountData(accountId, account);
+            return account;
+        } catch (error) {
+            const message = error instanceof AuthSDKError ? error.message : 'Failed to fetch account data';
+            setError(message);
+            throw error;
+        }
+    }, [client, getAccountById, hasFullAccountData, setAccountData, setError]);
 
     // Refresh session and account data
     const refreshSession = useCallback(async (): Promise<void> => {
@@ -175,25 +191,6 @@ export const AuthProvider = ({
     const clearSession = useCallback(() => {
         clearSessionStore();
     }, [clearSessionStore]);
-
-    // Smart account data fetching
-    const ensureAccountData = useCallback(async (accountId: string): Promise<Account> => {
-        // If we already have the data, return it
-        if (hasAccountData(accountId)) {
-            return getAccountById(accountId)!;
-        }
-
-        // Otherwise fetch it
-        try {
-            const account = await client.getAccount(accountId);
-            setAccountData(accountId, account);
-            return account;
-        } catch (error) {
-            const message = error instanceof AuthSDKError ? error.message : 'Failed to fetch account data';
-            setError(message);
-            throw error;
-        }
-    }, [client, hasAccountData, getAccountById, setAccountData, setError]);
 
     const refreshAccountData = useCallback(async (accountId: string): Promise<Account> => {
         try {
@@ -261,7 +258,7 @@ export const AuthProvider = ({
             const result = await client.localLogin(data);
 
             if (result.requiresTwoFactor) {
-                setOAuthTempToken(result.tempToken!);
+                setTempToken(result.tempToken!);
                 return result;
             } else {
                 // Refresh session after successful login
@@ -276,7 +273,7 @@ export const AuthProvider = ({
         } finally {
             setAuthenticating(false);
         }
-    }, [client, setAuthenticating, clearError, setError, setOAuthTempToken, refreshSession]);
+    }, [client, setAuthenticating, clearError, setError, setTempToken, refreshSession]);
 
     const verifyTwoFactor = useCallback(async (data: TwoFactorVerifyRequest) => {
         try {
@@ -286,7 +283,7 @@ export const AuthProvider = ({
             const result = await client.verifyTwoFactor(data);
 
             if (result.accountId) {
-                clearOAuthState();
+                clearTempToken();
                 // Refresh session after successful 2FA
                 await refreshSession();
             }
@@ -299,7 +296,7 @@ export const AuthProvider = ({
         } finally {
             setAuthenticating(false);
         }
-    }, [client, setAuthenticating, clearError, setError, clearOAuthState, refreshSession]);
+    }, [client, setAuthenticating, clearError, setError, clearTempToken, refreshSession]);
 
     const requestPasswordReset = useCallback(async (email: string) => {
         try {
@@ -331,14 +328,12 @@ export const AuthProvider = ({
 
     // OAuth methods
     const startOAuthSignup = useCallback((provider: OAuthProviders) => {
-        setOAuthInProgress(provider);
         client.redirectToOAuthSignup(provider);
-    }, [client, setOAuthInProgress]);
+    }, [client]);
 
     const startOAuthSignin = useCallback((provider: OAuthProviders) => {
-        setOAuthInProgress(provider);
         client.redirectToOAuthSignin(provider);
-    }, [client, setOAuthInProgress]);
+    }, [client]);
 
     // Account Management Methods
     const updateAccount = useCallback(async (accountId: string, updates: Partial<Account>): Promise<Account> => {
@@ -488,7 +483,7 @@ export const AuthProvider = ({
         error,
         isAuthenticated: isAuthenticated(),
         hasValidSession: hasValidSession(),
-        oauthState,
+        tempToken,
 
         // Session Management
         loadSession,
@@ -525,8 +520,8 @@ export const AuthProvider = ({
         prefetchAccountsData,
 
         // Store actions (exposed for hooks)
-        setOAuthTempToken,
-        clearOAuthState,
+        setTempToken,
+        clearTempToken,
         setAuthenticating,
         setError,
         clearError,

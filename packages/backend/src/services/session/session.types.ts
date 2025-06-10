@@ -1,3 +1,5 @@
+import { AccountType, AccountStatus, OAuthProviders } from "../../feature/account";
+
 export interface SessionError {
     error: boolean;
     message: string;
@@ -21,7 +23,24 @@ export interface AccountSessionInfo {
     isValid: boolean;
 }
 
+/**
+ * Minimal account data for session responses
+ * Only contains essential information needed for session management
+ */
+export interface SessionAccount {
+    id: string;
+    accountType: AccountType;
+    status: AccountStatus;
+    userDetails: {
+        name: string;
+        email?: string;
+        username?: string;
+        imageUrl?: string;
+    };
+    provider?: OAuthProviders;
+}
+
 export interface GetAccountSessionResponse {
     session: AccountSessionInfo;
-    accounts?: any[]; // Will be populated with account data if available
+    accounts?: SessionAccount[]; // Minimal account data for session management
 }

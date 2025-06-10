@@ -41,11 +41,10 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
     const {
         client,
         refreshSession,
-        setOAuthTempToken,
-        clearOAuthState,
         setAuthenticating,
         setError,
-        clearError
+        clearError,
+        setTempToken
     } = useAuth();
 
     // Simple navigation helper
@@ -57,16 +56,14 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
     const defaultOAuthSigninSuccess = useCallback(async (data: { accountId: string; name: string; provider: OAuthProviders }) => {
         console.log(`OAuth signin successful: ${data.name} (${data.accountId}) via ${data.provider}`);
         await refreshSession();
-        clearOAuthState();
         navigateToRoot();
-    }, [refreshSession, clearOAuthState, navigateToRoot]);
+    }, [refreshSession, navigateToRoot]);
 
     const defaultOAuthSignupSuccess = useCallback(async (data: { accountId: string; name: string; provider: OAuthProviders }) => {
         console.log(`OAuth signup successful: ${data.name} (${data.accountId}) via ${data.provider}`);
         await refreshSession();
-        clearOAuthState();
         navigateToRoot();
-    }, [refreshSession, clearOAuthState, navigateToRoot]);
+    }, [refreshSession, navigateToRoot]);
 
     const defaultOAuthPermissionSuccess = useCallback(async (data: { accountId: string; service?: string; scopeLevel?: string; provider: OAuthProviders }) => {
         console.log(`OAuth permission granted: ${data.service} ${data.scopeLevel} for ${data.accountId} via ${data.provider}`);
@@ -87,9 +84,9 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
 
     const defaultLocal2FARequired = useCallback(async (data: { tempToken: string; accountId: string; message?: string }) => {
         console.log(`2FA required for ${data.accountId}: ${data.message}`);
-        setOAuthTempToken(data.tempToken);
+        setTempToken(data.tempToken);
         navigateToRoot();
-    }, [setOAuthTempToken, navigateToRoot]);
+    }, [setTempToken, navigateToRoot]);
 
     const defaultLocalEmailVerified = useCallback(async (data: { message?: string }) => {
         console.log(`Email verified: ${data.message}`);
@@ -116,9 +113,8 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
     const defaultOAuthError = useCallback(async (data: { error: string; provider?: OAuthProviders }) => {
         console.error(`OAuth error (${data.provider}): ${data.error}`);
         setError(data.error);
-        clearOAuthState();
         navigateToRoot();
-    }, [setError, clearOAuthState, navigateToRoot]);
+    }, [setError, navigateToRoot]);
 
     const defaultLocalAuthError = useCallback(async (data: { error: string }) => {
         console.error(`Local auth error: ${data.error}`);
@@ -147,16 +143,14 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
     const defaultTokenExpired = useCallback(async (data: { error: string }) => {
         console.error(`Token expired: ${data.error}`);
         setError(data.error);
-        clearOAuthState();
         navigateToRoot();
-    }, [setError, clearOAuthState, navigateToRoot]);
+    }, [setError, navigateToRoot]);
 
     const defaultPermissionReauthorize = useCallback(async (data: { accountId: string }) => {
         console.log(`Permission reauthorization needed for account ${data.accountId}`);
         await refreshSession();
-        clearOAuthState();
         client.reauthorizePermissions(data.accountId);
-    }, [refreshSession, clearOAuthState, client]);
+    }, [refreshSession, client]);
 
     const defaultUnknownCode = useCallback(async (data: CallbackData) => {
         console.warn('Unknown callback code:', data);

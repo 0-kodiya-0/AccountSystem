@@ -15,7 +15,7 @@ export function useLocalAuth() {
         resetPassword,
         isAuthenticating,
         error,
-        oauthState
+        tempToken
     } = useAuth()
 
     const signup = async (data: LocalSignupRequest) => {
@@ -27,7 +27,6 @@ export function useLocalAuth() {
     }
 
     const verify2FA = async (token: string): Promise<LocalLoginResponse> => {
-        const tempToken = oauthState.tempToken
         if (!tempToken) {
             throw new Error("No temporary token available")
         }
@@ -54,6 +53,6 @@ export function useLocalAuth() {
         resetPassword: resetPass,
         isAuthenticating,
         error,
-        requires2FA: !!oauthState.tempToken
+        requires2FA: !!tempToken
     }
 }

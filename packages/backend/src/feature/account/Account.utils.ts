@@ -1,46 +1,64 @@
-import { AccountDocument } from "./Account.model";
-import { AccountDTO, SecuritySettings } from "./Account.types";
+import { SessionAccount } from "../../services/session/session.types";
+import { Account } from "./Account.types";
 
-// Convert Mongoose document to Account DTO
-export const toAccount = (doc: AccountDocument | null): AccountDTO | null => {
-  if (!doc) return null;
+/**
+ * Convert account document to safe account object (full account data)
+ */
+export function toSafeAccount(accountDoc: any): Account | null {
+    if (!accountDoc) return null;
 
-  const account: AccountDTO = {
-    id: doc._id.toHexString(),
-    created: doc.created,
-    updated: doc.updated,
-    accountType: doc.accountType,
-    status: doc.status,
-    provider: doc.provider,
-    userDetails: doc.userDetails,
-    security: {
-      // Only include non-sensitive security information
-      twoFactorEnabled: doc.security.twoFactorEnabled,
-      sessionTimeout: doc.security.sessionTimeout,
-      autoLock: doc.security.autoLock,
-      // Don't include password, secrets, or other sensitive data
-    } as SecuritySettings // Type assertion to avoid exposing sensitive fields
-  };
-
-  return account;
-};
-
-// Convert to safe account (removes all sensitive security data)
-export const toSafeAccount = (doc: AccountDocument | null): Omit<AccountDTO, 'security'> & { security: { twoFactorEnabled: boolean; sessionTimeout: number; autoLock: boolean } } | null => {
-  if (!doc) return null;
-
-  return {
-    id: doc._id.toHexString(),
-    created: doc.created,
-    updated: doc.updated,
-    accountType: doc.accountType,
-    status: doc.status,
-    provider: doc.provider,
-    userDetails: doc.userDetails,
-    security: {
-      twoFactorEnabled: doc.security.twoFactorEnabled,
-      sessionTimeout: doc.security.sessionTimeout,
-      autoLock: doc.security.autoLock,
+    try {
+        return {
+            id: accountDoc._id.toString(),
+            created: accountDoc.created,
+            updated: accountDoc.updated,
+            accountType: accountDoc.accountType,
+            status: accountDoc.status,
+            userDetails: {
+                firstName: accountDoc.userDetails?.firstName,
+                lastName: accountDoc.userDetails?.lastName,
+                name: accountDoc.userDetails?.name,
+                email: accountDoc.userDetails?.email,
+                imageUrl: accountDoc.userDetails?.imageUrl,
+                birthdate: accountDoc.userDetails?.birthdate,
+                username: accountDoc.userDetails?.username,
+                emailVerified: accountDoc.userDetails?.emailVerified
+            },
+            security: {
+                twoFactorEnabled: accountDoc.security?.twoFactorEnabled || false,
+                sessionTimeout: accountDoc.security?.sessionTimeout || 3600,
+                autoLock: accountDoc.security?.autoLock || false
+            },
+            provider: accountDoc.provider
+        };
+    } catch (error) {
+        console.error('Error converting account document to safe account:', error);
+        return null;
     }
-  };
-};
+}
+
+/**
+ * Convert account document to safe session account object (minimal data for session)
+ * Only includes basic identifying information needed for session management
+ */
+export function toSafeSessionAccount(accountDoc: any): SessionAccount | null {
+    if (!accountDoc) return null;
+
+    try {
+        return {
+            id: accountDoc._id.toString(),
+            accountType: accountDoc.accountType,
+            status: accountDoc.status,
+            userDetails: {
+                name: accountDoc.userDetails?.name,
+                email: accountDoc.userDetails?.email,
+                username: accountDoc.userDetails?.username,
+                imageUrl: accountDoc.userDetails?.imageUrl
+            },
+            provider: accountDoc.provider
+        };
+    } catch (error) {
+        console.error('Error converting account document to safe session account:', error);
+        return null;
+    }
+}

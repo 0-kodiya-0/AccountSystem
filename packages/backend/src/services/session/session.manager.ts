@@ -6,7 +6,7 @@ import { createLocalJwtToken } from '../../feature/local_auth';
 import { createOAuthJwtToken } from '../../feature/oauth/OAuth.jwt';
 import { getJwtSecret, getNodeEnv } from '../../config/env.config';
 import { getStrippedPathPrefix } from '../../utils/redirect';
-import { AccountSessionData, AccountSessionTokenPayload, AccountSessionInfo } from '../../types/session.types';
+import { AccountSessionData, AccountSessionTokenPayload, AccountSessionInfo } from './session.types';
 import { logger } from '../../utils/logger';
 
 // Environment variables
