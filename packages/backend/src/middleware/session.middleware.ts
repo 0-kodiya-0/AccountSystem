@@ -163,7 +163,7 @@ export const validateTokenAccess = asyncHandler(async (req, res, next) => {
                 },
                 `./${accountPath}/account/refreshToken`,
                 302,
-                req.originalUrl
+                `./${req.originalUrl}`
             );
         }
     }
