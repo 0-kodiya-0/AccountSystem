@@ -8,6 +8,7 @@
   "cSpell.userWords": ["unnessary"],
   "editor.fontSize": 20,
   "editor.defaultFormatter": "esbenp.prettier-vscode",
-  "typescript.format.enable": false,
-  "editor.formatOnSave": true
+  "typescript.format.enable": true,
+  "editor.formatOnSave": true,
+  "editor.rulers": [80, 100, 120]
 }
