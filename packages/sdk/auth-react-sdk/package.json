@@ -8,12 +8,17 @@
     "build": "npm run clean && npm run build:types && npm run build:esm",
     "build:types": "tsc --emitDeclarationOnly",
     "build:esm": "esbuild src/index.ts --bundle --platform=browser --target=es2020 --format=esm --outfile=dist/index.js --external:react --external:react-dom --external:react/jsx-runtime --external:react/jsx-dev-runtime --external:scheduler --external:react-reconciler --external:axios --external:socket.io-client --external:zustand --banner:js='\"use client\"'",
-    
     "dev": "npm run build --watch",
     "clean": "node -e \"const fs = require('fs'); if (fs.existsSync('dist')) fs.rmSync('dist', { recursive: true });\"",
     "prepublishOnly": "npm run build",
     "test": "echo \"Tests not implemented yet\" && exit 0",
-    "link": "npm run build && npm link"
+    "link": "npm run build && npm link",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run lint && npm run format:check",
+    "format:staged": "prettier --write"
   },
   "files": [
     "dist/**/*",
@@ -57,10 +62,13 @@
   "devDependencies": {
     "@eslint/js": "^9.28.0",
     "@types/react": "^19.1.6",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
     "esbuild": "0.25.5",
     "eslint": "^9.28.0",
-    "typescript": "^5.8.3",
-    "typescript-eslint": "^8.33.1"
+    "eslint-config-prettier": "^10.1.5",
+    "prettier": "3.5.3",
+    "typescript": "^5.8.3"
   },
   "dependencies": {
     "@types/node": "^22.15.29",

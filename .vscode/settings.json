@@ -1,0 +1,13 @@
+{
+  "git.suggestSmartCommit": false,
+  "git.confirmSync": false,
+  "git.autofetch": true,
+  "typescript.updateImportsOnFileMove.enabled": "always",
+  "git.openRepositoryInParentFolders": "always",
+  "javascript.updateImportsOnFileMove.enabled": "always",
+  "cSpell.userWords": ["unnessary"],
+  "editor.fontSize": 20,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "typescript.format.enable": false,
+  "editor.formatOnSave": true
+}
