@@ -1,239 +1,217 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { LoadingInfo, LoadingState } from '../types';
 
-/**
- * Options for initializing the loading hook
- */
 export interface UseLoadingOptions {
-    initialState?: LoadingState;
-    initialReason?: string;
-    includeTimestamp?: boolean;
+  initialState?: LoadingState;
+  initialReason?: string;
+  includeTimestamp?: boolean;
+  autoResetError?: boolean;
+  autoResetDelay?: number;
 }
 
-/**
- * Return type for the loading hook
- */
 export interface UseLoadingReturn {
-    // Current state info
-    loadingInfo: LoadingInfo;
-    
-    // Derived boolean states for easy checking
-    isPending: boolean;
-    isReady: boolean;
-    hasError: boolean;
-    
-    // State management functions
-    setLoadingState: (state: LoadingState, reason?: string, metadata?: Record<string, unknown>) => void;
-    updateLoadingReason: (reason: string) => void;
-    updateMetadata: (metadata: Record<string, unknown>) => void;
-    
-    // Convenience state setters
-    setPending: (reason?: string) => void;
-    setReady: (reason?: string) => void;
-    setError: (reason?: string, metadata?: Record<string, unknown>) => void;
-    
-    // State checkers
-    isState: (state: LoadingState) => boolean;
-    getStateAge: () => number; // How long in current state (ms)
-    
-    // Utilities
-    reset: (reason?: string) => void;
-    clearError: () => void;
+  // Current state info
+  loadingInfo: LoadingInfo;
+
+  // Derived boolean states for easy checking
+  isPending: boolean;
+  isReady: boolean;
+  hasError: boolean;
+
+  // State management functions
+  setLoadingState: (
+    state: LoadingState,
+    reason?: string,
+    metadata?: Record<string, unknown>,
+  ) => void;
+  updateLoadingReason: (reason: string) => void;
+  updateMetadata: (metadata: Record<string, unknown>) => void;
+
+  // Convenience state setters
+  setPending: (reason?: string) => void;
+  setReady: (reason?: string) => void;
+  setError: (reason?: string, metadata?: Record<string, unknown>) => void;
+
+  // State checkers
+  isState: (state: LoadingState) => boolean;
+  getStateAge: () => number;
+
+  // Utilities
+  reset: (reason?: string) => void;
+  clearError: () => void;
 }
 
-/**
- * Reusable hook for managing loading patterns with three states
- * 
- * @param options Configuration options for the hook
- * @returns Object with loading state and management functions
- * 
- * @example
- * ```typescript
- * const {
- *   isPending,
- *   isReady,
- *   hasError,
- *   setPending,
- *   setReady,
- *   setError,
- *   loadingInfo
- * } = useLoading({
- *   initialState: LoadingState.PENDING,
- *   initialReason: 'Initializing component'
- * });
- * 
- * // In async operation
- * const fetchData = async () => {
- *   setPending('Loading user data');
- *   try {
- *     const data = await api.fetchUser();
- *     setReady('User data loaded successfully');
- *     return data;
- *   } catch (error) {
- *     setError('Failed to load user data', { originalError: error });
- *     throw error;
- *   }
- * };
- * 
- * // In render
- * if (isPending) return <Loading message={loadingInfo.reason} />;
- * if (hasError) return <Error message={loadingInfo.reason} />;
- * if (isReady) return <Content />;
- * ```
- */
 export const useLoading = (
-    options: UseLoadingOptions = {}
+  options: UseLoadingOptions = {},
 ): UseLoadingReturn => {
-    const {
-        initialState = LoadingState.PENDING,
-        initialReason = 'Initializing',
-        includeTimestamp = true
-    } = options;
+  const {
+    initialState = LoadingState.PENDING,
+    initialReason = 'Initializing',
+    includeTimestamp = true,
+    autoResetError = false,
+    autoResetDelay = 5000,
+  } = options;
 
-    const [loadingInfo, setLoadingInfo] = useState<LoadingInfo>({
-        state: initialState,
-        reason: initialReason,
-        lastUpdated: includeTimestamp ? Date.now() : undefined
-    });
+  const [loadingInfo, setLoadingInfo] = useState<LoadingInfo>({
+    state: initialState,
+    reason: initialReason,
+    lastUpdated: includeTimestamp ? Date.now() : undefined,
+  });
 
-    // Derived boolean states for easy checking
-    const isPending = loadingInfo.state === LoadingState.PENDING;
-    const isReady = loadingInfo.state === LoadingState.READY;
-    const hasError = loadingInfo.state === LoadingState.ERROR;
+  // Derived boolean states for easy checking
+  const isPending = loadingInfo.state === LoadingState.PENDING;
+  const isReady = loadingInfo.state === LoadingState.READY;
+  const hasError = loadingInfo.state === LoadingState.ERROR;
 
-    // Primary state management function
-    const setLoadingState = useCallback((
-        state: LoadingState,
-        reason?: string,
-        metadata?: Record<string, unknown>
+  // OPTIMIZED: useCallback with minimal dependencies for stable references
+  const setLoadingState = useCallback(
+    (
+      state: LoadingState,
+      reason?: string,
+      metadata?: Record<string, unknown>,
     ) => {
-        setLoadingInfo(prev => ({
-            state,
-            reason: reason || prev.reason,
-            lastUpdated: includeTimestamp ? Date.now() : prev.lastUpdated,
-            metadata: metadata || prev.metadata
-        }));
-    }, [includeTimestamp]);
+      setLoadingInfo((prev) => ({
+        state,
+        reason: reason || prev.reason,
+        lastUpdated: includeTimestamp ? Date.now() : prev.lastUpdated,
+        metadata: metadata || prev.metadata,
+      }));
+    },
+    [includeTimestamp],
+  ); // Only depends on includeTimestamp option
 
-    // Update just the reason without changing state
-    const updateLoadingReason = useCallback((reason: string) => {
-        setLoadingInfo(prev => ({
-            ...prev,
-            reason,
-            lastUpdated: includeTimestamp ? Date.now() : prev.lastUpdated
-        }));
-    }, [includeTimestamp]);
+  const updateLoadingReason = useCallback(
+    (reason: string) => {
+      setLoadingInfo((prev) => ({
+        ...prev,
+        reason,
+        lastUpdated: includeTimestamp ? Date.now() : prev.lastUpdated,
+      }));
+    },
+    [includeTimestamp],
+  ); // Only depends on includeTimestamp option
 
-    // Update just the metadata without changing state
-    const updateMetadata = useCallback((metadata: Record<string, unknown>) => {
-        setLoadingInfo(prev => ({
-            ...prev,
-            metadata: { ...prev.metadata, ...metadata },
-            lastUpdated: includeTimestamp ? Date.now() : prev.lastUpdated
-        }));
-    }, [includeTimestamp]);
+  const updateMetadata = useCallback(
+    (metadata: Record<string, unknown>) => {
+      setLoadingInfo((prev) => ({
+        ...prev,
+        metadata: { ...prev.metadata, ...metadata },
+        lastUpdated: includeTimestamp ? Date.now() : prev.lastUpdated,
+      }));
+    },
+    [includeTimestamp],
+  ); // Only depends on includeTimestamp option
+
+  // Convenience state setters - OPTIMIZED: All stable via useCallback
+  const setPending = useCallback(
+    (reason?: string) => {
+      setLoadingState(LoadingState.PENDING, reason);
+    },
+    [setLoadingState],
+  );
+
+  const setReady = useCallback(
+    (reason?: string) => {
+      setLoadingState(LoadingState.READY, reason);
+    },
+    [setLoadingState],
+  );
+
+  const setError = useCallback(
+    (reason?: string, metadata?: Record<string, unknown>) => {
+      setLoadingState(LoadingState.ERROR, reason, metadata);
+    },
+    [setLoadingState],
+  );
+
+  const isState = useCallback(
+    (state: LoadingState) => {
+      return loadingInfo.state === state;
+    },
+    [loadingInfo.state],
+  ); // Only depends on current state
+
+  const getStateAge = useCallback(() => {
+    if (!includeTimestamp || !loadingInfo.lastUpdated) return 0;
+    return Date.now() - loadingInfo.lastUpdated;
+  }, [includeTimestamp, loadingInfo.lastUpdated]); // Depends on timestamp option and last update
+
+  const reset = useCallback(
+    (reason?: string) => {
+      setLoadingState(initialState, reason || initialReason);
+    },
+    [setLoadingState, initialState, initialReason],
+  ); // All stable values
+
+  const clearError = useCallback(() => {
+    if (hasError) {
+      setReady('Error cleared');
+    }
+  }, [hasError, setReady]); // hasError changes, setReady is stable
+
+  // OPTIMIZED: Auto-reset error effect - only runs when needed
+  useEffect(() => {
+    if (!autoResetError || !hasError || autoResetDelay <= 0) {
+      return; // Early return prevents timer setup
+    }
+
+    const timer = setTimeout(() => {
+      setReady('Error auto-cleared');
+    }, autoResetDelay);
+
+    return () => clearTimeout(timer);
+  }, [autoResetError, hasError, autoResetDelay]);
+
+  return {
+    // Current state info
+    loadingInfo,
+
+    // Derived boolean states
+    isPending,
+    isReady,
+    hasError,
+
+    // State management functions
+    setLoadingState,
+    updateLoadingReason,
+    updateMetadata,
 
     // Convenience state setters
-    const setPending = useCallback((reason?: string) => {
-        setLoadingState(LoadingState.PENDING, reason);
-    }, [setLoadingState]);
+    setPending,
+    setReady,
+    setError,
 
-    const setReady = useCallback((reason?: string) => {
-        setLoadingState(LoadingState.READY, reason);
-        clearError();
-    }, [setLoadingState]);
+    // State checkers
+    isState,
+    getStateAge,
 
-    const setError = useCallback((reason?: string, metadata?: Record<string, unknown>) => {
-        setLoadingState(LoadingState.ERROR, reason, metadata);
-    }, [setLoadingState]);
-
-    // State checker function
-    const isState = useCallback((state: LoadingState) => {
-        return loadingInfo.state === state;
-    }, [loadingInfo.state]);
-
-    // Get how long we've been in current state
-    const getStateAge = useCallback(() => {
-        if (!includeTimestamp || !loadingInfo.lastUpdated) return 0;
-        return Date.now() - loadingInfo.lastUpdated;
-    }, [includeTimestamp, loadingInfo.lastUpdated]);
-
-    // Reset to initial state
-    const reset = useCallback((reason?: string) => {
-        setLoadingState(
-            initialState,
-            reason || initialReason
-        );
-    }, [setLoadingState, initialState, initialReason]);
-
-    // Clear error and return to ready state
-    const clearError = useCallback(() => {
-        if (hasError) {
-            setReady('Error cleared');
-        }
-    }, [hasError, setReady]);
-
-    return {
-        // Current state info
-        loadingInfo,
-        
-        // Derived boolean states
-        isPending,
-        isReady,
-        hasError,
-        
-        // State management functions
-        setLoadingState,
-        updateLoadingReason,
-        updateMetadata,
-        
-        // Convenience state setters
-        setPending,
-        setReady,
-        setError,
-        
-        // State checkers
-        isState,
-        getStateAge,
-        
-        // Utilities
-        reset,
-        clearError
-    };
+    // Utilities
+    reset,
+    clearError,
+  };
 };
 
-/**
- * Hook variant specifically for auth operations
- * Pre-configured with auth-specific initial state and messages
- */
+// OPTIMIZED: Specialized hooks with stable options (no dependencies needed)
 export const useAuthLoading = () => {
-    return useLoading({
-        initialState: LoadingState.PENDING,
-        initialReason: 'Initializing authentication system',
-        includeTimestamp: true
-    });
+  return useLoading({
+    initialState: LoadingState.PENDING,
+    initialReason: 'Initializing authentication system',
+    includeTimestamp: true,
+  });
 };
 
-/**
- * Hook variant specifically for data fetching operations
- * Pre-configured with data-specific initial state and messages
- */
 export const useDataLoading = (entityName: string = 'data') => {
-    return useLoading({
-        initialState: LoadingState.PENDING,
-        initialReason: `Loading ${entityName}`,
-        includeTimestamp: true
-    });
+  return useLoading({
+    initialState: LoadingState.PENDING,
+    initialReason: `Loading ${entityName}`,
+    includeTimestamp: true,
+  });
 };
 
-/**
- * Hook variant that starts in READY state
- * Useful for components that start ready and only show loading during operations
- */
 export const useOperationalLoading = () => {
-    return useLoading({
-        initialState: LoadingState.READY,
-        initialReason: 'Ready for operations',
-        includeTimestamp: true
-    });
+  return useLoading({
+    initialState: LoadingState.READY,
+    initialReason: 'Ready for operations',
+    includeTimestamp: true,
+  });
 };

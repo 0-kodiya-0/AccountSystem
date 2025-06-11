@@ -1,254 +1,258 @@
-import { useCallback, useEffect } from 'react';
-import { useAuth } from '../context/auth-context';
-import { useAccountStore } from '../store/account-store';
-import { useAccount } from './useAccount';
+import { useCallback, useEffect, useMemo } from 'react';
+import { useAuthStore } from '../store/authStore';
 import { RedirectCode } from '../types';
 
-// Handler that receives data and optional default implementation
-type RedirectHandlerWithDefault<T> = (data: T, defaultHandler: () => Promise<void>) => void | Promise<void>;
-
-// Handler for cases that don't need data
-type RedirectHandlerWithoutData = (defaultHandler: () => Promise<void>) => void | Promise<void>;
+type RedirectHandlerWithDefault<T> = (
+  data: T,
+  defaultHandler: () => Promise<void>,
+) => void | Promise<void>;
+type RedirectHandlerWithoutData = (
+  defaultHandler: () => Promise<void>,
+) => void | Promise<void>;
 
 interface UseAuthRedirectHandlerOptions {
-    // Configuration
-    defaultHomeUrl: string;
-    defaultLoginUrl: string;
-    defaultAccountsUrl: string;
-    autoRedirect?: boolean;
-
-    // Complete override handlers - if provided, default won't run unless called
-    onAuthenticatedWithAccount?: RedirectHandlerWithDefault<{ accountId: string; redirectUrl: string }>;
-    onAccountSelectionRequired?: RedirectHandlerWithoutData;
-    onNoAuthentication?: RedirectHandlerWithoutData;
-    onAccountDataLoadFailed?: RedirectHandlerWithDefault<{ accountId: string }>;
+  defaultHomeUrl: string;
+  defaultLoginUrl: string;
+  defaultAccountsUrl: string;
+  autoRedirect?: boolean;
+  onAuthenticatedWithAccount?: RedirectHandlerWithDefault<{
+    accountId: string;
+    redirectUrl: string;
+  }>;
+  onAccountSelectionRequired?: RedirectHandlerWithoutData;
+  onNoAuthentication?: RedirectHandlerWithoutData;
+  onAccountDataLoadFailed?: RedirectHandlerWithDefault<{ accountId: string }>;
 }
 
 interface RedirectDecision {
-    action: 'redirect' | 'wait' | 'none';
-    code: RedirectCode;
-    destination?: string;
-    data?: Record<string, unknown>;
+  action: 'redirect' | 'wait' | 'none';
+  code: RedirectCode;
+  destination?: string;
+  data?: Record<string, unknown>;
 }
 
 interface UseAuthRedirectHandlerReturn {
-    handleRedirect: () => Promise<void>;
-    getRedirectDecision: () => RedirectDecision;
-    isReady: boolean;
-    redirectCode: RedirectCode | null;
+  handleRedirect: () => Promise<void>;
+  getRedirectDecision: () => RedirectDecision;
+  isReady: boolean;
+  redirectCode: RedirectCode | null;
 }
 
-export const useAuthRedirectHandler = (options: UseAuthRedirectHandlerOptions): UseAuthRedirectHandlerReturn => {
-    const {
-        defaultHomeUrl,
-        defaultLoginUrl,
-        defaultAccountsUrl,
-        autoRedirect = true,
-        ...handlers
-    } = options;
-
-    const {
-        isAuthenticated,
-        hasValidSession,
-        isReady: isAuthReady
-    } = useAuth();
-
-    const {
-        getCurrentAccountId,
-        hasAccounts
-    } = useAccountStore();
-
-    const currentAccountId = getCurrentAccountId();
-    const { account: currentAccount, isReady: isAccountReady } = useAccount(
-        currentAccountId || undefined,
-        { autoFetch: true, refreshOnMount: false }
-    );
-
-    const isReady = isAuthReady || (currentAccountId && isAccountReady);
-
-    // Simple navigation helper
-    const navigateToUrl = useCallback((url: string) => {
-        if (typeof window !== 'undefined') {
-            window.location.href = url;
-        }
-    }, []);
-
-    // Create default handlers
-    const defaultAuthenticatedWithAccount = useCallback(async (data: { accountId: string; redirectUrl: string }) => {
-        console.log(`Redirecting authenticated user to: ${data.redirectUrl}`);
-        navigateToUrl(data.redirectUrl);
-    }, [navigateToUrl]);
-
-    const defaultAccountSelectionRequired = useCallback(async () => {
-        console.log('Account selection required, redirecting to accounts page');
-        navigateToUrl(defaultAccountsUrl);
-    }, [defaultAccountsUrl, navigateToUrl]);
-
-    const defaultNoAuthentication = useCallback(async () => {
-        console.log('No authentication, redirecting to login');
-        navigateToUrl(defaultLoginUrl);
-    }, [defaultLoginUrl, navigateToUrl]);
-
-    const defaultAccountDataLoadFailed = useCallback(async (data: { accountId: string }) => {
-        console.warn(`Account data load failed for ${data.accountId}, redirecting to accounts page`);
-        navigateToUrl(defaultAccountsUrl);
-    }, [defaultAccountsUrl, navigateToUrl]);
-
-    // Core redirect decision logic
-    const getRedirectDecision = useCallback((): RedirectDecision => {
-        if (isReady) {
-            return {
-                action: 'wait',
-                code: RedirectCode.LOADING_AUTH_STATE
-            };
-        }
-
-        if (!hasValidSession) {
-            return {
-                action: 'redirect',
-                code: RedirectCode.NO_AUTHENTICATION,
-                destination: defaultLoginUrl
-            };
-        }
-
-        if (isAuthenticated && hasAccounts()) {
-            if (currentAccountId) {
-                if (currentAccount) {
-                    return {
-                        action: 'redirect',
-                        code: RedirectCode.AUTHENTICATED_WITH_ACCOUNT,
-                        destination: defaultHomeUrl,
-                        data: {
-                            accountId: currentAccount.id,
-                            redirectUrl: defaultHomeUrl
-                        }
-                    };
-                } else if (!isAccountReady) {
-                    return {
-                        action: 'redirect',
-                        code: RedirectCode.ACCOUNT_DATA_LOAD_FAILED,
-                        destination: defaultAccountsUrl,
-                        data: { accountId: currentAccountId }
-                    };
-                } else {
-                    return {
-                        action: 'wait',
-                        code: RedirectCode.LOADING_ACCOUNT_DATA
-                    };
-                }
-            } else {
-                return {
-                    action: 'redirect',
-                    code: RedirectCode.ACCOUNT_SELECTION_REQUIRED,
-                    destination: defaultAccountsUrl
-                };
-            }
-        } else {
-            return {
-                action: 'redirect',
-                code: RedirectCode.NO_AUTHENTICATION,
-                destination: defaultLoginUrl
-            };
-        }
-    }, [
-        isReady, hasValidSession, isAuthenticated, hasAccounts,
-        currentAccountId, currentAccount, isAccountReady,
-        defaultHomeUrl, defaultAccountsUrl, defaultLoginUrl
-    ]);
-
-    // Execute redirect based on decision - simple override OR default logic
-    const executeRedirect = useCallback(async (decision: RedirectDecision): Promise<void> => {
-        if (decision.action !== 'redirect' || !decision.destination) return;
-
-        try {
-            switch (decision.code) {
-                case RedirectCode.AUTHENTICATED_WITH_ACCOUNT: {
-                    const data = {
-                        accountId: decision.data?.accountId as string,
-                        redirectUrl: decision.destination
-                    };
-
-                    if (handlers.onAuthenticatedWithAccount) {
-                        // Override provided - call it with default that has data pre-bound
-                        await handlers.onAuthenticatedWithAccount(data, () => defaultAuthenticatedWithAccount(data));
-                    } else {
-                        // No override - call default
-                        await defaultAuthenticatedWithAccount(data);
-                    }
-                    break;
-                }
-
-                case RedirectCode.ACCOUNT_SELECTION_REQUIRED: {
-                    if (handlers.onAccountSelectionRequired) {
-                        await handlers.onAccountSelectionRequired(defaultAccountSelectionRequired);
-                    } else {
-                        await defaultAccountSelectionRequired();
-                    }
-                    break;
-                }
-
-                case RedirectCode.NO_AUTHENTICATION: {
-                    if (handlers.onNoAuthentication) {
-                        await handlers.onNoAuthentication(defaultNoAuthentication);
-                    } else {
-                        await defaultNoAuthentication();
-                    }
-                    break;
-                }
-
-                case RedirectCode.ACCOUNT_DATA_LOAD_FAILED: {
-                    const data = { accountId: decision.data?.accountId as string };
-
-                    if (handlers.onAccountDataLoadFailed) {
-                        // Override provided - call it with default that has data pre-bound
-                        await handlers.onAccountDataLoadFailed(data, () => defaultAccountDataLoadFailed(data));
-                    } else {
-                        // No override - call default
-                        await defaultAccountDataLoadFailed(data);
-                    }
-                    break;
-                }
-
-                default: {
-                    console.warn('Unknown redirect code:', decision.code);
-                    navigateToUrl(decision.destination);
-                    break;
-                }
-            }
-        } catch (error) {
-            console.error('Error executing redirect:', error);
-            // Final fallback
-            navigateToUrl(decision.destination);
-        }
-    }, [
-        handlers,
-        defaultAuthenticatedWithAccount,
-        defaultAccountSelectionRequired,
-        defaultNoAuthentication,
-        defaultAccountDataLoadFailed,
-        navigateToUrl
-    ]);
-
-    // Main redirect handler
-    const handleRedirect = useCallback(async (): Promise<void> => {
-        const decision = getRedirectDecision();
-        await executeRedirect(decision);
-    }, [getRedirectDecision, executeRedirect]);
-
-    // Auto-redirect when ready
-    useEffect(() => {
-        if (!autoRedirect) return;
-
-        const decision = getRedirectDecision();
-        if (decision.action === 'redirect') {
-            executeRedirect(decision);
-        }
-    }, []);
-
+const calculateRedirectDecision = (
+  hasValidSession: boolean,
+  isAuthenticated: boolean,
+  hasAccounts: boolean,
+  currentAccountId: string | null,
+  currentAccount: any,
+  defaultHomeUrl: string,
+  defaultLoginUrl: string,
+  defaultAccountsUrl: string,
+): RedirectDecision => {
+  if (!hasValidSession) {
     return {
-        handleRedirect,
-        getRedirectDecision,
-        isReady: getRedirectDecision().action !== 'wait',
-        redirectCode: getRedirectDecision().code
+      action: 'redirect',
+      code: RedirectCode.NO_AUTHENTICATION,
+      destination: defaultLoginUrl,
     };
+  }
+
+  if (isAuthenticated && hasAccounts) {
+    if (currentAccountId) {
+      return {
+        action: 'redirect',
+        code: RedirectCode.AUTHENTICATED_WITH_ACCOUNT,
+        destination: defaultHomeUrl,
+        data: {
+          accountId: currentAccountId,
+          redirectUrl: defaultHomeUrl,
+        },
+      };
+    } else {
+      return {
+        action: 'redirect',
+        code: RedirectCode.ACCOUNT_SELECTION_REQUIRED,
+        destination: defaultAccountsUrl,
+      };
+    }
+  } else {
+    return {
+      action: 'redirect',
+      code: RedirectCode.NO_AUTHENTICATION,
+      destination: defaultLoginUrl,
+    };
+  }
+};
+
+export const useAuthRedirectHandler = (
+  options: UseAuthRedirectHandlerOptions,
+): UseAuthRedirectHandlerReturn => {
+  const {
+    defaultHomeUrl,
+    defaultLoginUrl,
+    defaultAccountsUrl,
+    autoRedirect = true,
+    ...handlers
+  } = options;
+
+  const store = useAuthStore();
+  const hasValidSession = store.hasValidSession();
+  const isAuthenticated = store.isAuthenticated();
+  const currentAccountId = store.getCurrentAccountId();
+  const currentAccount = store.getCurrentAccount();
+  const accounts = store.getAccounts();
+
+  const hasAccounts = useMemo(() => accounts.length > 0, [accounts.length]);
+
+  const redirectUrls = useMemo(
+    () => ({
+      home: defaultHomeUrl,
+      login: defaultLoginUrl,
+      accounts: defaultAccountsUrl,
+    }),
+    [defaultHomeUrl, defaultLoginUrl, defaultAccountsUrl],
+  );
+
+  const navigateToUrl = useCallback((url: string) => {
+    if (typeof window !== 'undefined') {
+      window.location.href = url;
+    }
+  }, []);
+
+  const defaultAuthenticatedWithAccount = useCallback(
+    async (data: { accountId: string; redirectUrl: string }) => {
+      navigateToUrl(data.redirectUrl);
+    },
+    [navigateToUrl],
+  );
+
+  const defaultAccountSelectionRequired = useCallback(async () => {
+    navigateToUrl(redirectUrls.accounts);
+  }, [redirectUrls.accounts, navigateToUrl]);
+
+  const defaultNoAuthentication = useCallback(async () => {
+    navigateToUrl(redirectUrls.login);
+  }, [redirectUrls.login, navigateToUrl]);
+
+  const defaultAccountDataLoadFailed = useCallback(
+    async (data: { accountId: string }) => {
+      navigateToUrl(redirectUrls.accounts);
+    },
+    [redirectUrls.accounts, navigateToUrl],
+  );
+
+  const redirectDecision = useMemo(() => {
+    return calculateRedirectDecision(
+      hasValidSession,
+      isAuthenticated,
+      hasAccounts,
+      currentAccountId,
+      currentAccount,
+      redirectUrls.home,
+      redirectUrls.login,
+      redirectUrls.accounts,
+    );
+  }, [
+    hasValidSession,
+    isAuthenticated,
+    hasAccounts,
+    currentAccountId,
+    currentAccount,
+    redirectUrls.home,
+    redirectUrls.login,
+    redirectUrls.accounts,
+  ]);
+
+  const getRedirectDecision = useCallback(
+    () => redirectDecision,
+    [redirectDecision],
+  );
+
+  const executeRedirect = useCallback(
+    async (decision: RedirectDecision) => {
+      if (decision.action !== 'redirect' || !decision.destination) return;
+
+      try {
+        switch (decision.code) {
+          case RedirectCode.AUTHENTICATED_WITH_ACCOUNT: {
+            const data = {
+              accountId: decision.data?.accountId as string,
+              redirectUrl: decision.destination,
+            };
+            if (handlers.onAuthenticatedWithAccount) {
+              await handlers.onAuthenticatedWithAccount(data, () =>
+                defaultAuthenticatedWithAccount(data),
+              );
+            } else {
+              await defaultAuthenticatedWithAccount(data);
+            }
+            break;
+          }
+          case RedirectCode.ACCOUNT_SELECTION_REQUIRED: {
+            if (handlers.onAccountSelectionRequired) {
+              await handlers.onAccountSelectionRequired(
+                defaultAccountSelectionRequired,
+              );
+            } else {
+              await defaultAccountSelectionRequired();
+            }
+            break;
+          }
+          case RedirectCode.NO_AUTHENTICATION: {
+            if (handlers.onNoAuthentication) {
+              await handlers.onNoAuthentication(defaultNoAuthentication);
+            } else {
+              await defaultNoAuthentication();
+            }
+            break;
+          }
+          case RedirectCode.ACCOUNT_DATA_LOAD_FAILED: {
+            const data = { accountId: decision.data?.accountId as string };
+            if (handlers.onAccountDataLoadFailed) {
+              await handlers.onAccountDataLoadFailed(data, () =>
+                defaultAccountDataLoadFailed(data),
+              );
+            } else {
+              await defaultAccountDataLoadFailed(data);
+            }
+            break;
+          }
+          default: {
+            navigateToUrl(decision.destination);
+            break;
+          }
+        }
+      } catch (error) {
+        navigateToUrl(decision.destination);
+      }
+    },
+    [
+      handlers.onAuthenticatedWithAccount,
+      handlers.onAccountSelectionRequired,
+      handlers.onNoAuthentication,
+      handlers.onAccountDataLoadFailed,
+      defaultAuthenticatedWithAccount,
+      defaultAccountSelectionRequired,
+      defaultNoAuthentication,
+      defaultAccountDataLoadFailed,
+      navigateToUrl,
+    ],
+  );
+
+  const handleRedirect = useCallback(async () => {
+    const decision = getRedirectDecision();
+    await executeRedirect(decision);
+  }, [getRedirectDecision, executeRedirect]);
+
+  useEffect(() => {
+    if (autoRedirect && redirectDecision.action === 'redirect') {
+      executeRedirect(redirectDecision);
+    }
+  }, [autoRedirect, redirectDecision, executeRedirect]);
+
+  return {
+    handleRedirect,
+    getRedirectDecision,
+    isReady: redirectDecision.action !== 'wait',
+    redirectCode: redirectDecision.code,
+  };
 };
