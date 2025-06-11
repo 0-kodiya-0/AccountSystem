@@ -23,7 +23,7 @@ export function AccountDropdown() {
     const { accounts, currentAccount: currentAccountFromStore, switchAccount, logout } = useAuth()
 
     // Use useAccount hook to get current account data
-    const { account: currentAccount, isLoading } = useAccount(currentAccountFromStore?.id, {
+    const { account: currentAccount, isReady } = useAccount(currentAccountFromStore?.id, {
         autoFetch: true,
         refreshOnMount: false
     })
@@ -33,7 +33,7 @@ export function AccountDropdown() {
         .filter(acc => acc.id !== currentAccountFromStore?.id)
         .slice(0, 3)
 
-    if (!currentAccountFromStore || isLoading) {
+    if (!currentAccountFromStore || !isReady) {
         return (
             <Button variant="ghost" className="relative h-10 w-10 rounded-full" disabled>
                 <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse" />

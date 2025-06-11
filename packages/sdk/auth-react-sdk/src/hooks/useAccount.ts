@@ -33,12 +33,12 @@ export function useAccount(
     } = options;
 
     const { isReady: isAuthReady, ensureAccountData, refreshAccountData } = useAuth();
-    const { 
-        getAccountById, 
+    const {
+        getAccountById,
         needsAccountData,
         getAccountIds // Get account IDs from session
     } = useAccountStore();
-    
+
     // Initialize loading state based on what we're fetching
     const entityName = (() => {
         if (!accountIdOrIds) return 'current account';
@@ -83,52 +83,25 @@ export function useAccount(
 
         try {
             setPending(`Refreshing ${accountIds.length} account(s)`);
-            
-            const results = await Promise.allSettled(
+
+            // Use Promise.all - will throw on first rejection and stop processing
+            const refreshedAccounts = await Promise.all(
                 accountIds.map((id, index) => {
                     updateLoadingReason(`Refreshing account ${index + 1} of ${accountIds.length}`);
                     return refreshAccountData(id);
                 })
             );
 
-            const refreshedAccounts: (Account | null)[] = [];
-            let errorCount = 0;
-
-            results.forEach((result, index) => {
-                const accountId = accountIds[index];
-                if (result.status === 'rejected') {
-                    console.warn(`Failed to refresh account ${accountId}:`, result.reason);
-                    refreshedAccounts.push(null);
-                    errorCount++;
-                } else {
-                    refreshedAccounts.push(result.value);
-                }
-            });
-
-            if (errorCount > 0) {
-                const successCount = accountIds.length - errorCount;
-                if (successCount > 0) {
-                    setReady(`${successCount} of ${accountIds.length} accounts refreshed successfully`);
-                } else {
-                    setLoadingError(`Failed to refresh all ${accountIds.length} account(s)`);
-                }
-            } else {
-                setReady(`All ${accountIds.length} account(s) refreshed successfully`);
-            }
-
+            setReady(`All ${accountIds.length} account(s) refreshed successfully`);
             return refreshedAccounts;
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to refresh accounts';
             setLoadingError(message);
-            throw error;
+            throw error; // This will stop execution immediately
         }
     }, [accountIds, setPending, setReady, setLoadingError, updateLoadingReason, refreshAccountData]);
 
-    const refresh = useCallback(async (): Promise<Account | null> => {
-        const results = await refreshAll();
-        return results[0] || null;
-    }, [refreshAll]);
-
+    // Updated fetchMissing function with fail-fast error handling
     const fetchMissing = useCallback(async (): Promise<(Account | null)[]> => {
         const missingIds = accountIds.filter(id => !getAccountById(id));
         if (missingIds.length === 0) {
@@ -138,42 +111,30 @@ export function useAccount(
 
         try {
             setPending(`Loading ${missingIds.length} missing account(s)`);
-            
-            const results = await Promise.allSettled(
+
+            // Use Promise.all - will throw on first rejection and stop processing
+            await Promise.all(
                 missingIds.map((id, index) => {
                     updateLoadingReason(`Loading account ${index + 1} of ${missingIds.length}`);
                     return ensureAccountData(id);
                 })
             );
 
-            let errorCount = 0;
-            results.forEach((result, index) => {
-                if (result.status === 'rejected') {
-                    const accountId = missingIds[index];
-                    console.warn(`Failed to fetch account ${accountId}:`, result.reason);
-                    errorCount++;
-                }
-            });
+            setReady(`All ${missingIds.length} missing account(s) loaded successfully`);
 
-            if (errorCount > 0) {
-                const successCount = missingIds.length - errorCount;
-                if (successCount > 0) {
-                    setReady(`${successCount} of ${missingIds.length} accounts loaded successfully`);
-                } else {
-                    setLoadingError(`Failed to load all ${missingIds.length} missing account(s)`);
-                }
-            } else {
-                setReady(`All ${missingIds.length} missing account(s) loaded successfully`);
-            }
-            
-            // Return updated accounts array
+            // Return updated accounts array after successful fetching
             return accountIds.map(id => getAccountById(id));
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to fetch missing accounts';
             setLoadingError(message);
-            throw error;
+            throw error; // This will stop execution immediately
         }
     }, [accountIds, getAccountById, accounts, setPending, setReady, setLoadingError, updateLoadingReason, ensureAccountData]);
+
+    const refresh = useCallback(async (): Promise<Account | null> => {
+        const results = await refreshAll();
+        return results[0] || null;
+    }, [refreshAll]);
 
     // Auto-refresh interval
     useEffect(() => {
@@ -190,6 +151,8 @@ export function useAccount(
 
     // Auto-fetch on mount or when accountIds change
     useEffect(() => {
+        if (hasError) return;
+        
         if (accountIds.length === 0) {
             setReady('No accounts to manage');
             return;
@@ -213,22 +176,20 @@ export function useAccount(
         } else {
             setReady('Ready - auto-fetch disabled');
         }
-    }, [accountIds]); // Use join for stable dependency
+    }, [
+        isAuthReady
+    ]); // Use join for stable dependency
 
     return {
         // Data
         account,
         accounts,
-        
+
         // Loading states from the new pattern
         loadingInfo,
         isPending,
         isReady,
         hasError,
-        
-        // Legacy loading state for backward compatibility
-        isLoading: isPending,
-        error: loadingInfo.reason || null,
         
         // Actions
         refresh,

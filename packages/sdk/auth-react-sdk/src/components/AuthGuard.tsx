@@ -139,6 +139,26 @@ export function AuthGuard({
                 error={`Unknown auth state: ${decision}`}
             />
         );
+    } else {
+        return (
+            <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                minHeight: '200px',
+                padding: '32px',
+                textAlign: 'center'
+            }}>
+                <p style={{
+                    margin: '0',
+                    fontSize: '14px',
+                    color: '#dc2626',
+                    lineHeight: '1.5'
+                }}>
+                    {decision}
+                </p>
+            </div>
+        );
     }
 
     return fallback ? <>{fallback}</> : null;

@@ -24,7 +24,7 @@ export default function AccountSettingsPage() {
     const accountId = params.accountId as string
 
     // Use useAccount hook to get account data
-    const { account, isLoading, error, refresh } = useAccount(accountId, {
+    const { account, isReady, hasError, refresh } = useAccount(accountId, {
         autoFetch: true,
         refreshOnMount: true // Force refresh on mount for settings page
     })
@@ -35,7 +35,7 @@ export default function AccountSettingsPage() {
     const [deleteConfirm, setDeleteConfirm] = useState(false)
 
     // Show loading state
-    if (isLoading) {
+    if (!isReady) {
         return (
             <div className="min-h-screen flex items-center justify-center">
                 <div className="text-center space-y-4">
@@ -47,13 +47,13 @@ export default function AccountSettingsPage() {
     }
 
     // Show error state
-    if (error || !account) {
+    if (hasError || !account) {
         return (
             <div className="min-h-screen flex items-center justify-center">
                 <div className="text-center space-y-4">
                     <h1 className="text-2xl font-bold">Account not found</h1>
                     <p className="text-muted-foreground">
-                        {error || "Unable to load account data"}
+                        {hasError || "Unable to load account data"}
                     </p>
                     <div className="space-x-2">
                         <Button onClick={() => refresh()} variant="outline">
