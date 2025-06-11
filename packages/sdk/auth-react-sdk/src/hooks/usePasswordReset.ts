@@ -1,117 +1,63 @@
-import { useState, useCallback, useEffect } from 'react';
-import { PasswordResetStatus } from '../types';
+import { useState, useCallback } from 'react';
+import { useAuth } from './useAuth';
+
+export enum PasswordResetStatus {
+  IDLE = 'idle',
+  REQUESTING = 'requesting',
+  REQUEST_SUCCESS = 'request_success',
+  RESETTING = 'resetting',
+  RESET_SUCCESS = 'reset_success',
+  ERROR = 'error',
+}
 
 export interface UsePasswordResetOptions {
-  redirectAfterRequest?: string;
-  redirectAfterReset?: string;
-  redirectDelay?: number;
   onRequestSuccess?: (message: string) => void;
   onResetSuccess?: (message: string) => void;
   onError?: (error: string) => void;
 }
 
-export interface UsePasswordResetResult {
-  status: PasswordResetStatus;
-  message: string | null;
-  error: string | null;
-  isLoading: boolean;
+export const usePasswordReset = (options: UsePasswordResetOptions = {}) => {
+  const { onRequestSuccess, onResetSuccess, onError } = options;
+  const { requestPasswordReset, resetPassword } = useAuth();
 
-  // Actions
-  requestReset: (email: string) => Promise<void>;
-  resetPassword: (
-    token: string,
-    password: string,
-    confirmPassword: string,
-  ) => Promise<void>;
-  clearState: () => void;
-  redirect: (url: string) => void;
-}
-
-export const usePasswordReset = (
-  options: UsePasswordResetOptions = {},
-): UsePasswordResetResult => {
-  const {
-    redirectAfterRequest,
-    redirectAfterReset,
-    redirectDelay = 3000,
-    onRequestSuccess,
-    onResetSuccess,
-    onError,
-  } = options;
-
-  const { client } = useAuth();
-
-  const [status, setStatus] = useState<PasswordResetStatus>(
-    PasswordResetStatus.IDLE,
-  );
+  const [status, setStatus] = useState<PasswordResetStatus>(PasswordResetStatus.IDLE);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const redirect = useCallback((url: string) => {
-    if (typeof window !== 'undefined') {
-      window.location.href = url;
-    }
-  }, []);
 
   const requestReset = useCallback(
     async (email: string) => {
       try {
         setStatus(PasswordResetStatus.REQUESTING);
+        setError(null);
 
-        await client.requestPasswordReset({ email });
+        await requestPasswordReset(email);
 
-        const successMessage =
-          'Password reset instructions have been sent to your email.';
+        const successMessage = 'Password reset instructions have been sent to your email.';
         setStatus(PasswordResetStatus.REQUEST_SUCCESS);
         setMessage(successMessage);
-
         onRequestSuccess?.(successMessage);
-
-        // Auto redirect after request success
-        if (redirectAfterRequest) {
-          setTimeout(() => {
-            redirect(redirectAfterRequest);
-          }, redirectDelay);
-        }
       } catch (err: any) {
-        const errorMessage =
-          err.message || 'Failed to send password reset email';
+        const errorMessage = err.message || 'Failed to send password reset email';
         setStatus(PasswordResetStatus.ERROR);
         setError(errorMessage);
         onError?.(errorMessage);
       }
     },
-    [
-      client,
-      setError,
-      onRequestSuccess,
-      onError,
-      redirectAfterRequest,
-      redirectDelay,
-      redirect,
-    ],
+    [requestPasswordReset, onRequestSuccess, onError],
   );
 
-  const resetPassword = useCallback(
+  const performReset = useCallback(
     async (token: string, password: string, confirmPassword: string) => {
       try {
         setStatus(PasswordResetStatus.RESETTING);
+        setError(null);
 
-        await client.resetPassword(token, { password, confirmPassword });
+        await resetPassword(token, { password, confirmPassword });
 
-        const successMessage =
-          'Password reset successful! You can now sign in with your new password.';
+        const successMessage = 'Password reset successful! You can now sign in with your new password.';
         setStatus(PasswordResetStatus.RESET_SUCCESS);
         setMessage(successMessage);
-
         onResetSuccess?.(successMessage);
-
-        // Auto redirect after reset success
-        if (redirectAfterReset) {
-          setTimeout(() => {
-            redirect(redirectAfterReset);
-          }, redirectDelay);
-        }
       } catch (err: any) {
         const errorMessage = err.message || 'Failed to reset password';
         setStatus(PasswordResetStatus.ERROR);
@@ -119,15 +65,7 @@ export const usePasswordReset = (
         onError?.(errorMessage);
       }
     },
-    [
-      client,
-      setError,
-      onResetSuccess,
-      onError,
-      redirectAfterReset,
-      redirectDelay,
-      redirect,
-    ],
+    [resetPassword, onResetSuccess, onError],
   );
 
   const clearState = useCallback(() => {
@@ -140,12 +78,9 @@ export const usePasswordReset = (
     status,
     message,
     error,
-    isLoading:
-      status === PasswordResetStatus.REQUESTING ||
-      status === PasswordResetStatus.RESETTING,
+    isLoading: status === PasswordResetStatus.REQUESTING || status === PasswordResetStatus.RESETTING,
     requestReset,
-    resetPassword,
+    performReset,
     clearState,
-    redirect,
   };
 };

@@ -33,9 +33,7 @@ export class AuthService {
     return this.httpClient.post('/auth/login', data);
   }
 
-  async verifyTwoFactor(
-    data: TwoFactorVerifyRequest,
-  ): Promise<LocalLoginResponse> {
+  async verifyTwoFactor(data: TwoFactorVerifyRequest): Promise<LocalLoginResponse> {
     return this.httpClient.post('/auth/verify-two-factor', data);
   }
 
@@ -43,46 +41,29 @@ export class AuthService {
     return this.httpClient.get(`/auth/verify-email?token=${token}`);
   }
 
-  async requestPasswordReset(
-    data: PasswordResetRequest,
-  ): Promise<{ message: string }> {
+  async requestPasswordReset(data: PasswordResetRequest): Promise<{ message: string }> {
     return this.httpClient.post('/auth/reset-password-request', data);
   }
 
-  async resetPassword(
-    token: string,
-    data: ResetPasswordRequest,
-  ): Promise<{ message: string }> {
+  async resetPassword(token: string, data: ResetPasswordRequest): Promise<{ message: string }> {
     return this.httpClient.post(`/auth/reset-password?token=${token}`, data);
   }
 
-  async changePassword(
-    accountId: string,
-    data: PasswordChangeRequest,
-  ): Promise<{ message: string }> {
+  async changePassword(accountId: string, data: PasswordChangeRequest): Promise<{ message: string }> {
     return this.httpClient.post(`/${accountId}/auth/change-password`, data);
   }
 
-  async setupTwoFactor(
-    accountId: string,
-    data: TwoFactorSetupRequest,
-  ): Promise<TwoFactorSetupResponse> {
+  async setupTwoFactor(accountId: string, data: TwoFactorSetupRequest): Promise<TwoFactorSetupResponse> {
     return this.httpClient.post(`/${accountId}/auth/setup-two-factor`, data);
   }
 
-  async verifyTwoFactorSetup(
-    accountId: string,
-    token: string,
-  ): Promise<{ message: string }> {
+  async verifyTwoFactorSetup(accountId: string, token: string): Promise<{ message: string }> {
     return this.httpClient.post(`/${accountId}/auth/verify-two-factor-setup`, {
       token,
     });
   }
 
-  async generateBackupCodes(
-    accountId: string,
-    password: string,
-  ): Promise<{ backupCodes: string[] }> {
+  async generateBackupCodes(accountId: string, password: string): Promise<{ backupCodes: string[] }> {
     return this.httpClient.post(`/${accountId}/auth/generate-backup-codes`, {
       password,
     });
@@ -98,14 +79,26 @@ export class AuthService {
     window.location.href = `${baseUrl}/oauth/signin/${provider}`;
   }
 
+  requestGooglePermission(accountId: string, scopeNames: string[]): void {
+    const params = new URLSearchParams();
+    params.append('accountId', accountId);
+
+    const scopes = Array.isArray(scopeNames) ? scopeNames.join(',') : scopeNames;
+    window.location.href = `${this.httpClient.getRedirectBaseUrl()}/oauth/permission/${scopes}?${params.toString()}`;
+  }
+
+  reauthorizePermissions(accountId: string): void {
+    const params = new URLSearchParams();
+    params.append('accountId', accountId);
+
+    window.location.href = `${this.httpClient.getRedirectBaseUrl()}/oauth/permission/reauthorize?${params.toString()}`;
+  }
+
   logout(accountId: string, clearClientAccountState: boolean = true): void {
     const baseUrl = this.httpClient.getRedirectBaseUrl();
     const params = new URLSearchParams();
     params.append('accountId', accountId);
-    params.append(
-      'clearClientAccountState',
-      clearClientAccountState.toString(),
-    );
+    params.append('clearClientAccountState', clearClientAccountState.toString());
     window.location.href = `${baseUrl}/account/logout?${params.toString()}`;
   }
 

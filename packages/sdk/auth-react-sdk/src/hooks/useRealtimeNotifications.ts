@@ -1,13 +1,8 @@
-import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
 import { useSocket } from './useSocket';
 import { useNotifications } from './useNotifications';
-import { useAuthStore } from '../store/authStore';
-import {
-  SocketConfig,
-  NotificationSocketEvents,
-  RealtimeNotificationUpdate,
-  type Notification,
-} from '../types';
+import { useAppStore } from '../store/useAppStore';
+import { SocketConfig, NotificationSocketEvents, RealtimeNotificationUpdate, type Notification } from '../types';
 
 interface UseRealtimeNotificationsOptions {
   socketConfig: SocketConfig;
@@ -18,9 +13,7 @@ interface UseRealtimeNotificationsOptions {
   maxRetainedUpdates?: number;
 }
 
-export const useRealtimeNotifications = (
-  options: UseRealtimeNotificationsOptions,
-) => {
+export const useRealtimeNotifications = (options: UseRealtimeNotificationsOptions) => {
   const {
     socketConfig,
     accountId,
@@ -30,15 +23,11 @@ export const useRealtimeNotifications = (
     maxRetainedUpdates = 50,
   } = options;
 
-  const store = useAuthStore();
-  const currentAccount = store.getCurrentAccount();
-
-  const targetAccountId = useMemo(() => {
-    return accountId || currentAccount?.id;
-  }, [accountId, currentAccount?.id]);
+  const { session } = useAppStore();
+  const targetAccountId = accountId || session.currentAccountId;
 
   const {
-    connectionState,
+    connectionInfo,
     isConnected,
     subscribe: socketSubscribe,
     unsubscribe: socketUnsubscribe,
@@ -48,19 +37,15 @@ export const useRealtimeNotifications = (
   } = useSocket(socketConfig, {
     autoConnect: true,
     autoSubscribe: autoSubscribe && !!targetAccountId,
-    accountId: targetAccountId,
+    accountId: targetAccountId ? targetAccountId : undefined,
   });
 
-  const { markAsRead, refetch } = useNotifications(targetAccountId);
+  const { loadNotifications } = useNotifications(targetAccountId ? targetAccountId : undefined);
 
-  const [recentUpdates, setRecentUpdates] = useState<
-    RealtimeNotificationUpdate[]
-  >([]);
-  const [lastUpdate, setLastUpdate] =
-    useState<RealtimeNotificationUpdate | null>(null);
+  const [recentUpdates, setRecentUpdates] = useState<RealtimeNotificationUpdate[]>([]);
+  const [lastUpdate, setLastUpdate] = useState<RealtimeNotificationUpdate | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(enableSound);
-  const [browserNotificationsEnabled, setBrowserNotificationsEnabled] =
-    useState(false);
+  const [browserNotificationsEnabled, setBrowserNotificationsEnabled] = useState(false);
   const [updateCount, setUpdateCount] = useState(0);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -113,16 +98,10 @@ export const useRealtimeNotifications = (
 
   const setSoundEnabledWithPersistence = useCallback((enabled: boolean) => {
     setSoundEnabled(enabled);
-    try {
-      localStorage.setItem(
-        'accountsystem-notification-sound',
-        JSON.stringify(enabled),
-      );
-    } catch (error) {
-      console.warn('Failed to persist sound preference:', error);
-    }
+    // Note: localStorage removed as per requirements - settings not persisted
   }, []);
 
+  // Initialize browser notifications permission
   useEffect(() => {
     if (!enableBrowserNotifications) return;
     if ('Notification' in window) {
@@ -130,6 +109,7 @@ export const useRealtimeNotifications = (
     }
   }, [enableBrowserNotifications]);
 
+  // Initialize sound
   useEffect(() => {
     if (!soundEnabled) {
       audioRef.current = null;
@@ -137,8 +117,7 @@ export const useRealtimeNotifications = (
     }
 
     try {
-      const audioContext = new (window.AudioContext ||
-        (window as any).webkitAudioContext)();
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       const createNotificationSound = () => {
         const oscillator = audioContext.createOscillator();
         const gainNode = audioContext.createGain();
@@ -147,16 +126,10 @@ export const useRealtimeNotifications = (
         gainNode.connect(audioContext.destination);
 
         oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-        oscillator.frequency.exponentialRampToValueAtTime(
-          400,
-          audioContext.currentTime + 0.1,
-        );
+        oscillator.frequency.exponentialRampToValueAtTime(400, audioContext.currentTime + 0.1);
 
         gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(
-          0.01,
-          audioContext.currentTime + 0.3,
-        );
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
 
         oscillator.start(audioContext.currentTime);
         oscillator.stop(audioContext.currentTime + 0.3);
@@ -172,11 +145,10 @@ export const useRealtimeNotifications = (
     };
   }, [soundEnabled]);
 
+  // Handle realtime notification events
   useEffect(() => {
     const addUpdate = (update: RealtimeNotificationUpdate) => {
-      setRecentUpdates((prev) =>
-        [update, ...prev].slice(0, maxRetainedUpdates),
-      );
+      setRecentUpdates((prev) => [update, ...prev].slice(0, maxRetainedUpdates));
       setLastUpdate(update);
       setUpdateCount((prev) => prev + 1);
     };
@@ -199,10 +171,7 @@ export const useRealtimeNotifications = (
         }
       }
 
-      if (
-        browserNotificationsEnabled &&
-        Notification.permission === 'granted'
-      ) {
+      if (browserNotificationsEnabled && Notification.permission === 'granted') {
         const browserNotif = new Notification(notification.title, {
           body: notification.message,
           icon: '/notification-icon.png',
@@ -213,13 +182,15 @@ export const useRealtimeNotifications = (
         browserNotif.onclick = () => {
           window.focus();
           browserNotif.close();
-          markAsRead(notification.id).catch(console.warn);
         };
 
         setTimeout(() => browserNotif.close(), 5000);
       }
 
-      refetch();
+      // Refresh notifications in store
+      if (loadNotifications) {
+        loadNotifications().catch(console.warn);
+      }
     };
 
     const handleUpdatedNotification = (notification: Notification) => {
@@ -229,7 +200,10 @@ export const useRealtimeNotifications = (
         accountId: notification.accountId,
         timestamp: Date.now(),
       });
-      refetch();
+
+      if (loadNotifications) {
+        loadNotifications().catch(console.warn);
+      }
     };
 
     const handleDeletedNotification = (notificationId: string) => {
@@ -239,7 +213,10 @@ export const useRealtimeNotifications = (
         accountId: targetAccountId!,
         timestamp: Date.now(),
       });
-      refetch();
+
+      if (loadNotifications) {
+        loadNotifications().catch(console.warn);
+      }
     };
 
     const handleAllRead = (data: { accountId: string }) => {
@@ -248,52 +225,26 @@ export const useRealtimeNotifications = (
         accountId: data.accountId,
         timestamp: Date.now(),
       });
-      refetch();
+
+      if (loadNotifications) {
+        loadNotifications().catch(console.warn);
+      }
     };
 
     on(NotificationSocketEvents.NEW_NOTIFICATION, handleNewNotification);
-    on(
-      NotificationSocketEvents.UPDATED_NOTIFICATION,
-      handleUpdatedNotification,
-    );
-    on(
-      NotificationSocketEvents.DELETED_NOTIFICATION,
-      handleDeletedNotification,
-    );
+    on(NotificationSocketEvents.UPDATED_NOTIFICATION, handleUpdatedNotification);
+    on(NotificationSocketEvents.DELETED_NOTIFICATION, handleDeletedNotification);
     on(NotificationSocketEvents.ALL_READ, handleAllRead);
 
     return () => {
       off(NotificationSocketEvents.NEW_NOTIFICATION, handleNewNotification);
-      off(
-        NotificationSocketEvents.UPDATED_NOTIFICATION,
-        handleUpdatedNotification,
-      );
-      off(
-        NotificationSocketEvents.DELETED_NOTIFICATION,
-        handleDeletedNotification,
-      );
+      off(NotificationSocketEvents.UPDATED_NOTIFICATION, handleUpdatedNotification);
+      off(NotificationSocketEvents.DELETED_NOTIFICATION, handleDeletedNotification);
       off(NotificationSocketEvents.ALL_READ, handleAllRead);
     };
-  }, [
-    soundEnabled,
-    browserNotificationsEnabled,
-    maxRetainedUpdates,
-    targetAccountId,
-  ]);
+  }, [soundEnabled, browserNotificationsEnabled, maxRetainedUpdates, targetAccountId]);
 
-  useEffect(() => {
-    try {
-      const savedPreference = localStorage.getItem(
-        'accountsystem-notification-sound',
-      );
-      if (savedPreference !== null) {
-        setSoundEnabled(JSON.parse(savedPreference));
-      }
-    } catch (error) {
-      console.warn('Failed to load sound preference:', error);
-    }
-  }, []);
-
+  // Auto-subscribe when account changes
   useEffect(() => {
     if (autoSubscribe && targetAccountId && isConnected) {
       subscribe(targetAccountId).catch((error) => {
@@ -304,7 +255,7 @@ export const useRealtimeNotifications = (
 
   return {
     isConnected,
-    connectionState: connectionState.toString(),
+    connectionInfo,
     recentUpdates,
     lastUpdate,
     browserNotificationsEnabled,

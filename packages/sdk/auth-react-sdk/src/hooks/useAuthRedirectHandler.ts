@@ -1,20 +1,14 @@
-import { useCallback, useEffect, useMemo } from 'react';
-import { useAuthStore } from '../store/authStore';
+import { useCallback, useMemo } from 'react';
+import { useAuth } from './useAuth';
 import { RedirectCode } from '../types';
 
-type RedirectHandlerWithDefault<T> = (
-  data: T,
-  defaultHandler: () => Promise<void>,
-) => void | Promise<void>;
-type RedirectHandlerWithoutData = (
-  defaultHandler: () => Promise<void>,
-) => void | Promise<void>;
+type RedirectHandlerWithDefault<T> = (data: T, defaultHandler: () => void) => void;
+type RedirectHandlerWithoutData = (defaultHandler: () => void) => void;
 
 interface UseAuthRedirectHandlerOptions {
   defaultHomeUrl: string;
   defaultLoginUrl: string;
   defaultAccountsUrl: string;
-  autoRedirect?: boolean;
   onAuthenticatedWithAccount?: RedirectHandlerWithDefault<{
     accountId: string;
     redirectUrl: string;
@@ -31,19 +25,11 @@ interface RedirectDecision {
   data?: Record<string, unknown>;
 }
 
-interface UseAuthRedirectHandlerReturn {
-  handleRedirect: () => Promise<void>;
-  getRedirectDecision: () => RedirectDecision;
-  isReady: boolean;
-  redirectCode: RedirectCode | null;
-}
-
 const calculateRedirectDecision = (
   hasValidSession: boolean,
   isAuthenticated: boolean,
   hasAccounts: boolean,
   currentAccountId: string | null,
-  currentAccount: any,
   defaultHomeUrl: string,
   defaultLoginUrl: string,
   defaultAccountsUrl: string,
@@ -83,25 +69,13 @@ const calculateRedirectDecision = (
   }
 };
 
-export const useAuthRedirectHandler = (
-  options: UseAuthRedirectHandlerOptions,
-): UseAuthRedirectHandlerReturn => {
-  const {
-    defaultHomeUrl,
-    defaultLoginUrl,
-    defaultAccountsUrl,
-    autoRedirect = true,
-    ...handlers
-  } = options;
+export const useAuthRedirectHandler = (options: UseAuthRedirectHandlerOptions) => {
+  const { defaultHomeUrl, defaultLoginUrl, defaultAccountsUrl, ...handlers } = options;
 
-  const store = useAuthStore();
-  const hasValidSession = store.hasValidSession();
-  const isAuthenticated = store.isAuthenticated();
-  const currentAccountId = store.getCurrentAccountId();
-  const currentAccount = store.getCurrentAccount();
-  const accounts = store.getAccounts();
+  const { session, isAuthenticated, accounts } = useAuth();
 
-  const hasAccounts = useMemo(() => accounts.length > 0, [accounts.length]);
+  const hasAccounts = accounts.length > 0;
+  const hasValidSession = session.hasSession && session.isValid;
 
   const redirectUrls = useMemo(
     () => ({
@@ -118,35 +92,12 @@ export const useAuthRedirectHandler = (
     }
   }, []);
 
-  const defaultAuthenticatedWithAccount = useCallback(
-    async (data: { accountId: string; redirectUrl: string }) => {
-      navigateToUrl(data.redirectUrl);
-    },
-    [navigateToUrl],
-  );
-
-  const defaultAccountSelectionRequired = useCallback(async () => {
-    navigateToUrl(redirectUrls.accounts);
-  }, [redirectUrls.accounts, navigateToUrl]);
-
-  const defaultNoAuthentication = useCallback(async () => {
-    navigateToUrl(redirectUrls.login);
-  }, [redirectUrls.login, navigateToUrl]);
-
-  const defaultAccountDataLoadFailed = useCallback(
-    async (data: { accountId: string }) => {
-      navigateToUrl(redirectUrls.accounts);
-    },
-    [redirectUrls.accounts, navigateToUrl],
-  );
-
   const redirectDecision = useMemo(() => {
     return calculateRedirectDecision(
       hasValidSession,
       isAuthenticated,
       hasAccounts,
-      currentAccountId,
-      currentAccount,
+      session.currentAccountId,
       redirectUrls.home,
       redirectUrls.login,
       redirectUrls.accounts,
@@ -155,20 +106,16 @@ export const useAuthRedirectHandler = (
     hasValidSession,
     isAuthenticated,
     hasAccounts,
-    currentAccountId,
-    currentAccount,
+    session.currentAccountId,
     redirectUrls.home,
     redirectUrls.login,
     redirectUrls.accounts,
   ]);
 
-  const getRedirectDecision = useCallback(
-    () => redirectDecision,
-    [redirectDecision],
-  );
+  const getRedirectDecision = useCallback(() => redirectDecision, [redirectDecision]);
 
   const executeRedirect = useCallback(
-    async (decision: RedirectDecision) => {
+    (decision: RedirectDecision) => {
       if (decision.action !== 'redirect' || !decision.destination) return;
 
       try {
@@ -179,40 +126,34 @@ export const useAuthRedirectHandler = (
               redirectUrl: decision.destination,
             };
             if (handlers.onAuthenticatedWithAccount) {
-              await handlers.onAuthenticatedWithAccount(data, () =>
-                defaultAuthenticatedWithAccount(data),
-              );
+              handlers.onAuthenticatedWithAccount(data, () => navigateToUrl(data.redirectUrl));
             } else {
-              await defaultAuthenticatedWithAccount(data);
+              navigateToUrl(data.redirectUrl);
             }
             break;
           }
           case RedirectCode.ACCOUNT_SELECTION_REQUIRED: {
             if (handlers.onAccountSelectionRequired) {
-              await handlers.onAccountSelectionRequired(
-                defaultAccountSelectionRequired,
-              );
+              handlers.onAccountSelectionRequired(() => navigateToUrl(redirectUrls.accounts));
             } else {
-              await defaultAccountSelectionRequired();
+              navigateToUrl(redirectUrls.accounts);
             }
             break;
           }
           case RedirectCode.NO_AUTHENTICATION: {
             if (handlers.onNoAuthentication) {
-              await handlers.onNoAuthentication(defaultNoAuthentication);
+              handlers.onNoAuthentication(() => navigateToUrl(redirectUrls.login));
             } else {
-              await defaultNoAuthentication();
+              navigateToUrl(redirectUrls.login);
             }
             break;
           }
           case RedirectCode.ACCOUNT_DATA_LOAD_FAILED: {
             const data = { accountId: decision.data?.accountId as string };
             if (handlers.onAccountDataLoadFailed) {
-              await handlers.onAccountDataLoadFailed(data, () =>
-                defaultAccountDataLoadFailed(data),
-              );
+              handlers.onAccountDataLoadFailed(data, () => navigateToUrl(redirectUrls.accounts));
             } else {
-              await defaultAccountDataLoadFailed(data);
+              navigateToUrl(redirectUrls.accounts);
             }
             break;
           }
@@ -230,24 +171,15 @@ export const useAuthRedirectHandler = (
       handlers.onAccountSelectionRequired,
       handlers.onNoAuthentication,
       handlers.onAccountDataLoadFailed,
-      defaultAuthenticatedWithAccount,
-      defaultAccountSelectionRequired,
-      defaultNoAuthentication,
-      defaultAccountDataLoadFailed,
       navigateToUrl,
+      redirectUrls,
     ],
   );
 
-  const handleRedirect = useCallback(async () => {
+  const handleRedirect = useCallback(() => {
     const decision = getRedirectDecision();
-    await executeRedirect(decision);
+    executeRedirect(decision);
   }, [getRedirectDecision, executeRedirect]);
-
-  useEffect(() => {
-    if (autoRedirect && redirectDecision.action === 'redirect') {
-      executeRedirect(redirectDecision);
-    }
-  }, [autoRedirect, redirectDecision, executeRedirect]);
 
   return {
     handleRedirect,
