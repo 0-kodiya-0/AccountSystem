@@ -113,23 +113,8 @@ export interface TwoFactorSetupResponse {
 }
 
 // Google Permission Types
-export type ServiceType =
-  | 'gmail'
-  | 'calendar'
-  | 'drive'
-  | 'docs'
-  | 'sheets'
-  | 'people'
-  | 'meet';
-export type ScopeLevel =
-  | 'readonly'
-  | 'full'
-  | 'send'
-  | 'compose'
-  | 'events'
-  | 'file'
-  | 'create'
-  | 'edit';
+export type ServiceType = 'gmail' | 'calendar' | 'drive' | 'docs' | 'sheets' | 'people' | 'meet';
+export type ScopeLevel = 'readonly' | 'full' | 'send' | 'compose' | 'events' | 'file' | 'create' | 'edit';
 
 export interface GoogleTokenInfo {
   accessToken: string;
@@ -306,20 +291,11 @@ export type SocketEventListener<T = any> = (data: T) => void;
 
 // Socket event emitter interface
 export interface SocketEventEmitter {
-  on<K extends keyof SocketEventPayloads>(
-    event: K,
-    listener: SocketEventListener<SocketEventPayloads[K]>,
-  ): void;
+  on<K extends keyof SocketEventPayloads>(event: K, listener: SocketEventListener<SocketEventPayloads[K]>): void;
 
-  off<K extends keyof SocketEventPayloads>(
-    event: K,
-    listener?: SocketEventListener<SocketEventPayloads[K]>,
-  ): void;
+  off<K extends keyof SocketEventPayloads>(event: K, listener?: SocketEventListener<SocketEventPayloads[K]>): void;
 
-  emit<K extends keyof SocketEventPayloads>(
-    event: K,
-    data: SocketEventPayloads[K],
-  ): void;
+  emit<K extends keyof SocketEventPayloads>(event: K, data: SocketEventPayloads[K]): void;
 }
 
 // Real-time notification update
@@ -349,105 +325,6 @@ export interface SocketManager {
   isConnected(): boolean;
 }
 
-export interface UseAccountOptions {
-  /**
-   * Whether to automatically fetch account data if missing
-   * @default true
-   */
-  autoFetch?: boolean;
-
-  /**
-   * Whether to refresh data on mount even if it exists
-   * @default false
-   */
-  refreshOnMount?: boolean;
-
-  /**
-   * Interval to refresh account data (in milliseconds)
-   * Set to 0 to disable auto-refresh
-   * @default 0
-   */
-  refreshInterval?: number;
-}
-
-export interface UseAccountResult {
-  account: Account | null;
-  isLoading: boolean;
-  error: string | null;
-  hasData: boolean;
-  needsData: boolean;
-
-  // Actions
-  refresh: () => Promise<Account | null>;
-  clearError: () => void;
-}
-
-export enum CallbackCode {
-  // OAuth success codes
-  OAUTH_SIGNIN_SUCCESS = 'oauth_signin_success',
-  OAUTH_SIGNUP_SUCCESS = 'oauth_signup_success',
-  OAUTH_PERMISSION_SUCCESS = 'oauth_permission_success',
-
-  // Local auth success codes
-  LOCAL_SIGNIN_SUCCESS = 'local_signin_success',
-  LOCAL_SIGNUP_SUCCESS = 'local_signup_success',
-  LOCAL_2FA_REQUIRED = 'local_2fa_required',
-  LOCAL_EMAIL_VERIFIED = 'local_email_verified',
-  LOCAL_PASSWORD_RESET_SUCCESS = 'local_password_reset_success',
-
-  // Logout success codes
-  LOGOUT_SUCCESS = 'logout_success',
-  LOGOUT_DISABLE_SUCCESS = 'logout_disable_success',
-  LOGOUT_ALL_SUCCESS = 'logout_all_success',
-
-  // Error codes
-  OAUTH_ERROR = 'oauth_error',
-  LOCAL_AUTH_ERROR = 'local_auth_error',
-  PERMISSION_ERROR = 'permission_error',
-  INVALID_STATE = 'invalid_state',
-  USER_NOT_FOUND = 'user_not_found',
-  USER_EXISTS = 'user_exists',
-  TOKEN_EXPIRED = 'token_expired',
-
-  // Special flow codes
-  PERMISSION_REAUTHORIZE = 'permission_reauthorize',
-  ACCOUNT_SELECTION_REQUIRED = 'account_selection_required',
-}
-
-export interface CallbackData {
-  code: CallbackCode;
-  accountId?: string;
-  accountIds?: string[];
-  name?: string;
-  provider?: OAuthProviders;
-  tempToken?: string;
-  service?: string;
-  scopeLevel?: string;
-  error?: string;
-  message?: string;
-  clearClientAccountState?: boolean;
-  // Additional context data
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  [key: string]: any;
-}
-
-export enum RedirectCode {
-  // Success redirects
-  AUTHENTICATED_WITH_ACCOUNT = 'authenticated_with_account',
-
-  // Account management redirects
-  ACCOUNT_SELECTION_REQUIRED = 'account_selection_required',
-  ACCOUNT_DATA_LOAD_FAILED = 'account_data_load_failed',
-  HAS_ACCOUNTS_BUT_NONE_ACTIVE = 'has_accounts_but_none_active',
-
-  // Auth failure redirects
-  NO_AUTHENTICATION = 'no_authentication',
-
-  // Loading states
-  LOADING_AUTH_STATE = 'loading_auth_state',
-  LOADING_ACCOUNT_DATA = 'loading_account_data',
-}
-
 /**
  * Minimal account data returned in session responses
  * Only contains essential information needed for session management
@@ -475,69 +352,4 @@ export interface AccountSessionInfo {
 export interface GetAccountSessionResponse {
   session: AccountSessionInfo;
   accounts?: SessionAccount[]; // Minimal account data for session management
-}
-
-export enum AuthGuardDecision {
-  LOADING = 'loading',
-  SHOW_CONTENT = 'show_content',
-  REDIRECT_TO_LOGIN = 'redirect_to_login',
-  REDIRECT_TO_ACCOUNTS = 'redirect_to_accounts',
-  REDIRECT_CUSTOM = 'redirect_custom',
-}
-
-export enum EmailVerificationStatus {
-  LOADING = 'loading',
-  SUCCESS = 'success',
-  ERROR = 'error',
-  INVALID_TOKEN = 'invalid_token',
-  EXPIRED_TOKEN = 'expired_token',
-}
-
-export enum PasswordResetStatus {
-  IDLE = 'idle',
-  REQUESTING = 'requesting',
-  REQUEST_SUCCESS = 'request_success',
-  RESETTING = 'resetting',
-  RESET_SUCCESS = 'reset_success',
-  ERROR = 'error',
-}
-
-export enum TwoFactorSetupStatus {
-  IDLE = 'idle',
-  REQUESTING_SETUP = 'requesting_setup',
-  SETUP_READY = 'setup_ready',
-  VERIFYING_TOKEN = 'verifying_token',
-  GENERATING_BACKUP_CODES = 'generating_backup_codes',
-  COMPLETE = 'complete',
-  ERROR = 'error',
-}
-
-export enum TwoFactorVerificationStatus {
-  IDLE = 'idle',
-  VERIFYING = 'verifying',
-  SUCCESS = 'success',
-  ERROR = 'error',
-  INVALID_TOKEN = 'invalid_token',
-  EXPIRED_SESSION = 'expired_session',
-  LOCKED_OUT = 'locked_out',
-}
-
-/**
- * Loading states for async operations
- * Prevents flash of content by using proper state transitions
- */
-export enum LoadingState {
-  PENDING = 'pending', // Initial state - still loading/initializing
-  READY = 'ready', // Data loaded successfully - show content
-  ERROR = 'error', // Failed to load - show error state
-}
-
-/**
- * Extended loading state with additional context
- */
-export interface LoadingInfo {
-  state: LoadingState;
-  reason?: string; // Human-readable reason for the state
-  lastUpdated?: number; // Timestamp of last state change
-  metadata?: Record<string, unknown>; // Additional context data
 }

@@ -7,7 +7,7 @@ import {
   SocketEventPayloads,
   SocketEventListener,
 } from '../types';
-import { SocketClient } from '../client/socketClient';
+import { SocketClient } from '../client/CustomSocketClient';
 
 interface UseSocketOptions {
   autoConnect?: boolean;

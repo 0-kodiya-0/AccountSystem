@@ -1,6 +1,22 @@
 import { useCallback, useMemo } from 'react';
 import { useAuth } from './useAuth';
-import { RedirectCode } from '../types';
+
+export enum RedirectCode {
+  // Success redirects
+  AUTHENTICATED_WITH_ACCOUNT = 'authenticated_with_account',
+
+  // Account management redirects
+  ACCOUNT_SELECTION_REQUIRED = 'account_selection_required',
+  ACCOUNT_DATA_LOAD_FAILED = 'account_data_load_failed',
+  HAS_ACCOUNTS_BUT_NONE_ACTIVE = 'has_accounts_but_none_active',
+
+  // Auth failure redirects
+  NO_AUTHENTICATION = 'no_authentication',
+
+  // Loading states
+  LOADING_AUTH_STATE = 'loading_auth_state',
+  LOADING_ACCOUNT_DATA = 'loading_account_data',
+}
 
 type RedirectHandlerWithDefault<T> = (data: T, defaultHandler: () => void) => void;
 type RedirectHandlerWithoutData = (defaultHandler: () => void) => void;

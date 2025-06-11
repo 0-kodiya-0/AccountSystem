@@ -1,6 +1,49 @@
 import { useCallback, useState } from 'react';
 import { useAuth } from './useAuth';
-import { CallbackCode, CallbackData, OAuthProviders } from '../types';
+import { OAuthProviders } from '../types';
+
+// New callback codes enum - Updated with logout codes
+export enum CallbackCode {
+  // OAuth success codes
+  OAUTH_SIGNIN_SUCCESS = 'oauth_signin_success',
+  OAUTH_SIGNUP_SUCCESS = 'oauth_signup_success',
+  OAUTH_PERMISSION_SUCCESS = 'oauth_permission_success',
+
+  // Local auth success codes
+  LOCAL_SIGNIN_SUCCESS = 'local_signin_success',
+  LOCAL_SIGNUP_SUCCESS = 'local_signup_success',
+  LOCAL_2FA_REQUIRED = 'local_2fa_required',
+  LOCAL_EMAIL_VERIFIED = 'local_email_verified',
+  LOCAL_PASSWORD_RESET_SUCCESS = 'local_password_reset_success',
+
+  // Logout success codes
+  LOGOUT_SUCCESS = 'logout_success',
+  LOGOUT_DISABLE_SUCCESS = 'logout_disable_success',
+  LOGOUT_ALL_SUCCESS = 'logout_all_success',
+
+  // Error codes
+  OAUTH_ERROR = 'oauth_error',
+  LOCAL_AUTH_ERROR = 'local_auth_error',
+  PERMISSION_ERROR = 'permission_error',
+  USER_NOT_FOUND = 'user_not_found',
+}
+
+export interface CallbackData {
+  code: CallbackCode;
+  accountId?: string;
+  accountIds?: string[];
+  name?: string;
+  provider?: OAuthProviders;
+  tempToken?: string;
+  service?: string;
+  scopeLevel?: string;
+  error?: string;
+  message?: string;
+  clearClientAccountState?: boolean;
+  needsAdditionalScopes?: boolean;
+  // Additional context data
+  [key: string]: any;
+}
 
 type CallbackHandler<T = any> = (data: T) => void | Promise<void>;
 

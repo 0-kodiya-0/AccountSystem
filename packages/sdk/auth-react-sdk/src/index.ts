@@ -2,7 +2,7 @@
 
 // Main exports
 export { HttpClient } from './client/HttpClient';
-export { SocketClient } from './client/SocketClient';
+export { SocketClient } from './client/CustomSocketClient';
 
 // Context and Provider
 export { AuthProvider } from './context/AuthProvider';
@@ -11,16 +11,16 @@ export { AuthProvider } from './context/AuthProvider';
 export { AuthGuard } from './components/AuthGuard';
 
 // Routing and Protection Hooks
-export { useAuthCallbackHandler } from './hooks/useAuthCallbackHandler';
-export { useAuthRedirectHandler } from './hooks/useAuthRedirectHandler';
-export { useAuthGuard } from './hooks/useAuthGuard';
+export { useAuthCallbackHandler, CallbackCode } from './hooks/useAuthCallbackHandler';
+export { useAuthRedirectHandler, RedirectCode } from './hooks/useAuthRedirectHandler';
+export { useAuthGuard, AuthGuardDecision } from './hooks/useAuthGuard';
 
 // Workflow Hooks (NEW)
 export { useAuth } from './hooks/useAuth';
-export { useEmailVerification } from './hooks/useEmailVerification';
-export { usePasswordReset } from './hooks/usePasswordReset';
-export { use2FASetup } from './hooks/use2FASetup';
-export { use2FAVerification } from './hooks/use2FAVerification';
+export { useEmailVerification, EmailVerificationStatus } from './hooks/useEmailVerification';
+export { usePasswordReset, PasswordResetStatus } from './hooks/usePasswordReset';
+export { use2FASetup, TwoFactorSetupStatus } from './hooks/use2FASetup';
+export { use2FAVerification, TwoFactorVerificationStatus } from './hooks/use2FAVerification';
 
 // Store exports
 export * as useAppStore from './store/useAppStore';
