@@ -163,24 +163,15 @@ export const signin = asyncHandler(async (req: SignInRequest, res, next) => {
             }
 
             // Handle additional scopes
-            if (result.needsAdditionalScopes) {
-                const callbackData: CallbackData = {
-                    code: CallbackCode.PERMISSION_REAUTHORIZE,
-                    accountId: result.userId,
-                    name: result.userName,
-                    provider,
-                    missingScopes: result.missingScopes
-                };
-                next(new Redirect(callbackData, getCallbackUrl()));
-            } else {
-                const callbackData: CallbackData = {
-                    code: CallbackCode.OAUTH_SIGNIN_SUCCESS,
-                    accountId: result.userId,
-                    name: result.userName,
-                    provider
-                };
-                next(new Redirect(callbackData, getCallbackUrl()));
-            }
+            const callbackData: CallbackData = {
+                code: CallbackCode.OAUTH_SIGNIN_SUCCESS,
+                accountId: result.userId,
+                name: result.userName,
+                provider,
+                needsAdditionalScopes: result.needsAdditionalScopes,
+                missingScopes: result.missingScopes
+            };
+            next(new Redirect(callbackData, getCallbackUrl()));
             return;
         } catch (error) {
             logger.error(error);

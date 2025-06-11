@@ -69,6 +69,17 @@ export class BaseError<T> extends Error {
         this.name = this.constructor.name;
         Object.setPrototypeOf(this, BaseError.prototype);
     }
+
+    // Add this method
+    toJSON() {
+        return {
+            name: this.name,
+            message: this.message,
+            code: this.code,
+            statusCode: this.statusCode,
+            ...(this.data && { data: this.data })
+        };
+    }
 }
 
 export class AuthError<T> extends BaseError<T> {
@@ -206,14 +217,7 @@ export enum CallbackCode {
     OAUTH_ERROR = 'oauth_error',
     LOCAL_AUTH_ERROR = 'local_auth_error',
     PERMISSION_ERROR = 'permission_error',
-    INVALID_STATE = 'invalid_state',
-    USER_NOT_FOUND = 'user_not_found',
-    USER_EXISTS = 'user_exists',
-    TOKEN_EXPIRED = 'token_expired',
-    
-    // Special flow codes
-    PERMISSION_REAUTHORIZE = 'permission_reauthorize',
-    ACCOUNT_SELECTION_REQUIRED = 'account_selection_required'
+    USER_NOT_FOUND = 'user_not_found'
 }
 
 export interface CallbackData {
@@ -228,6 +232,7 @@ export interface CallbackData {
     error?: string;
     message?: string;
     clearClientAccountState?: boolean;
+    needsAdditionalScopes?: boolean;
     // Additional context data
     [key: string]: any;
 }
