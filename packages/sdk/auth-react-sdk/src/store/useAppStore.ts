@@ -25,6 +25,9 @@ import type {
   GoogleTokenInfo,
   TokenCheckResponse,
 } from '../types';
+import { enableMapSet } from 'immer';
+
+enableMapSet();
 
 interface AppState {
   session: {
