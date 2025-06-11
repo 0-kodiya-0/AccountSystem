@@ -1,6 +1,10 @@
-import jwt from 'jsonwebtoken';
-import { AccountType } from '../account/Account.types';
-import { getAccessTokenExpiry, getJwtSecret, getRefreshTokenExpiry } from '../../config/env.config';
+import jwt from "jsonwebtoken";
+import { AccountType } from "../account/Account.types";
+import {
+  getAccessTokenExpiry,
+  getJwtSecret,
+  getRefreshTokenExpiry,
+} from "../../config/env.config";
 
 // Environment variables
 const JWT_SECRET = getJwtSecret();
@@ -11,24 +15,24 @@ const REFRESH_TOKEN_EXPIRY = getRefreshTokenExpiry();
  * JWT payload interface for OAuth tokens
  */
 interface OAuthTokenPayload {
-    sub: string; // accountId
-    type: AccountType.OAuth;
-    oauthAccessToken: string; // The actual Google/OAuth access token
-    iat: number;
-    exp?: number;
-    isRefreshToken?: boolean;
+  sub: string; // accountId
+  type: AccountType.OAuth;
+  oauthAccessToken: string; // The actual Google/OAuth access token
+  iat: number;
+  exp?: number;
+  isRefreshToken?: boolean;
 }
 
 /**
  * JWT payload interface for OAuth refresh tokens
  */
 interface OAuthRefreshTokenPayload {
-    sub: string; // accountId
-    type: AccountType.OAuth;
-    oauthRefreshToken: string; // The actual Google/OAuth refresh token
-    iat: number;
-    exp?: number;
-    isRefreshToken: true;
+  sub: string; // accountId
+  type: AccountType.OAuth;
+  oauthRefreshToken: string; // The actual Google/OAuth refresh token
+  iat: number;
+  exp?: number;
+  isRefreshToken: true;
 }
 
 /**
@@ -39,23 +43,23 @@ interface OAuthRefreshTokenPayload {
  * @returns Promise resolving to the signed token
  */
 export async function createOAuthJwtToken(
-    accountId: string, 
-    oauthAccessToken: string,
-    expiresIn?: number
+  accountId: string,
+  oauthAccessToken: string,
+  expiresIn?: number,
 ): Promise<string> {
-    const payload: OAuthTokenPayload = {
-        sub: accountId,
-        type: AccountType.OAuth,
-        oauthAccessToken,
-        iat: Math.floor(Date.now() / 1000)
-    };
-    
-    // Sign token
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    return jwt.sign(payload, JWT_SECRET, {
-        expiresIn: expiresIn ? `${expiresIn}s` : ACCESS_TOKEN_EXPIRY
-    });
+  const payload: OAuthTokenPayload = {
+    sub: accountId,
+    type: AccountType.OAuth,
+    oauthAccessToken,
+    iat: Math.floor(Date.now() / 1000),
+  };
+
+  // Sign token
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore
+  return jwt.sign(payload, JWT_SECRET, {
+    expiresIn: expiresIn ? `${expiresIn}s` : ACCESS_TOKEN_EXPIRY,
+  });
 }
 
 /**
@@ -65,23 +69,23 @@ export async function createOAuthJwtToken(
  * @returns Promise resolving to the signed refresh token
  */
 export async function createOAuthRefreshToken(
-    accountId: string, 
-    oauthRefreshToken: string
+  accountId: string,
+  oauthRefreshToken: string,
 ): Promise<string> {
-    const payload: OAuthRefreshTokenPayload = {
-        sub: accountId,
-        type: AccountType.OAuth,
-        oauthRefreshToken,
-        isRefreshToken: true,
-        iat: Math.floor(Date.now() / 1000)
-    };
-    
-    // Sign token with longer expiration
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    return jwt.sign(payload, JWT_SECRET, {
-        expiresIn: REFRESH_TOKEN_EXPIRY
-    });
+  const payload: OAuthRefreshTokenPayload = {
+    sub: accountId,
+    type: AccountType.OAuth,
+    oauthRefreshToken,
+    isRefreshToken: true,
+    iat: Math.floor(Date.now() / 1000),
+  };
+
+  // Sign token with longer expiration
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore
+  return jwt.sign(payload, JWT_SECRET, {
+    expiresIn: REFRESH_TOKEN_EXPIRY,
+  });
 }
 
 /**
@@ -89,27 +93,27 @@ export async function createOAuthRefreshToken(
  * @param token The token to verify
  * @returns Account ID, type, and OAuth access token if valid
  */
-export function verifyOAuthJwtToken(token: string): { 
-    accountId: string; 
-    accountType: AccountType.OAuth; 
-    oauthAccessToken: string; 
+export function verifyOAuthJwtToken(token: string): {
+  accountId: string;
+  accountType: AccountType.OAuth;
+  oauthAccessToken: string;
 } {
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET) as OAuthTokenPayload;
-        
-        // Ensure it's an OAuth token and not a refresh token
-        if (decoded.type !== AccountType.OAuth || decoded.isRefreshToken) {
-            throw new Error('Not an OAuth access token');
-        }
-        
-        return {
-            accountId: decoded.sub,
-            accountType: AccountType.OAuth,
-            oauthAccessToken: decoded.oauthAccessToken
-        };
-    } catch {
-        throw new Error('Invalid or expired OAuth token');
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as OAuthTokenPayload;
+
+    // Ensure it's an OAuth token and not a refresh token
+    if (decoded.type !== AccountType.OAuth || decoded.isRefreshToken) {
+      throw new Error("Not an OAuth access token");
     }
+
+    return {
+      accountId: decoded.sub,
+      accountType: AccountType.OAuth,
+      oauthAccessToken: decoded.oauthAccessToken,
+    };
+  } catch {
+    throw new Error("Invalid or expired OAuth token");
+  }
 }
 
 /**
@@ -117,27 +121,27 @@ export function verifyOAuthJwtToken(token: string): {
  * @param token The refresh token to verify
  * @returns Account ID, type, and OAuth refresh token if valid
  */
-export function verifyOAuthRefreshToken(token: string): { 
-    accountId: string; 
-    accountType: AccountType.OAuth; 
-    oauthRefreshToken: string; 
+export function verifyOAuthRefreshToken(token: string): {
+  accountId: string;
+  accountType: AccountType.OAuth;
+  oauthRefreshToken: string;
 } {
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET) as OAuthRefreshTokenPayload;
-        
-        // Ensure it's an OAuth refresh token
-        if (decoded.type !== AccountType.OAuth || !decoded.isRefreshToken) {
-            throw new Error('Not an OAuth refresh token');
-        }
-        
-        return {
-            accountId: decoded.sub,
-            accountType: AccountType.OAuth,
-            oauthRefreshToken: decoded.oauthRefreshToken
-        };
-    } catch {
-        throw new Error('Invalid or expired OAuth refresh token');
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as OAuthRefreshTokenPayload;
+
+    // Ensure it's an OAuth refresh token
+    if (decoded.type !== AccountType.OAuth || !decoded.isRefreshToken) {
+      throw new Error("Not an OAuth refresh token");
     }
+
+    return {
+      accountId: decoded.sub,
+      accountType: AccountType.OAuth,
+      oauthRefreshToken: decoded.oauthRefreshToken,
+    };
+  } catch {
+    throw new Error("Invalid or expired OAuth refresh token");
+  }
 }
 
 /**
@@ -146,17 +150,17 @@ export function verifyOAuthRefreshToken(token: string): {
  * @returns Expiration timestamp in milliseconds
  */
 export function getOAuthTokenExpiration(token: string): number {
-    try {
-        const decoded = jwt.decode(token) as { exp?: number };
-        
-        if (!decoded || !decoded.exp) {
-            throw new Error('Invalid token');
-        }
-        
-        return decoded.exp * 1000;
-    } catch {
-        throw new Error('Failed to get token expiration');
+  try {
+    const decoded = jwt.decode(token) as { exp?: number };
+
+    if (!decoded || !decoded.exp) {
+      throw new Error("Invalid token");
     }
+
+    return decoded.exp * 1000;
+  } catch {
+    throw new Error("Failed to get token expiration");
+  }
 }
 
 /**
@@ -165,12 +169,14 @@ export function getOAuthTokenExpiration(token: string): number {
  * @returns Account ID if token is decodable
  */
 export function extractAccountIdFromOAuthToken(token: string): string | null {
-    try {
-        const decoded = jwt.decode(token) as OAuthTokenPayload | OAuthRefreshTokenPayload;
-        return decoded?.sub || null;
-    } catch {
-        return null;
-    }
+  try {
+    const decoded = jwt.decode(token) as
+      | OAuthTokenPayload
+      | OAuthRefreshTokenPayload;
+    return decoded?.sub || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -179,15 +185,15 @@ export function extractAccountIdFromOAuthToken(token: string): string | null {
  * @returns True if expired, false if valid
  */
 export function isOAuthTokenExpired(token: string): boolean {
-    try {
-        const decoded = jwt.decode(token) as { exp?: number };
-        
-        if (!decoded || !decoded.exp) {
-            return true;
-        }
-        
-        return Date.now() >= decoded.exp * 1000;
-    } catch {
-        return true;
+  try {
+    const decoded = jwt.decode(token) as { exp?: number };
+
+    if (!decoded || !decoded.exp) {
+      return true;
     }
+
+    return Date.now() >= decoded.exp * 1000;
+  } catch {
+    return true;
+  }
 }

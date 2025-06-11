@@ -1,6 +1,6 @@
 /**
  * Google OAuth configuration without local scope validation
- * 
+ *
  * This implementation removes local scope validation and lets Google OAuth API
  * handle scope validation directly. This approach is better because:
  * 1. Google is the authoritative source for valid scopes
@@ -14,16 +14,16 @@
  * Google OAuth scope URL builder
  * Automatically constructs proper Google scope URLs from scope names
  */
-export const GOOGLE_SCOPE_BASE_URL = 'https://www.googleapis.com/auth/';
+export const GOOGLE_SCOPE_BASE_URL = "https://www.googleapis.com/auth/";
 
 /**
  * Special scopes that don't follow the standard pattern
  * Only keeping the absolutely necessary OpenID Connect scopes
  */
 export const SPECIAL_SCOPES = {
-  'openid': 'openid',
-  'email': 'https://www.googleapis.com/auth/userinfo.email',
-  'profile': 'https://www.googleapis.com/auth/userinfo.profile',
+  openid: "openid",
+  email: "https://www.googleapis.com/auth/userinfo.email",
+  profile: "https://www.googleapis.com/auth/userinfo.profile",
 } as const;
 
 /**
@@ -36,12 +36,12 @@ export function buildGoogleScopeUrl(scopeName: string): string {
   if (scopeName in SPECIAL_SCOPES) {
     return SPECIAL_SCOPES[scopeName as keyof typeof SPECIAL_SCOPES];
   }
-  
+
   // If it's already a full URL, return as-is
-  if (scopeName.startsWith('https://') || scopeName.startsWith('http://')) {
+  if (scopeName.startsWith("https://") || scopeName.startsWith("http://")) {
     return scopeName;
   }
-  
+
   // Build standard Google scope URL
   return `${GOOGLE_SCOPE_BASE_URL}${scopeName}`;
 }
@@ -61,19 +61,19 @@ export function buildGoogleScopeUrls(scopeNames: string[]): string[] {
  * @returns True if the scope name is valid
  */
 export function isValidScopeName(scopeName: string): boolean {
-  if (!scopeName || typeof scopeName !== 'string') {
+  if (!scopeName || typeof scopeName !== "string") {
     return false;
   }
-  
+
   const trimmed = scopeName.trim();
-  
+
   // Empty string is invalid
   if (trimmed.length === 0) {
     return false;
   }
-  
+
   // If it's already a URL, just check it's well-formed
-  if (trimmed.startsWith('https://') || trimmed.startsWith('http://')) {
+  if (trimmed.startsWith("https://") || trimmed.startsWith("http://")) {
     try {
       new URL(trimmed);
       return true;
@@ -81,7 +81,7 @@ export function isValidScopeName(scopeName: string): boolean {
       return false;
     }
   }
-  
+
   // For scope names, allow alphanumeric, dots, and underscores
   return /^[a-zA-Z0-9._-]+$/.test(trimmed);
 }
@@ -91,22 +91,25 @@ export function isValidScopeName(scopeName: string): boolean {
  * @param scopeNames Array of scope names to validate
  * @returns Validation result with errors if any
  */
-export function validateScopeNames(scopeNames: string[]): { valid: boolean; errors: string[] } {
+export function validateScopeNames(scopeNames: string[]): {
+  valid: boolean;
+  errors: string[];
+} {
   if (!Array.isArray(scopeNames)) {
-    return { valid: false, errors: ['Scope names must be an array'] };
+    return { valid: false, errors: ["Scope names must be an array"] };
   }
-  
+
   if (scopeNames.length === 0) {
-    return { valid: false, errors: ['At least one scope name is required'] };
+    return { valid: false, errors: ["At least one scope name is required"] };
   }
-  
+
   const errors: string[] = [];
-  
+
   scopeNames.forEach((scopeName, index) => {
     if (!isValidScopeName(scopeName)) {
       errors.push(`Invalid scope name at index ${index}: "${scopeName}"`);
     }
   });
-  
+
   return { valid: errors.length === 0, errors };
 }

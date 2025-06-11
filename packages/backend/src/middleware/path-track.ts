@@ -3,25 +3,29 @@ import { Request, Response, NextFunction } from "express";
 /**
  * Middleware to track parent URL across route layers
  * This should be added at each route layer to build up the parent path
- * 
+ *
  * @param pathSegment - The path segment for this route layer (e.g., '/oauth', '/api')
  */
 export const trackParentUrl = (pathSegment: string) => {
-    return (req: Request, res: Response, next: NextFunction) => {
-        // Clean the path segment
-        const cleanSegment = pathSegment.startsWith('/') ? pathSegment : '/' + pathSegment;
-        
-        // Initialize or append to parentUrl
-        if (!req.parentUrl) {
-            req.parentUrl = cleanSegment;
-        } else {
-            // Append this segment to existing parent URL
-            req.parentUrl = req.parentUrl + cleanSegment;
-        }
-        
-        console.log(`Parent URL updated: ${req.parentUrl} (added: ${cleanSegment})`);
-        next();
-    };
+  return (req: Request, res: Response, next: NextFunction) => {
+    // Clean the path segment
+    const cleanSegment = pathSegment.startsWith("/")
+      ? pathSegment
+      : "/" + pathSegment;
+
+    // Initialize or append to parentUrl
+    if (!req.parentUrl) {
+      req.parentUrl = cleanSegment;
+    } else {
+      // Append this segment to existing parent URL
+      req.parentUrl = req.parentUrl + cleanSegment;
+    }
+
+    console.log(
+      `Parent URL updated: ${req.parentUrl} (added: ${cleanSegment})`,
+    );
+    next();
+  };
 };
 
 /**
@@ -29,14 +33,14 @@ export const trackParentUrl = (pathSegment: string) => {
  * This automatically builds the parent URL based on the route mounting
  */
 export const autoTrackParentUrl = () => {
-    return (req: Request, res: Response, next: NextFunction) => {
-        // Get the base URL (what's been matched so far)
-        const baseUrl = req.baseUrl || '';
-        
-        // Set parent URL to the base URL
-        req.parentUrl = baseUrl;
-        
-        console.log(`Auto-tracked parent URL: ${req.parentUrl}`);
-        next();
-    };
+  return (req: Request, res: Response, next: NextFunction) => {
+    // Get the base URL (what's been matched so far)
+    const baseUrl = req.baseUrl || "";
+
+    // Set parent URL to the base URL
+    req.parentUrl = baseUrl;
+
+    console.log(`Auto-tracked parent URL: ${req.parentUrl}`);
+    next();
+  };
 };
