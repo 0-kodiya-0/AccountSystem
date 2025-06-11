@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
+import { useAppStore } from '../store/useAppStore';
 import {
   SocketConfig,
   SocketConnectionState,
@@ -6,7 +7,7 @@ import {
   SocketEventPayloads,
   SocketEventListener,
 } from '../types';
-import { SocketClient } from '../client/SocketClient';
+import { SocketClient } from '../client/socketClient';
 
 interface UseSocketOptions {
   autoConnect?: boolean;
@@ -14,59 +15,22 @@ interface UseSocketOptions {
   accountId?: string;
 }
 
-interface UseSocketReturn {
-  // Connection state
-  connectionState: SocketConnectionState;
-  connectionInfo: SocketConnectionInfo;
-  isConnected: boolean;
-  isSupported: boolean;
-
-  // Connection control
-  connect: () => Promise<void>;
-  disconnect: () => void;
-  reconnect: () => Promise<void>;
-
-  // Subscription management
-  subscribe: (accountId: string) => Promise<void>;
-  unsubscribe: (accountId: string) => Promise<void>;
-  subscriptions: string[];
-
-  // Event listeners
-  on: <K extends keyof SocketEventPayloads>(
-    event: K,
-    listener: SocketEventListener<SocketEventPayloads[K]>,
-  ) => void;
-  off: <K extends keyof SocketEventPayloads>(
-    event: K,
-    listener?: SocketEventListener<SocketEventPayloads[K]>,
-  ) => void;
-
-  // Utilities
-  getLatency: () => number | null;
-  ping: () => void;
-}
-
-export const useSocket = (
-  config: SocketConfig,
-  options: UseSocketOptions = {},
-): UseSocketReturn => {
+export const useSocket = (config: SocketConfig, options: UseSocketOptions = {}) => {
   const { autoConnect = true, autoSubscribe = true, accountId } = options;
+  const { session } = useAppStore();
 
   const clientRef = useRef<SocketClient | null>(null);
-  const [connectionState, setConnectionState] = useState<SocketConnectionState>(
-    SocketConnectionState.DISCONNECTED,
-  );
   const [connectionInfo, setConnectionInfo] = useState<SocketConnectionInfo>({
     state: SocketConnectionState.DISCONNECTED,
     reconnectAttempts: 0,
   });
   const [subscriptions, setSubscriptions] = useState<string[]>([]);
   const [isSupported] = useState(() => {
-    // Check if Socket.IO is supported
-    return (
-      typeof window !== 'undefined' && typeof window.WebSocket !== 'undefined'
-    );
+    return typeof window !== 'undefined' && typeof window.WebSocket !== 'undefined';
   });
+
+  // Use current account from store if no accountId provided
+  const targetAccountId = accountId || session.currentAccountId;
 
   // Connection control methods
   const connect = useCallback(async () => {
@@ -112,10 +76,7 @@ export const useSocket = (
 
   // Event listener methods
   const on = useCallback(
-    <K extends keyof SocketEventPayloads>(
-      event: K,
-      listener: SocketEventListener<SocketEventPayloads[K]>,
-    ) => {
+    <K extends keyof SocketEventPayloads>(event: K, listener: SocketEventListener<SocketEventPayloads[K]>) => {
       if (!clientRef.current || !isSupported) return;
       clientRef.current.on(event, listener);
     },
@@ -123,10 +84,7 @@ export const useSocket = (
   );
 
   const off = useCallback(
-    <K extends keyof SocketEventPayloads>(
-      event: K,
-      listener?: SocketEventListener<SocketEventPayloads[K]>,
-    ) => {
+    <K extends keyof SocketEventPayloads>(event: K, listener?: SocketEventListener<SocketEventPayloads[K]>) => {
       if (!clientRef.current || !isSupported) return;
       clientRef.current.off(event, listener);
     },
@@ -147,98 +105,68 @@ export const useSocket = (
     }
   }, [isSupported]);
 
-  // Initialize client
+  // Auto-subscribe to account
   useEffect(() => {
-    if (!isSupported) return;
+    if (!autoSubscribe || !targetAccountId || !clientRef.current || !isSupported) return;
 
-    clientRef.current = new SocketClient(config);
-
-    return () => {
-      if (clientRef.current) {
-        clientRef.current.disconnect();
-        clientRef.current = null;
-      }
-    };
-  }, [config.url, isSupported]);
+    if (connectionInfo.state === SocketConnectionState.CONNECTED) {
+      clientRef
+        .current!.subscribe(targetAccountId)
+        .catch((error) => console.warn(`Failed to auto-subscribe to ${targetAccountId}:`, error));
+    }
+  }, [targetAccountId, connectionInfo]);
 
   // Monitor connection state
   useEffect(() => {
     if (!clientRef.current) return;
 
     const pollConnectionState = () => {
-      const newState = clientRef.current!.getConnectionState();
       const newInfo = clientRef.current!.getConnectionInfo();
       const newSubscriptions = clientRef.current!.getSubscriptions();
 
-      setConnectionState(newState);
       setConnectionInfo(newInfo);
       setSubscriptions(newSubscriptions);
     };
 
-    // Poll connection state every second
-    const interval = setInterval(pollConnectionState, 1000);
-
-    // Initial poll
+    const interval = setInterval(pollConnectionState, 5000);
     pollConnectionState();
 
     return () => clearInterval(interval);
-  }, [clientRef.current]);
+  }, [connectionInfo]);
 
-  // Auto-connect
+  // Initialize client
   useEffect(() => {
-    if (!autoConnect || !clientRef.current || !isSupported) return;
+    if (!isSupported) return;
 
-    const connectAsync = async () => {
-      try {
-        await clientRef.current!.connect();
-      } catch (error) {
-        console.warn('Failed to auto-connect socket:', error);
+    clientRef.current = new SocketClient(config);
+
+    if (autoConnect)
+      clientRef.current!.connect().catch((error) => console.warn('Failed to auto-connect socket:', error));
+
+    return () => {
+      if (clientRef.current) {
+        clientRef.current.disconnect();
+        clientRef.current = null;
+        setConnectionInfo({
+          state: SocketConnectionState.DISCONNECTED,
+          reconnectAttempts: 0,
+        });
       }
     };
-
-    connectAsync();
-  }, [connectionState]);
-
-  // Auto-subscribe to account
-  useEffect(() => {
-    if (!autoSubscribe || !accountId || !clientRef.current || !isSupported)
-      return;
-
-    const subscribeToAccount = async () => {
-      if (connectionState === SocketConnectionState.CONNECTED) {
-        try {
-          await clientRef.current!.subscribe(accountId);
-        } catch (error) {
-          console.warn(`Failed to auto-subscribe to ${accountId}:`, error);
-        }
-      }
-    };
-
-    subscribeToAccount();
-  }, [accountId, connectionState]);
+  }, []);
 
   return {
-    // Connection state
-    connectionState,
     connectionInfo,
-    isConnected: connectionState === SocketConnectionState.CONNECTED,
+    isConnected: connectionInfo.state === SocketConnectionState.CONNECTED,
     isSupported,
-
-    // Connection control
     connect,
     disconnect,
     reconnect,
-
-    // Subscription management
     subscribe,
     unsubscribe,
     subscriptions,
-
-    // Event listeners
     on,
     off,
-
-    // Utilities
     getLatency,
     ping,
   };

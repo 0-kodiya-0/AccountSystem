@@ -1,27 +1,34 @@
-import React, { ReactNode } from 'react';
-import { ServicesProvider } from '../hooks/core/useServices';
+import React, { ReactNode, useEffect } from 'react';
+import { useAppStore } from '../store/useAppStore';
+import { AuthService } from '../services/AuthService';
+import { AccountService } from '../services/AccountService';
+import { NotificationService } from '../services/NotificationService';
+import { GoogleService } from '../services/GoogleService';
 import { HttpClient } from '../client/HttpClient';
 
-// Define the props interface
 interface AuthProviderProps {
   children: ReactNode;
   httpClient: HttpClient;
-  autoLoadSession?: boolean;
 }
 
-/**
- * Main AuthProvider component that wraps the entire authentication system
- *
- * This provider sets up:
- * - Services layer (HTTP client, auth service, account service, etc.)
- * - Global state management via Zustand store
- * - Makes all auth hooks available to child components
- */
-export const AuthProvider: React.FC<AuthProviderProps> = ({
-  children,
-  httpClient,
-}) => {
-  return (
-    <ServicesProvider httpClient={httpClient}>{children}</ServicesProvider>
-  );
+export const AuthProvider: React.FC<AuthProviderProps> = ({ children, httpClient }) => {
+  const { _setServices, initializeSession } = useAppStore();
+
+  useEffect(() => {
+    const authService = new AuthService(httpClient);
+    const accountService = new AccountService(httpClient);
+    const notificationService = new NotificationService(httpClient);
+    const googleService = new GoogleService(httpClient);
+
+    _setServices({
+      authService,
+      accountService,
+      notificationService,
+      googleService,
+    });
+
+    initializeSession();
+  }, [httpClient, _setServices, initializeSession]);
+
+  return <>{children}</>;
 };

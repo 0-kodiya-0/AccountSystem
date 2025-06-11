@@ -1,81 +1,51 @@
 import { useCallback, useState } from 'react';
-import { CallbackCode, CallbackData, OAuthProviders, Account } from '../types';
-import { useAuth } from '../hooks/useAuth';
-import { useServices } from './core/useServices';
-import { useAuthStore } from '../store/authStore';
+import { useAuth } from './useAuth';
+import { CallbackCode, CallbackData, OAuthProviders } from '../types';
 
-// Handler that receives data and optional default implementation
-type HandlerWithDefault<T> = (
-  data: T,
-  defaultHandler: () => Promise<void>,
-) => void | Promise<void>;
+type CallbackHandler<T = any> = (data: T) => void | Promise<void>;
 
 interface UseCallbackHandlerOptions {
-  // Complete override handlers - if provided, default won't run unless called
-  onOAuthSigninSuccess?: HandlerWithDefault<{
+  onOAuthSigninSuccess?: CallbackHandler<{
     accountId: string;
     name: string;
     provider: OAuthProviders;
-    account?: Account;
   }>;
-  onOAuthSignupSuccess?: HandlerWithDefault<{
+  onOAuthSignupSuccess?: CallbackHandler<{
     accountId: string;
     name: string;
     provider: OAuthProviders;
-    account?: Account;
   }>;
-  onOAuthPermissionSuccess?: HandlerWithDefault<{
+  onOAuthPermissionSuccess?: CallbackHandler<{
     accountId: string;
     service?: string;
     scopeLevel?: string;
     provider: OAuthProviders;
   }>;
-
-  onLocalSigninSuccess?: HandlerWithDefault<{
+  onLocalSigninSuccess?: CallbackHandler<{
     accountId: string;
     name: string;
-    account?: Account;
   }>;
-  onLocalSignupSuccess?: HandlerWithDefault<{
+  onLocalSignupSuccess?: CallbackHandler<{
     accountId: string;
     message?: string;
   }>;
-  onLocal2FARequired?: HandlerWithDefault<{
+  onLocal2FARequired?: CallbackHandler<{
     tempToken: string;
     accountId: string;
     message?: string;
   }>;
-  onLocalEmailVerified?: HandlerWithDefault<{ message?: string }>;
-  onLocalPasswordResetSuccess?: HandlerWithDefault<{ message?: string }>;
-
-  onLogoutSuccess?: HandlerWithDefault<{ accountId: string; message?: string }>;
-  onLogoutAllSuccess?: HandlerWithDefault<{
+  onLocalEmailVerified?: CallbackHandler<{ message?: string }>;
+  onLocalPasswordResetSuccess?: CallbackHandler<{ message?: string }>;
+  onLogoutSuccess?: CallbackHandler<{ accountId: string; message?: string }>;
+  onLogoutAllSuccess?: CallbackHandler<{
     accountIds: string[];
     message?: string;
   }>;
-
-  // Error handlers
-  onOAuthError?: HandlerWithDefault<{
+  onError?: CallbackHandler<{
     error: string;
     provider?: OAuthProviders;
     code?: string;
   }>;
-  onLocalAuthError?: HandlerWithDefault<{ error: string; code?: string }>;
-  onPermissionError?: HandlerWithDefault<{
-    error: string;
-    provider?: OAuthProviders;
-    code?: string;
-  }>;
-  onUserNotFound?: HandlerWithDefault<{ error: string }>;
-  onUserExists?: HandlerWithDefault<{ error: string }>;
-  onTokenExpired?: HandlerWithDefault<{ error: string }>;
-
-  // Special cases
-  onPermissionReauthorize?: HandlerWithDefault<{
-    accountId: string;
-    missingScopes?: string[];
-  }>;
-  onUnknownCode?: HandlerWithDefault<CallbackData>;
 }
 
 interface UseCallbackHandlerReturn {
@@ -83,511 +53,132 @@ interface UseCallbackHandlerReturn {
   handleAuthCallback: (params: URLSearchParams) => Promise<void>;
 }
 
-export const useAuthCallbackHandler = (
-  options: UseCallbackHandlerOptions = {},
-): UseCallbackHandlerReturn => {
-  const { googleService } = useServices();
-  const { setTempToken } = useAuthStore();
+export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}): UseCallbackHandlerReturn => {
+  const { setTempToken, refreshSession } = useAuth();
   const [error, setError] = useState<string | null>(null);
 
-  // Simple navigation helper
   const navigateToRoot = useCallback(() => {
-    window.location.href = '/';
+    if (typeof window !== 'undefined') {
+      window.location.href = '/';
+    }
   }, []);
 
-  // Create default handlers
-  const defaultOAuthSigninSuccess = useCallback(
-    async (data: {
-      accountId: string;
-      name: string;
-      provider: OAuthProviders;
-    }) => {
-      console.log(
-        `OAuth signin successful: ${data.name} (${data.accountId}) via ${data.provider}`,
-      );
-      navigateToRoot();
-    },
-    [navigateToRoot],
-  );
-
-  const defaultOAuthSignupSuccess = useCallback(
-    async (data: {
-      accountId: string;
-      name: string;
-      provider: OAuthProviders;
-    }) => {
-      console.log(
-        `OAuth signup successful: ${data.name} (${data.accountId}) via ${data.provider}`,
-      );
-      navigateToRoot();
-    },
-    [navigateToRoot],
-  );
-
-  const defaultOAuthPermissionSuccess = useCallback(
-    async (data: {
-      accountId: string;
-      service?: string;
-      scopeLevel?: string;
-      provider: OAuthProviders;
-    }) => {
-      console.log(
-        `OAuth permission granted: ${data.service} ${data.scopeLevel} for ${data.accountId} via ${data.provider}`,
-      );
-      navigateToRoot();
-    },
-    [navigateToRoot],
-  );
-
-  const defaultLocalSigninSuccess = useCallback(
-    async (data: { accountId: string; name: string }) => {
-      console.log(`Local signin successful: ${data.name} (${data.accountId})`);
-      navigateToRoot();
-    },
-    [navigateToRoot],
-  );
-
-  const defaultLocalSignupSuccess = useCallback(
-    async (data: { accountId: string; message?: string }) => {
-      console.log(
-        `Local signup successful: ${data.accountId} - ${data.message}`,
-      );
-      navigateToRoot();
-    },
-    [navigateToRoot],
-  );
-
-  const defaultLocal2FARequired = useCallback(
-    async (data: {
-      tempToken: string;
-      accountId: string;
-      message?: string;
-    }) => {
-      console.log(`2FA required for ${data.accountId}: ${data.message}`);
-      setTempToken(data.tempToken);
-      navigateToRoot();
-    },
-    [setTempToken, navigateToRoot],
-  );
-
-  const defaultLocalEmailVerified = useCallback(
-    async (data: { message?: string }) => {
-      console.log(`Email verified: ${data.message}`);
-      navigateToRoot();
-    },
-    [navigateToRoot],
-  );
-
-  const defaultLocalPasswordResetSuccess = useCallback(
-    async (data: { message?: string }) => {
-      console.log(`Password reset successful: ${data.message}`);
-      navigateToRoot();
-    },
-    [navigateToRoot],
-  );
-
-  const defaultLogoutSuccess = useCallback(
-    async (data: { accountId: string; message?: string }) => {
-      console.log(`Account logged out: ${data.accountId} - ${data.message}`);
-      navigateToRoot();
-    },
-    [navigateToRoot],
-  );
-
-  const defaultLogoutAllSuccess = useCallback(
-    async (data: { accountIds: string[]; message?: string }) => {
-      console.log(
-        `All accounts logged out: ${data.accountIds.join(', ')} - ${data.message}`,
-      );
-      navigateToRoot();
-    },
-    [navigateToRoot],
-  );
-
-  const defaultOAuthError = useCallback(
-    async (data: { error: string; provider?: OAuthProviders }) => {
-      console.error(`OAuth error (${data.provider}): ${data.error}`);
-      setError(data.error);
-      navigateToRoot();
-    },
-    [setError, navigateToRoot],
-  );
-
-  const defaultLocalAuthError = useCallback(
-    async (data: { error: string }) => {
-      console.error(`Local auth error: ${data.error}`);
-      setError(data.error);
-      navigateToRoot();
-    },
-    [setError, navigateToRoot],
-  );
-
-  const defaultPermissionError = useCallback(
-    async (data: { error: string; provider?: OAuthProviders }) => {
-      console.error(`Permission error (${data.provider}): ${data.error}`);
-      setError(data.error);
-      navigateToRoot();
-    },
-    [setError, navigateToRoot],
-  );
-
-  const defaultUserNotFound = useCallback(
-    async (data: { error: string }) => {
-      console.error(`User not found: ${data.error}`);
-      setError(data.error);
-      navigateToRoot();
-    },
-    [setError, navigateToRoot],
-  );
-
-  const defaultUserExists = useCallback(
-    async (data: { error: string }) => {
-      console.error(`User exists: ${data.error}`);
-      setError(data.error);
-      navigateToRoot();
-    },
-    [setError, navigateToRoot],
-  );
-
-  const defaultTokenExpired = useCallback(
-    async (data: { error: string }) => {
-      console.error(`Token expired: ${data.error}`);
-      setError(data.error);
-      navigateToRoot();
-    },
-    [setError, navigateToRoot],
-  );
-
-  const defaultPermissionReauthorize = useCallback(
-    async (data: { accountId: string }) => {
-      console.log(
-        `Permission reauthorization needed for account ${data.accountId}`,
-      );
-      googleService.reauthorizePermissions(data.accountId);
-    },
-    [googleService],
-  );
-
-  const defaultUnknownCode = useCallback(
-    async (data: CallbackData) => {
-      console.warn('Unknown callback code:', data);
-      setError('Unknown callback response');
-      navigateToRoot();
-    },
-    [setError, navigateToRoot],
-  );
-
-  // Simple execution logic - override OR default, not both
-  const executeCallbackHandler = useCallback(
+  const executeCallback = useCallback(
     async (callbackData: CallbackData): Promise<void> => {
       try {
         switch (callbackData.code) {
           case CallbackCode.OAUTH_SIGNIN_SUCCESS: {
-            const data = {
+            await refreshSession();
+            options.onOAuthSigninSuccess?.({
               accountId: callbackData.accountId!,
               name: callbackData.name!,
               provider: callbackData.provider!,
-            };
-
-            if (options.onOAuthSigninSuccess) {
-              // Override provided - call it with default that has data pre-bound
-              await options.onOAuthSigninSuccess(data, () =>
-                defaultOAuthSigninSuccess(data),
-              );
-            } else {
-              // No override - call default
-              await defaultOAuthSigninSuccess(data);
-            }
+            });
             break;
           }
 
           case CallbackCode.OAUTH_SIGNUP_SUCCESS: {
-            const data = {
+            await refreshSession();
+            options.onOAuthSignupSuccess?.({
               accountId: callbackData.accountId!,
               name: callbackData.name!,
               provider: callbackData.provider!,
-            };
-
-            if (options.onOAuthSignupSuccess) {
-              await options.onOAuthSignupSuccess(data, () =>
-                defaultOAuthSignupSuccess(data),
-              );
-            } else {
-              await defaultOAuthSignupSuccess(data);
-            }
+            });
             break;
           }
 
           case CallbackCode.OAUTH_PERMISSION_SUCCESS: {
-            const data = {
+            await refreshSession();
+            options.onOAuthPermissionSuccess?.({
               accountId: callbackData.accountId!,
               service: callbackData.service,
               scopeLevel: callbackData.scopeLevel,
               provider: callbackData.provider!,
-            };
-
-            if (options.onOAuthPermissionSuccess) {
-              await options.onOAuthPermissionSuccess(data, () =>
-                defaultOAuthPermissionSuccess(data),
-              );
-            } else {
-              await defaultOAuthPermissionSuccess(data);
-            }
+            });
             break;
           }
 
           case CallbackCode.LOCAL_SIGNIN_SUCCESS: {
-            const data = {
+            await refreshSession();
+            options.onLocalSigninSuccess?.({
               accountId: callbackData.accountId!,
               name: callbackData.name!,
-            };
-
-            if (options.onLocalSigninSuccess) {
-              await options.onLocalSigninSuccess(data, () =>
-                defaultLocalSigninSuccess(data),
-              );
-            } else {
-              await defaultLocalSigninSuccess(data);
-            }
+            });
             break;
           }
 
           case CallbackCode.LOCAL_SIGNUP_SUCCESS: {
-            const data = {
+            options.onLocalSignupSuccess?.({
               accountId: callbackData.accountId!,
               message: callbackData.message,
-            };
-
-            if (options.onLocalSignupSuccess) {
-              await options.onLocalSignupSuccess(data, () =>
-                defaultLocalSignupSuccess(data),
-              );
-            } else {
-              await defaultLocalSignupSuccess(data);
-            }
+            });
             break;
           }
 
           case CallbackCode.LOCAL_2FA_REQUIRED: {
-            const data = {
+            setTempToken(callbackData.tempToken!);
+            options.onLocal2FARequired?.({
               tempToken: callbackData.tempToken!,
               accountId: callbackData.accountId!,
               message: callbackData.message,
-            };
-
-            if (options.onLocal2FARequired) {
-              await options.onLocal2FARequired(data, () =>
-                defaultLocal2FARequired(data),
-              );
-            } else {
-              await defaultLocal2FARequired(data);
-            }
+            });
             break;
           }
 
           case CallbackCode.LOCAL_EMAIL_VERIFIED: {
-            const data = { message: callbackData.message };
-
-            if (options.onLocalEmailVerified) {
-              await options.onLocalEmailVerified(data, () =>
-                defaultLocalEmailVerified(data),
-              );
-            } else {
-              await defaultLocalEmailVerified(data);
-            }
+            options.onLocalEmailVerified?.({
+              message: callbackData.message,
+            });
             break;
           }
 
           case CallbackCode.LOCAL_PASSWORD_RESET_SUCCESS: {
-            const data = { message: callbackData.message };
-
-            if (options.onLocalPasswordResetSuccess) {
-              await options.onLocalPasswordResetSuccess(data, () =>
-                defaultLocalPasswordResetSuccess(data),
-              );
-            } else {
-              await defaultLocalPasswordResetSuccess(data);
-            }
+            options.onLocalPasswordResetSuccess?.({
+              message: callbackData.message,
+            });
             break;
           }
 
           case CallbackCode.LOGOUT_SUCCESS: {
-            const data = {
+            await refreshSession();
+            options.onLogoutSuccess?.({
               accountId: callbackData.accountId!,
               message: callbackData.message,
-            };
-
-            if (options.onLogoutSuccess) {
-              await options.onLogoutSuccess(data, () =>
-                defaultLogoutSuccess(data),
-              );
-            } else {
-              await defaultLogoutSuccess(data);
-            }
+            });
             break;
           }
 
           case CallbackCode.LOGOUT_ALL_SUCCESS: {
-            const data = {
+            await refreshSession();
+            options.onLogoutAllSuccess?.({
               accountIds: callbackData.accountIds!,
               message: callbackData.message,
-            };
-
-            if (options.onLogoutAllSuccess) {
-              await options.onLogoutAllSuccess(data, () =>
-                defaultLogoutAllSuccess(data),
-              );
-            } else {
-              await defaultLogoutAllSuccess(data);
-            }
-            break;
-          }
-
-          case CallbackCode.OAUTH_ERROR: {
-            const data = {
-              error: callbackData.error || 'OAuth authentication failed',
-              provider: callbackData.provider,
-              code: callbackData.code,
-            };
-
-            if (options.onOAuthError) {
-              await options.onOAuthError(data, () => defaultOAuthError(data));
-            } else {
-              await defaultOAuthError(data);
-            }
-            break;
-          }
-
-          case CallbackCode.LOCAL_AUTH_ERROR: {
-            const data = {
-              error: callbackData.error || 'Local authentication failed',
-              code: callbackData.code,
-            };
-
-            if (options.onLocalAuthError) {
-              await options.onLocalAuthError(data, () =>
-                defaultLocalAuthError(data),
-              );
-            } else {
-              await defaultLocalAuthError(data);
-            }
-            break;
-          }
-
-          case CallbackCode.PERMISSION_ERROR: {
-            const data = {
-              error: callbackData.error || 'Permission request failed',
-              provider: callbackData.provider,
-              code: callbackData.code,
-            };
-
-            if (options.onPermissionError) {
-              await options.onPermissionError(data, () =>
-                defaultPermissionError(data),
-              );
-            } else {
-              await defaultPermissionError(data);
-            }
-            break;
-          }
-
-          case CallbackCode.USER_NOT_FOUND: {
-            const data = { error: callbackData.error || 'User not found' };
-
-            if (options.onUserNotFound) {
-              await options.onUserNotFound(data, () =>
-                defaultUserNotFound(data),
-              );
-            } else {
-              await defaultUserNotFound(data);
-            }
-            break;
-          }
-
-          case CallbackCode.USER_EXISTS: {
-            const data = { error: callbackData.error || 'User already exists' };
-
-            if (options.onUserExists) {
-              await options.onUserExists(data, () => defaultUserExists(data));
-            } else {
-              await defaultUserExists(data);
-            }
-            break;
-          }
-
-          case CallbackCode.TOKEN_EXPIRED: {
-            const data = { error: callbackData.error || 'Token expired' };
-
-            if (options.onTokenExpired) {
-              await options.onTokenExpired(data, () =>
-                defaultTokenExpired(data),
-              );
-            } else {
-              await defaultTokenExpired(data);
-            }
-            break;
-          }
-
-          case CallbackCode.PERMISSION_REAUTHORIZE: {
-            const data = {
-              accountId: callbackData.accountId!,
-              missingScopes: callbackData.missingScopes,
-            };
-
-            if (options.onPermissionReauthorize) {
-              await options.onPermissionReauthorize(data, () =>
-                defaultPermissionReauthorize(data),
-              );
-            } else {
-              await defaultPermissionReauthorize(data);
-            }
+            });
             break;
           }
 
           default: {
-            if (options.onUnknownCode) {
-              await options.onUnknownCode(callbackData, () =>
-                defaultUnknownCode(callbackData),
-              );
-            } else {
-              await defaultUnknownCode(callbackData);
-            }
+            options.onError?.({
+              error: callbackData.error || 'Unknown callback error',
+              provider: callbackData.provider,
+              code: callbackData.code,
+            });
             break;
           }
         }
+
+        // Navigate to root if no custom handler provided
+        if (!options[`on${callbackData.code}` as keyof typeof options]) {
+          navigateToRoot();
+        }
       } catch (error) {
         console.error('Error handling callback:', error);
-        const errorMessage =
-          error instanceof Error
-            ? error.message
-            : 'Unknown callback handling error';
+        const errorMessage = error instanceof Error ? error.message : 'Unknown callback handling error';
         setError(errorMessage);
         navigateToRoot();
       }
     },
-    [
-      options,
-      defaultOAuthSigninSuccess,
-      defaultOAuthSignupSuccess,
-      defaultOAuthPermissionSuccess,
-      defaultLocalSigninSuccess,
-      defaultLocalSignupSuccess,
-      defaultLocal2FARequired,
-      defaultLocalEmailVerified,
-      defaultLocalPasswordResetSuccess,
-      defaultLogoutSuccess,
-      defaultLogoutAllSuccess,
-      defaultOAuthError,
-      defaultLocalAuthError,
-      defaultPermissionError,
-      defaultUserNotFound,
-      defaultUserExists,
-      defaultTokenExpired,
-      defaultPermissionReauthorize,
-      defaultUnknownCode,
-      setError,
-      navigateToRoot,
-    ],
+    [options, setTempToken, refreshSession, navigateToRoot],
   );
 
   const handleAuthCallback = useCallback(
@@ -613,20 +204,21 @@ export const useAuthCallbackHandler = (
           }
         }
 
-        await executeCallbackHandler(callbackData);
+        await executeCallback(callbackData);
 
         // Clean up URL parameters
-        const url = new URL(window.location.href);
-        url.search = '';
-        window.history.replaceState({}, '', url.toString());
+        if (typeof window !== 'undefined') {
+          const url = new URL(window.location.href);
+          url.search = '';
+          window.history.replaceState({}, '', url.toString());
+        }
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'Auth callback failed';
+        const message = error instanceof Error ? error.message : 'Auth callback failed';
         setError(message);
         console.error('Auth callback error:', error);
       }
     },
-    [executeCallbackHandler, setError],
+    [executeCallback, setError],
   );
 
   return { error, handleAuthCallback };
