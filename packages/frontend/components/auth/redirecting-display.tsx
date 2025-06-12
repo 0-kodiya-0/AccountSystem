@@ -1,5 +1,4 @@
-import { useEffect } from 'react';
-import { ExternalLink } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 interface RedirectingDisplayProps {
   destination: string;
@@ -8,15 +7,42 @@ interface RedirectingDisplayProps {
 }
 
 export function RedirectingDisplay({ destination, reason, delay = 1 }: RedirectingDisplayProps) {
+  const [remainingTime, setRemainingTime] = useState(delay);
+  const [hasRedirected, setHasRedirected] = useState(false);
+
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
+    // If delay is 0, redirect immediately
+    if (delay === 0) {
+      setHasRedirected(true);
+      window.location.href = destination;
+      return;
+    }
+
+    // Countdown timer that updates every second
+    const countdownInterval = setInterval(() => {
+      setRemainingTime((prev) => {
+        if (prev <= 1) {
+          clearInterval(countdownInterval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    // Auto redirect timer
+    const redirectTimeout = setTimeout(() => {
+      setHasRedirected(true);
       window.location.href = destination;
     }, delay * 1000);
 
-    return () => clearTimeout(timeoutId);
-  }, [destination, delay]);
+    return () => {
+      clearInterval(countdownInterval);
+      clearTimeout(redirectTimeout);
+    };
+  }, []);
 
   const handleManualRedirect = () => {
+    setHasRedirected(true);
     window.location.href = destination;
   };
 
@@ -28,17 +54,25 @@ export function RedirectingDisplay({ destination, reason, delay = 1 }: Redirecti
           <p className="text-sm text-muted-foreground">{reason}</p>
         </div>
 
-        <p className="text-sm text-muted-foreground">
-          Redirecting in {delay} second{delay !== 1 ? 's' : ''}...
-        </p>
+        {remainingTime > 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Redirecting in {remainingTime} second{remainingTime !== 1 ? 's' : ''}...
+          </p>
+        ) : (
+          !hasRedirected && (
+            <div className="space-y-4">
+              <p className="text-sm text-orange-600">Auto-redirect failed. Please click below to continue.</p>
+              <button
+                onClick={handleManualRedirect}
+                className="text-muted-foreground text-sm font-medium hover:text-foreground transition-colors underline"
+              >
+                Redirect manually →
+              </button>
+            </div>
+          )
+        )}
 
-        <button
-          onClick={handleManualRedirect}
-          className="px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-2"
-        >
-          <ExternalLink className="w-4 h-4" />
-          Go Now
-        </button>
+        {hasRedirected && <p className="text-sm text-green-600">Redirecting now...</p>}
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ import { LoadingState } from '../types';
 // Base props that are always available
 interface BaseAuthGuardProps {
   requireAccount?: boolean;
+  redirectDelay?: number;
   customRedirects?: {
     loginUrl?: string;
     accountsUrl?: string;
@@ -17,6 +18,7 @@ interface BaseAuthGuardProps {
   }>;
   redirectingComponent?: React.ComponentType<{
     destination: string;
+    delay?: number;
     reason?: string;
   }>;
   errorComponent?: React.ComponentType<{
@@ -51,6 +53,7 @@ type AuthGuardProps = AuthGuardPropsWithGuests | AuthGuardPropsWithRedirect | Au
 export function AuthGuard({
   children,
   requireAccount = true,
+  redirectDelay,
   allowGuests = false,
   redirectOnSuccess,
   customRedirects = {},
@@ -194,7 +197,7 @@ export function AuthGuard({
     const loginUrl = customRedirects.loginUrl || '/login';
 
     if (RedirectingComponent) {
-      return <RedirectingComponent destination={loginUrl} reason="User not authenticated" />;
+      return <RedirectingComponent destination={loginUrl} delay={redirectDelay} reason="User not authenticated" />;
     }
 
     // Default redirect or could trigger actual redirect
@@ -239,7 +242,9 @@ export function AuthGuard({
     const accountsUrl = customRedirects.accountsUrl || '/accounts';
 
     if (RedirectingComponent) {
-      return <RedirectingComponent destination={accountsUrl} reason="Account selection required" />;
+      return (
+        <RedirectingComponent destination={accountsUrl} delay={redirectDelay} reason="Account selection required" />
+      );
     }
 
     // Default redirect or could trigger actual redirect
@@ -282,7 +287,13 @@ export function AuthGuard({
   // All checks passed, show content or redirect
   if (redirectOnSuccess && loadingState === LoadingState.READY) {
     if (RedirectingComponent) {
-      return <RedirectingComponent destination={redirectOnSuccess} reason="Authentication successful" />;
+      return (
+        <RedirectingComponent
+          destination={redirectOnSuccess}
+          delay={redirectDelay}
+          reason="Authentication successful"
+        />
+      );
     }
 
     // Redirect to success URL

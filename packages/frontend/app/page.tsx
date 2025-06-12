@@ -1,3 +1,5 @@
+'use client';
+
 import { LoadingSpinner } from '@/components/auth/loading-spinner';
 import { AuthGuard } from '../../sdk/auth-react-sdk/src';
 import { RedirectingDisplay } from '@/components/auth/redirecting-display';
@@ -8,6 +10,7 @@ export default function RootPage() {
   return (
     <AuthGuard
       requireAccount={false}
+      redirectDelay={0}
       redirectOnSuccess="/dashboard"
       loadingComponent={LoadingSpinner}
       redirectingComponent={RedirectingDisplay}
