@@ -15,7 +15,8 @@ import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { AuthGuard, useAccount, useAuth } from '../../../../../sdk/auth-react-sdk/src';
 import { formatAccountName, getEnvironmentConfig } from '@/lib/utils';
 import { LoadingSpinner } from '@/components/auth/loading-spinner';
-import { RedirectingSpinner } from '@/components/auth/redirecting-spinner';
+import { RedirectingDisplay } from '@/components/auth/redirecting-display';
+import { ErrorDisplay } from '@/components/auth/error-display';
 
 export default function AccountSettingsPage() {
   const params = useParams();
@@ -122,7 +123,12 @@ export default function AccountSettingsPage() {
   };
 
   return (
-    <AuthGuard requireAccount={true} loadingComponent={LoadingSpinner} redirectingComponent={RedirectingSpinner}>
+    <AuthGuard
+      requireAccount
+      loadingComponent={LoadingSpinner}
+      redirectingComponent={RedirectingDisplay}
+      errorComponent={ErrorDisplay}
+    >
       <div className="min-h-screen bg-background">
         {/* Header */}
         <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">

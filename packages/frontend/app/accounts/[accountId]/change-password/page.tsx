@@ -21,7 +21,8 @@ import { PasswordStrengthIndicator } from '@/components/auth/password-strength-i
 import { AuthGuard, useAccount, useAuth } from '../../../../../sdk/auth-react-sdk/src';
 import { formatAccountName, getEnvironmentConfig, validatePasswordStrength } from '@/lib/utils';
 import { LoadingSpinner } from '@/components/auth/loading-spinner';
-import { RedirectingSpinner } from '@/components/auth/redirecting-spinner';
+import { RedirectingDisplay } from '@/components/auth/redirecting-display';
+import { ErrorDisplay } from '@/components/auth/error-display';
 
 const changePasswordSchema = z
   .object({
@@ -158,7 +159,12 @@ export default function ChangePasswordPage() {
   };
 
   return (
-    <AuthGuard requireAccount={true} loadingComponent={LoadingSpinner} redirectingComponent={RedirectingSpinner}>
+    <AuthGuard
+      requireAccount
+      loadingComponent={LoadingSpinner}
+      redirectingComponent={RedirectingDisplay}
+      errorComponent={ErrorDisplay}
+    >
       <div className="min-h-screen bg-background">
         {/* Header */}
         <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">

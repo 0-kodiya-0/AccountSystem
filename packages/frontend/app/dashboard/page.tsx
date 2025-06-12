@@ -3,14 +3,20 @@
 import { useAuth, AuthGuard } from '../../../sdk/auth-react-sdk/src';
 import { getEnvironmentConfig } from '@/lib/utils';
 import { LoadingSpinner } from '@/components/auth/loading-spinner';
-import { RedirectingSpinner } from '@/components/auth/redirecting-spinner';
+import { RedirectingDisplay } from '@/components/auth/redirecting-display';
+import { ErrorDisplay } from '@/components/auth/error-display';
 
 export default function DashboardPage() {
   const { currentAccount } = useAuth();
   const config = getEnvironmentConfig();
 
   return (
-    <AuthGuard requireAccount={true} loadingComponent={LoadingSpinner} redirectingComponent={RedirectingSpinner}>
+    <AuthGuard
+      requireAccount
+      loadingComponent={LoadingSpinner}
+      errorComponent={ErrorDisplay}
+      redirectingComponent={RedirectingDisplay}
+    >
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8">
           <div className="text-center space-y-6">

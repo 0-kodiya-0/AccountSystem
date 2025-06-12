@@ -211,9 +211,9 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
         }
 
         // Navigate to root if no custom handler provided
-        if (!options[`on${callbackData.code}` as keyof typeof options]) {
-          navigateToRoot();
-        }
+        // if (!options[`on${callbackData.code}` as keyof typeof options]) {
+        //   navigateToRoot();
+        // }
       } catch (error) {
         console.error('Error handling callback:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown callback handling error';

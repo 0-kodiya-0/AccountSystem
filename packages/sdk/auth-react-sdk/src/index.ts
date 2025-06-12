@@ -13,7 +13,6 @@ export { AuthGuard } from './components/AuthGuard';
 // Routing and Protection Hooks
 export { useAuthCallbackHandler, CallbackCode } from './hooks/useAuthCallbackHandler';
 export { useAuthRedirectHandler, RedirectCode } from './hooks/useAuthRedirectHandler';
-export { useAuthGuard, AuthGuardDecision } from './hooks/useAuthGuard';
 
 // Workflow Hooks (NEW)
 export { useAuth } from './hooks/useAuth';

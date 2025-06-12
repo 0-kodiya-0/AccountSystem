@@ -10,8 +10,9 @@ import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { NotificationCenter } from '@/components/notifications/notification-center';
 import { AuthGuard, useAuth } from '../../../sdk/auth-react-sdk/src';
 import { LoadingSpinner } from '@/components/auth/loading-spinner';
-import { RedirectingSpinner } from '@/components/auth/redirecting-spinner';
+import { RedirectingDisplay } from '@/components/auth/redirecting-display';
 import { getEnvironmentConfig } from '@/lib/utils';
+import { ErrorDisplay } from '@/components/auth/error-display';
 
 export default function NotificationsPage() {
   const router = useRouter();
@@ -19,7 +20,12 @@ export default function NotificationsPage() {
   const { currentAccount } = useAuth();
 
   return (
-    <AuthGuard requireAccount={true} loadingComponent={LoadingSpinner} redirectingComponent={RedirectingSpinner}>
+    <AuthGuard
+      requireAccount
+      loadingComponent={LoadingSpinner}
+      redirectingComponent={RedirectingDisplay}
+      errorComponent={ErrorDisplay}
+    >
       <div className="min-h-screen bg-background">
         {/* Header */}
         <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">

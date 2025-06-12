@@ -27,8 +27,9 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
 import { AuthGuard, use2FASetup, TwoFactorSetupStatus } from '../../../../../sdk/auth-react-sdk/src';
 import { LoadingSpinner } from '@/components/auth/loading-spinner';
-import { RedirectingSpinner } from '@/components/auth/redirecting-spinner';
+import { RedirectingDisplay } from '@/components/auth/redirecting-display';
 import Image from 'next/image';
+import { ErrorDisplay } from '@/components/auth/error-display';
 
 // Form schemas
 const passwordSchema = z.object({
@@ -465,7 +466,12 @@ export default function TwoFactorSetupPage() {
   };
 
   return (
-    <AuthGuard requireAccount={true} loadingComponent={LoadingSpinner} redirectingComponent={RedirectingSpinner}>
+    <AuthGuard
+      requireAccount
+      loadingComponent={LoadingSpinner}
+      redirectingComponent={RedirectingDisplay}
+      errorComponent={ErrorDisplay}
+    >
       <div className="min-h-screen bg-background">
         {/* Header */}
         <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">

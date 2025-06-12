@@ -11,12 +11,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
-import { Account, OAuthProviders, useAuth } from '../../../sdk/auth-react-sdk/src';
+import { Account, AuthGuard, OAuthProviders, useAuth } from '../../../sdk/auth-react-sdk/src';
 import { getEnvironmentConfig } from '@/lib/utils';
 import { UserAvatar } from '@/components/auth/user-avatar';
 import { LoadingSpinner } from '@/components/auth/loading-spinner';
+import { RedirectingDisplay } from '@/components/auth/redirecting-display';
+import { ErrorDisplay } from '@/components/auth/error-display';
 
-export default function AccountSelectionPage() {
+// Move the main content to a separate component
+function AccountSelectionContent() {
   const router = useRouter();
   const { toast } = useToast();
   const [switchingTo, setSwitchingTo] = useState<string | null>(null);
@@ -163,11 +166,6 @@ export default function AccountSelectionPage() {
       </Card>
     );
   };
-
-  // Show loading while fetching session data
-  if (session.isLoading) {
-    return <LoadingSpinner reason="Loading your accounts..." />;
-  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -341,5 +339,18 @@ export default function AccountSelectionPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function AccountSelectionPage() {
+  return (
+    <AuthGuard
+      requireAccount
+      loadingComponent={LoadingSpinner}
+      redirectingComponent={RedirectingDisplay}
+      errorComponent={ErrorDisplay}
+    >
+      <AccountSelectionContent />
+    </AuthGuard>
   );
 }
