@@ -1,35 +1,41 @@
-import express from "express";
-import * as SessionController from "./session.controller";
+import express from 'express';
+import * as SessionController from './session.controller';
 
 export const sessionRouter = express.Router({ mergeParams: true });
 
 /**
  * @route GET /account/session
- * @desc Get current account session information
+ * @desc Get current account session information (session data only)
  * @access Public (but requires session cookie)
+ * @returns {session: AccountSessionInfo}
  */
-sessionRouter.get("/session", SessionController.getAccountSession);
+sessionRouter.get('/session', SessionController.getAccountSession);
+
+/**
+ * @route GET /account/session/accounts
+ * @desc Get account data for session account IDs
+ * @access Public (but requires session cookie)
+ * @returns {SessionAccount[]}
+ */
+sessionRouter.get('/session/accounts', SessionController.getSessionAccountsData);
 
 /**
  * @route POST /account/session/current
  * @desc Set current account in session
  * @access Public (but requires session cookie)
  */
-sessionRouter.post("/session/current", SessionController.setCurrentAccount);
+sessionRouter.post('/session/current', SessionController.setCurrentAccount);
 
 /**
  * @route POST /account/session/add
  * @desc Add account to session (internal use)
  * @access Public
  */
-sessionRouter.post("/session/add", SessionController.addAccountToSession);
+sessionRouter.post('/session/add', SessionController.addAccountToSession);
 
 /**
  * @route POST /account/session/remove
  * @desc Remove account from session (internal use)
  * @access Public
  */
-sessionRouter.post(
-  "/session/remove",
-  SessionController.removeAccountFromSession,
-);
+sessionRouter.post('/session/remove', SessionController.removeAccountFromSession);

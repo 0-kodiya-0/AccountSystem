@@ -1,15 +1,26 @@
-import { asyncHandler } from "../../utils/response";
-import { JsonSuccess } from "../../types/response.types";
-import * as SessionService from "./session.service";
+import { asyncHandler } from '../../utils/response';
+import { JsonSuccess } from '../../types/response.types';
+import * as SessionService from './session.service';
 
 /**
- * Get current account session information
+ * Get current account session information (session data only)
  * This API will be called by frontend on mount to get session state
  */
 export const getAccountSession = asyncHandler(async (req, res, next) => {
-  const sessionInfo = await SessionService.getAccountSessionWithData(req);
+  const sessionInfo = await SessionService.getAccountSession(req);
 
   next(new JsonSuccess(sessionInfo, 200));
+});
+
+/**
+ * Get account data for session account IDs
+ * This should be called separately when account details are needed
+ */
+export const getSessionAccountsData = asyncHandler(async (req, res, next) => {
+  const { accountIds } = req.query;
+  const accountsData = await SessionService.getSessionAccountsData(req, accountIds as string[]);
+
+  next(new JsonSuccess(accountsData, 200));
 });
 
 /**
@@ -23,7 +34,7 @@ export const setCurrentAccount = asyncHandler(async (req, res, next) => {
   next(
     new JsonSuccess(
       {
-        message: "Current account updated successfully",
+        message: 'Current account updated successfully',
         currentAccountId: accountId,
       },
       200,
@@ -42,7 +53,7 @@ export const addAccountToSession = asyncHandler(async (req, res, next) => {
   next(
     new JsonSuccess(
       {
-        message: "Account added to session successfully",
+        message: 'Account added to session successfully',
         accountId,
       },
       200,
@@ -61,7 +72,7 @@ export const removeAccountFromSession = asyncHandler(async (req, res, next) => {
   next(
     new JsonSuccess(
       {
-        message: "Account removed from session successfully",
+        message: 'Account removed from session successfully',
         accountId,
       },
       200,

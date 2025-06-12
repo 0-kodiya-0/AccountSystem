@@ -1,31 +1,27 @@
-import { Request, Response } from "express";
+import { Request, Response } from 'express';
 import {
   getAccountSessionFromCookies,
   addAccountToSession as addAccountToSessionManager,
   removeAccountFromSession as removeAccountFromSessionManager,
   setCurrentAccountInSession as setCurrentAccountInSessionManager,
   clearAccountSession,
-} from "./session.manager";
-import { GetAccountSessionResponse } from "./session.types";
-import { ValidationUtils } from "../../utils/validation";
-import { BadRequestError, ApiErrorCode } from "../../types/response.types";
-import db from "../../config/db";
-import { toSafeSessionAccount } from "../../feature/account/Account.utils";
+} from './session.manager';
+import { GetAccountSessionDataResponse, GetAccountSessionResponse } from './session.types';
+import { ValidationUtils } from '../../utils/validation';
+import { BadRequestError, ApiErrorCode } from '../../types/response.types';
+import db from '../../config/db';
+import { toSafeSessionAccount } from '../../feature/account/Account.utils';
+import { logger } from '../../utils/logger';
 
 /**
- * Get account session with minimal account data
- * Only returns basic account information needed for session management
+ * Get account session information only
+ * Returns session data and validates account IDs still exist in database
+ * Automatically cleans up invalid accounts from session
  */
-export async function getAccountSessionWithData(
-  req: Request,
-): Promise<GetAccountSessionResponse> {
+export async function getAccountSession(req: Request): Promise<GetAccountSessionResponse> {
   const session = getAccountSessionFromCookies(req);
 
-  if (
-    !session.hasSession ||
-    !session.isValid ||
-    session.accountIds.length === 0
-  ) {
+  if (!session.hasSession || !session.isValid || session.accountIds.length === 0) {
     return {
       session: {
         hasSession: false,
@@ -37,40 +33,40 @@ export async function getAccountSessionWithData(
   }
 
   try {
-    // Fetch account data for all account IDs in session
+    // Only validate that account IDs still exist in database (no account data fetching)
     const models = await db.getModels();
-    const accountDocs = await models.accounts.Account.find({
-      _id: { $in: session.accountIds },
-    });
+    const existingAccountIds = await models.accounts.Account.find(
+      { _id: { $in: session.accountIds } },
+      { _id: 1 }, // Only fetch _id field for validation
+    ).distinct('_id');
 
-    // Convert to safe session account objects (minimal data only)
-    const accounts = accountDocs
-      .map((doc) => toSafeSessionAccount(doc))
-      .filter((doc) => doc != null);
-
-    // Verify all accounts still exist
-    const foundAccountIds: string[] = accounts.map((acc) => acc!.id);
-    const missingAccountIds = session.accountIds.filter(
-      (id) => !foundAccountIds.includes(id),
-    );
+    const foundAccountIds: string[] = existingAccountIds.map((id) => id.toString());
+    const missingAccountIds = session.accountIds.filter((id) => !foundAccountIds.includes(id));
 
     if (missingAccountIds.length > 0) {
-      // Some accounts no longer exist - we should clean up the session
-      // For now, just log and return the valid accounts
-      console.warn(
-        "Some accounts in session no longer exist:",
+      logger.warn('Some accounts in session no longer exist:', {
         missingAccountIds,
-      );
+        originalAccountIds: session.accountIds,
+        foundAccountIds,
+      });
+
+      // Clean up the session by removing missing accounts using existing function
+      clearAccountSession(req, {} as Response, missingAccountIds);
+
+      // Log the cleanup action
+      logger.info('Session cleaned up - removed invalid accounts:', {
+        removedAccountIds: missingAccountIds,
+        remainingAccountIds: foundAccountIds,
+      });
     }
 
     // Ensure current account is valid
     const validCurrentAccountId: string | null =
-      session.currentAccountId &&
-      foundAccountIds.includes(session.currentAccountId)
+      session.currentAccountId && foundAccountIds.includes(session.currentAccountId)
         ? session.currentAccountId
         : foundAccountIds.length > 0
-          ? foundAccountIds[0]
-          : null;
+        ? foundAccountIds[0]
+        : null;
 
     return {
       session: {
@@ -79,10 +75,9 @@ export async function getAccountSessionWithData(
         currentAccountId: validCurrentAccountId,
         isValid: true,
       },
-      accounts: accounts,
     };
   } catch (error) {
-    console.error("Error fetching account data for session:", error);
+    logger.error('Error validating session account IDs:', error);
 
     return {
       session: {
@@ -96,6 +91,38 @@ export async function getAccountSessionWithData(
 }
 
 /**
+ * Get account details for session account IDs
+ * This should be called separately when account data is needed
+ */
+export async function getSessionAccountsData(
+  req: Request,
+  accountIds?: string[],
+): Promise<GetAccountSessionDataResponse> {
+  const session = getAccountSessionFromCookies(req);
+
+  if (accountIds && accountIds.length > 0) {
+    accountIds = accountIds.filter((id) => session.accountIds.includes(id));
+  } else {
+    accountIds = session.accountIds;
+  }
+
+  try {
+    const models = await db.getModels();
+    const accountDocs = await models.accounts.Account.find({
+      _id: { $in: accountIds },
+    });
+
+    // Convert to safe session account objects (minimal data only)
+    const accounts = accountDocs.map((doc) => toSafeSessionAccount(doc)).filter((doc) => doc != null);
+
+    return accounts;
+  } catch (error) {
+    logger.error('Error fetching session account data:', error);
+    return [];
+  }
+}
+
+/**
  * Add account to session
  */
 export async function addAccountToSession(
@@ -104,18 +131,14 @@ export async function addAccountToSession(
   accountId: string,
   setAsCurrent: boolean = true,
 ): Promise<void> {
-  ValidationUtils.validateObjectId(accountId, "Account ID");
+  ValidationUtils.validateObjectId(accountId, 'Account ID');
 
   // Verify account exists
   const models = await db.getModels();
   const account = await models.accounts.Account.findById(accountId);
 
   if (!account) {
-    throw new BadRequestError(
-      "Account not found",
-      404,
-      ApiErrorCode.USER_NOT_FOUND,
-    );
+    throw new BadRequestError('Account not found', 404, ApiErrorCode.USER_NOT_FOUND);
   }
 
   addAccountToSessionManager(req, res, accountId, setAsCurrent);
@@ -124,21 +147,13 @@ export async function addAccountToSession(
 /**
  * Remove account from session
  */
-export async function removeAccountFromSession(
-  req: Request,
-  res: Response,
-  accountId: string,
-): Promise<void> {
-  ValidationUtils.validateObjectId(accountId, "Account ID");
+export async function removeAccountFromSession(req: Request, res: Response, accountId: string): Promise<void> {
+  ValidationUtils.validateObjectId(accountId, 'Account ID');
 
   const session = getAccountSessionFromCookies(req);
 
   if (!session.accountIds.includes(accountId)) {
-    throw new BadRequestError(
-      "Account not found in session",
-      400,
-      ApiErrorCode.USER_NOT_FOUND,
-    );
+    throw new BadRequestError('Account not found in session', 400, ApiErrorCode.USER_NOT_FOUND);
   }
 
   removeAccountFromSessionManager(req, res, accountId);
@@ -147,22 +162,14 @@ export async function removeAccountFromSession(
 /**
  * Set current account in session
  */
-export async function setCurrentAccountInSession(
-  req: Request,
-  res: Response,
-  accountId: string | null,
-): Promise<void> {
+export async function setCurrentAccountInSession(req: Request, res: Response, accountId: string | null): Promise<void> {
   if (accountId) {
-    ValidationUtils.validateObjectId(accountId, "Account ID");
+    ValidationUtils.validateObjectId(accountId, 'Account ID');
 
     const session = getAccountSessionFromCookies(req);
 
     if (!session.accountIds.includes(accountId)) {
-      throw new BadRequestError(
-        "Account not found in session",
-        400,
-        ApiErrorCode.USER_NOT_FOUND,
-      );
+      throw new BadRequestError('Account not found in session', 400, ApiErrorCode.USER_NOT_FOUND);
     }
   }
 
@@ -172,24 +179,15 @@ export async function setCurrentAccountInSession(
 /**
  * Clear entire account session
  */
-export async function clearEntireAccountSession(
-  req: Request,
-  res: Response,
-): Promise<void> {
+export async function clearEntireAccountSession(req: Request, res: Response): Promise<void> {
   clearAccountSession(req, res);
 }
 
 /**
  * Remove specific accounts from session (for logout scenarios)
  */
-export async function removeAccountsFromSession(
-  req: Request,
-  res: Response,
-  accountIds: string[],
-): Promise<void> {
-  accountIds.forEach((id) =>
-    ValidationUtils.validateObjectId(id, "Account ID"),
-  );
+export async function removeAccountsFromSession(req: Request, res: Response, accountIds: string[]): Promise<void> {
+  accountIds.forEach((id) => ValidationUtils.validateObjectId(id, 'Account ID'));
 
   clearAccountSession(req, res, accountIds);
 }

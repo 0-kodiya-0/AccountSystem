@@ -1,8 +1,4 @@
-import {
-  AccountType,
-  AccountStatus,
-  OAuthProviders,
-} from "../../feature/account";
+import { AccountType, AccountStatus, OAuthProviders } from '../../feature/account';
 
 export interface SessionError {
   error: boolean;
@@ -44,7 +40,8 @@ export interface SessionAccount {
   provider?: OAuthProviders;
 }
 
+export type GetAccountSessionDataResponse = SessionAccount[];
+
 export interface GetAccountSessionResponse {
   session: AccountSessionInfo;
-  accounts?: SessionAccount[]; // Minimal account data for session management
 }

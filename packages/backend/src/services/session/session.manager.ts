@@ -1,25 +1,18 @@
-import jwt from "jsonwebtoken";
-import { Request, Response } from "express";
-import { AccountType } from "../../feature/account/Account.types";
-import {
-  refreshGoogleToken,
-  revokeTokens,
-} from "../../feature/google/services/token/token.services";
-import { createLocalJwtToken } from "../../feature/local_auth";
-import { createOAuthJwtToken } from "../../feature/oauth/OAuth.jwt";
-import { getJwtSecret, getNodeEnv } from "../../config/env.config";
-import { getStrippedPathPrefix } from "../../utils/redirect";
-import {
-  AccountSessionData,
-  AccountSessionTokenPayload,
-  AccountSessionInfo,
-} from "./session.types";
-import { logger } from "../../utils/logger";
+import jwt from 'jsonwebtoken';
+import { Request, Response } from 'express';
+import { AccountType } from '../../feature/account/Account.types';
+import { refreshGoogleToken, revokeTokens } from '../../feature/google/services/token/token.services';
+import { createLocalJwtToken } from '../../feature/local_auth';
+import { createOAuthJwtToken } from '../../feature/oauth/OAuth.jwt';
+import { getJwtSecret, getNodeEnv } from '../../config/env.config';
+import { getStrippedPathPrefix } from '../../utils/redirect';
+import { AccountSessionData, AccountSessionTokenPayload, AccountSessionInfo } from './session.types';
+import { logger } from '../../utils/logger';
 
 // Environment variables
 const JWT_SECRET = getJwtSecret();
 const COOKIE_MAX_AGE = 365 * 24 * 60 * 60 * 1000; // 1 year in milliseconds
-const ACCOUNT_SESSION_COOKIE_NAME = "account_session";
+const ACCOUNT_SESSION_COOKIE_NAME = 'account_session';
 // ============================================================================
 // ACCOUNT SESSION TOKEN MANAGEMENT
 // ============================================================================
@@ -27,9 +20,7 @@ const ACCOUNT_SESSION_COOKIE_NAME = "account_session";
 /**
  * Create a non-expiring account session token
  */
-export function createAccountSessionToken(
-  sessionData: AccountSessionData,
-): string {
+export function createAccountSessionToken(sessionData: AccountSessionData): string {
   const payload: AccountSessionTokenPayload = {
     ...sessionData,
     iat: Math.floor(Date.now() / 1000),
@@ -42,9 +33,7 @@ export function createAccountSessionToken(
 /**
  * Verify and decode account session token
  */
-export function verifyAccountSessionToken(
-  token: string,
-): AccountSessionData | null {
+export function verifyAccountSessionToken(token: string): AccountSessionData | null {
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as AccountSessionTokenPayload;
 
@@ -53,7 +42,7 @@ export function verifyAccountSessionToken(
       currentAccountId: decoded.currentAccountId || null,
     };
   } catch (error) {
-    logger.warn("Invalid account session token:", error);
+    logger.warn('Invalid account session token:', error);
     return null;
   }
 }
@@ -61,21 +50,25 @@ export function verifyAccountSessionToken(
 /**
  * Set account session cookie
  */
-export function setAccountSessionCookie(
-  req: Request,
-  res: Response,
-  sessionData: AccountSessionData,
-): void {
+export function setAccountSessionCookie(req: Request, res: Response, sessionData: AccountSessionData): void {
   const token = createAccountSessionToken(sessionData);
+
+  logger.info('Setting account session cookie', {
+    accountIds: sessionData.accountIds,
+    currentAccountId: sessionData.currentAccountId,
+    timestamp: new Date().toISOString(),
+    userAgent: req.get('User-Agent'),
+    ip: req.ip,
+  });
 
   res.cookie(ACCOUNT_SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: getNodeEnv() === "production",
-    path: "/", // Set at root path as requested
-    sameSite: "lax",
+    secure: getNodeEnv() === 'production',
+    path: '/', // Set at root path as requested
+    sameSite: 'lax',
   });
 
-  logger.info("Account session cookie set", {
+  logger.info('Account session cookie set', {
     accountIds: sessionData.accountIds,
     currentAccountId: sessionData.currentAccountId,
   });
@@ -132,9 +125,7 @@ export function addAccountToSession(
 
   const newSessionData: AccountSessionData = {
     accountIds: newAccountIds,
-    currentAccountId: setAsCurrent
-      ? accountId
-      : currentSession.currentAccountId,
+    currentAccountId: setAsCurrent ? accountId : currentSession.currentAccountId,
   };
 
   setAccountSessionCookie(req, res, newSessionData);
@@ -143,16 +134,10 @@ export function addAccountToSession(
 /**
  * Update account session - remove account
  */
-export function removeAccountFromSession(
-  req: Request,
-  res: Response,
-  accountId: string,
-): void {
+export function removeAccountFromSession(req: Request, res: Response, accountId: string): void {
   const currentSession = getAccountSessionFromCookies(req);
 
-  const newAccountIds = currentSession.accountIds.filter(
-    (id) => id !== accountId,
-  );
+  const newAccountIds = currentSession.accountIds.filter((id) => id !== accountId);
 
   // If removing current account, switch to first remaining account or null
   const newCurrentAccountId =
@@ -173,11 +158,7 @@ export function removeAccountFromSession(
 /**
  * Update account session - set current account
  */
-export function setCurrentAccountInSession(
-  req: Request,
-  res: Response,
-  accountId: string | null,
-): void {
+export function setCurrentAccountInSession(req: Request, res: Response, accountId: string | null): void {
   const currentSession = getAccountSessionFromCookies(req);
 
   // If setting a specific account, ensure it's in the accounts list
@@ -196,21 +177,13 @@ export function setCurrentAccountInSession(
 /**
  * Clear account session completely
  */
-export function clearAccountSession(
-  req: Request,
-  res: Response,
-  accountIds?: string[],
-): void {
+export function clearAccountSession(req: Request, res: Response, accountIds?: string[]): void {
   if (accountIds && accountIds.length > 0) {
     // Remove specific accounts
     const currentSession = getAccountSessionFromCookies(req);
-    const remainingAccountIds = currentSession.accountIds.filter(
-      (id) => !accountIds.includes(id),
-    );
+    const remainingAccountIds = currentSession.accountIds.filter((id) => !accountIds.includes(id));
 
-    const newCurrentAccountId = accountIds.includes(
-      currentSession.currentAccountId || "",
-    )
+    const newCurrentAccountId = accountIds.includes(currentSession.currentAccountId || '')
       ? remainingAccountIds.length > 0
         ? remainingAccountIds[0]
         : null
@@ -224,8 +197,8 @@ export function clearAccountSession(
     setAccountSessionCookie(req, res, newSessionData);
   } else {
     // Clear entire session
-    res.clearCookie(ACCOUNT_SESSION_COOKIE_NAME, { path: "/" });
-    logger.info("Account session cleared completely");
+    res.clearCookie(ACCOUNT_SESSION_COOKIE_NAME, { path: '/' });
+    logger.info('Account session cleared completely');
   }
 }
 
@@ -252,28 +225,23 @@ export const setAccessTokenCookie = (
 ): void => {
   res.cookie(`access_token_${accountId}`, accessToken, {
     httpOnly: true,
-    secure: getNodeEnv() === "production",
+    secure: getNodeEnv() === 'production',
     maxAge: expiresIn,
     path: `${getStrippedPathPrefix(req)}/${accountId}`,
-    sameSite: "lax",
+    sameSite: 'lax',
   });
 };
 
 /**
  * Sets the refresh token as a cookie for a specific account
  */
-export const setRefreshTokenCookie = (
-  req: Request,
-  res: Response,
-  accountId: string,
-  refreshToken: string,
-): void => {
+export const setRefreshTokenCookie = (req: Request, res: Response, accountId: string, refreshToken: string): void => {
   res.cookie(`refresh_token_${accountId}`, refreshToken, {
     httpOnly: true,
-    secure: getNodeEnv() === "production",
+    secure: getNodeEnv() === 'production',
     maxAge: COOKIE_MAX_AGE,
     path: `${getStrippedPathPrefix(req)}/${accountId}/account/refreshToken`,
-    sameSite: "lax",
+    sameSite: 'lax',
   });
 };
 
@@ -303,15 +271,12 @@ export const setupCompleteAccountSession = (
 /**
  * Extract access token from cookies or authorization header
  */
-export const extractAccessToken = (
-  req: Request,
-  accountId: string,
-): string | null => {
+export const extractAccessToken = (req: Request, accountId: string): string | null => {
   const cookieToken = req.cookies[`access_token_${accountId}`];
   if (cookieToken) return cookieToken;
 
   const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith("Bearer ")) {
+  if (authHeader && authHeader.startsWith('Bearer ')) {
     return authHeader.substring(7);
   }
 
@@ -321,10 +286,7 @@ export const extractAccessToken = (
 /**
  * Extract refresh token from cookies
  */
-export const extractRefreshToken = (
-  req: Request,
-  accountId: string,
-): string | null => {
+export const extractRefreshToken = (req: Request, accountId: string): string | null => {
   return req.cookies[`refresh_token_${accountId}`];
 };
 
@@ -354,11 +316,7 @@ export const clearSession = (res: Response, accountId: string) => {
 /**
  * Clear account session and auth tokens - with account session integration
  */
-export const clearAccountWithSession = (
-  req: Request,
-  res: Response,
-  accountId: string,
-): void => {
+export const clearAccountWithSession = (req: Request, res: Response, accountId: string): void => {
   // Clear auth cookies
   clearSession(res, accountId);
 
@@ -369,11 +327,7 @@ export const clearAccountWithSession = (
 /**
  * Clear all accounts session and auth tokens - with account session integration
  */
-export const clearAllAccountsWithSession = (
-  req: Request,
-  res: Response,
-  accountIds: string[],
-): void => {
+export const clearAllAccountsWithSession = (req: Request, res: Response, accountIds: string[]): void => {
   // Clear auth cookies
   clearAllSessions(res, accountIds);
 
@@ -393,7 +347,7 @@ export const refreshAccessToken = async (
     const tokens = await refreshGoogleToken(oauthRefreshToken);
 
     if (!tokens.access_token || !tokens.expiry_date) {
-      throw new Error("Failed to refresh Google access token");
+      throw new Error('Failed to refresh Google access token');
     }
 
     const newJwtToken = await createOAuthJwtToken(
@@ -427,19 +381,9 @@ export const handleTokenRefresh = async (
   req: Request,
   res: Response,
 ): Promise<void> => {
-  const newTokenInfo = await refreshAccessToken(
-    accountId,
-    extractedRefreshToken,
-    accountType,
-  );
+  const newTokenInfo = await refreshAccessToken(accountId, extractedRefreshToken, accountType);
 
-  setAccessTokenCookie(
-    req,
-    res,
-    accountId,
-    newTokenInfo.accessToken,
-    newTokenInfo.expiresIn,
-  );
+  setAccessTokenCookie(req, res, accountId, newTokenInfo.accessToken, newTokenInfo.expiresIn);
 };
 
 /**
@@ -453,10 +397,7 @@ export const revokeAuthTokens = async (
   res: Response,
 ): Promise<any> => {
   if (accountType === AccountType.OAuth) {
-    const result = await revokeTokens(
-      extractedAccessToken,
-      extractedRefreshToken,
-    );
+    const result = await revokeTokens(extractedAccessToken, extractedRefreshToken);
     clearSession(res, accountId);
     return result;
   } else {
