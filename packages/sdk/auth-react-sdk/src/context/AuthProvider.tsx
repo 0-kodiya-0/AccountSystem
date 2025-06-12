@@ -1,4 +1,4 @@
-import React, { ReactNode, useEffect } from 'react';
+import React, { JSX, ReactNode, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { AuthService } from '../services/AuthService';
 import { AccountService } from '../services/AccountService';
@@ -11,7 +11,7 @@ interface AuthProviderProps {
   httpClient: HttpClient;
 }
 
-export const AuthProvider: React.FC<AuthProviderProps> = ({ children, httpClient }) => {
+export const AuthProvider = ({ children, httpClient }: AuthProviderProps): JSX.Element | null => {
   const { _setServices, initializeSession } = useAppStore();
 
   useEffect(() => {

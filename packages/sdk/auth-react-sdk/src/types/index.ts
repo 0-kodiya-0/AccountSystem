@@ -86,9 +86,7 @@ export interface TwoFactorVerifyRequest {
   tempToken: string;
 }
 
-export interface PasswordResetRequest {
-  email: string;
-}
+export type PasswordResetRequest = string;
 
 export interface ResetPasswordRequest {
   password: string;
@@ -99,6 +97,32 @@ export interface PasswordChangeRequest {
   oldPassword: string;
   newPassword: string;
   confirmPassword: string;
+}
+
+export interface PasswordResetRequestResponse {
+  message: string;
+}
+
+export interface ResetPasswordResponse {
+  message: string;
+}
+
+export interface PasswordChangeResponse {
+  message: string;
+}
+
+export interface TwoFactorSetupVerificationResponse {
+  message: string;
+}
+
+export interface BackupCodesResponse {
+  message: string;
+  backupCodes: string[];
+}
+
+export interface SessionUpdateResponse {
+  message: string;
+  currentAccountId: string | null;
 }
 
 export interface TwoFactorSetupRequest {

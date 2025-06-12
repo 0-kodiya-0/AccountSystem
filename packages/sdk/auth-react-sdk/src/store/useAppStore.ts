@@ -385,7 +385,7 @@ export const useAppStore = create<AppState & AppActions>()(
         if (!services) throw new Error('Services not initialized');
 
         try {
-          await services.authService.requestPasswordReset({ email });
+          await services.authService.requestPasswordReset(email);
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Password reset request failed';
           set((state) => {

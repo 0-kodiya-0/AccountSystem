@@ -9,6 +9,12 @@ import {
   PasswordChangeRequest,
   TwoFactorSetupRequest,
   TwoFactorSetupResponse,
+  SessionUpdateResponse,
+  PasswordChangeResponse,
+  PasswordResetRequestResponse,
+  ResetPasswordResponse,
+  TwoFactorSetupVerificationResponse,
+  BackupCodesResponse,
 } from '../types';
 import { HttpClient } from '../client/HttpClient';
 
@@ -19,9 +25,7 @@ export class AuthService {
     return this.httpClient.get('/account/session');
   }
 
-  async setCurrentAccountInSession(
-    accountId: string | null,
-  ): Promise<{ message: string; currentAccountId: string | null }> {
+  async setCurrentAccountInSession(accountId: string | null): Promise<SessionUpdateResponse> {
     return this.httpClient.post('/account/session/current', { accountId });
   }
 
@@ -41,15 +45,15 @@ export class AuthService {
     return this.httpClient.get(`/auth/verify-email?token=${token}`);
   }
 
-  async requestPasswordReset(data: PasswordResetRequest): Promise<{ message: string }> {
+  async requestPasswordReset(data: PasswordResetRequest): Promise<PasswordResetRequestResponse> {
     return this.httpClient.post('/auth/reset-password-request', data);
   }
 
-  async resetPassword(token: string, data: ResetPasswordRequest): Promise<{ message: string }> {
+  async resetPassword(token: string, data: ResetPasswordRequest): Promise<ResetPasswordResponse> {
     return this.httpClient.post(`/auth/reset-password?token=${token}`, data);
   }
 
-  async changePassword(accountId: string, data: PasswordChangeRequest): Promise<{ message: string }> {
+  async changePassword(accountId: string, data: PasswordChangeRequest): Promise<PasswordChangeResponse> {
     return this.httpClient.post(`/${accountId}/auth/change-password`, data);
   }
 
@@ -57,13 +61,13 @@ export class AuthService {
     return this.httpClient.post(`/${accountId}/auth/setup-two-factor`, data);
   }
 
-  async verifyTwoFactorSetup(accountId: string, token: string): Promise<{ message: string }> {
+  async verifyTwoFactorSetup(accountId: string, token: string): Promise<TwoFactorSetupVerificationResponse> {
     return this.httpClient.post(`/${accountId}/auth/verify-two-factor-setup`, {
       token,
     });
   }
 
-  async generateBackupCodes(accountId: string, password: string): Promise<{ backupCodes: string[] }> {
+  async generateBackupCodes(accountId: string, password: string): Promise<BackupCodesResponse> {
     return this.httpClient.post(`/${accountId}/auth/generate-backup-codes`, {
       password,
     });
