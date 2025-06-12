@@ -5,7 +5,7 @@ import { AuthService } from '../services/AuthService';
 import { AccountService } from '../services/AccountService';
 import { NotificationService } from '../services/NotificationService';
 import { GoogleService } from '../services/GoogleService';
-import type {
+import {
   Account,
   GetAccountSessionResponse,
   AccountSessionInfo,
@@ -24,6 +24,7 @@ import type {
   NotificationListResponse,
   GoogleTokenInfo,
   TokenCheckResponse,
+  LoadingState,
 } from '../types';
 import { enableMapSet } from 'immer';
 
@@ -35,25 +36,25 @@ interface AppState {
     accountIds: string[];
     currentAccountId: string | null;
     isValid: boolean;
-    isLoading: boolean;
+    loadingState: LoadingState;
     error: string | null;
   };
 
   accounts: {
     data: Map<string, Account>;
-    loadingStates: Map<string, boolean>;
+    loadingStates: Map<string, LoadingState>;
     errors: Map<string, string>;
   };
 
   ui: {
-    isInitializing: boolean;
+    initializationState: LoadingState;
     globalError: string | null;
   };
 
   notifications: {
     byAccount: Map<string, Notification[]>;
     unreadCounts: Map<string, number>;
-    loading: Map<string, boolean>;
+    loadingStates: Map<string, LoadingState>;
     errors: Map<string, string>;
   };
 
@@ -116,6 +117,20 @@ interface AppActions {
   setGlobalError: (error: string | null) => void;
   clearError: (key: string) => void;
 
+  // Helper methods for checking states
+  isSessionLoading: () => boolean;
+  isSessionReady: () => boolean;
+  isSessionIdle: () => boolean;
+  isAccountLoading: (accountId: string) => boolean;
+  isAccountReady: (accountId: string) => boolean;
+  isNotificationsLoading: (accountId: string) => boolean;
+  isNotificationsReady: (accountId: string) => boolean;
+
+  // Reset methods
+  resetAccountState: (accountId: string) => void;
+  resetSessionState: () => void;
+  resetNotificationsState: (accountId: string) => void;
+
   _setServices: (services: {
     authService: AuthService;
     accountService: AccountService;
@@ -141,7 +156,7 @@ export const useAppStore = create<AppState & AppActions>()(
         accountIds: [],
         currentAccountId: null,
         isValid: false,
-        isLoading: false,
+        loadingState: LoadingState.IDLE,
         error: null,
       },
 
@@ -152,14 +167,14 @@ export const useAppStore = create<AppState & AppActions>()(
       },
 
       ui: {
-        isInitializing: true,
+        initializationState: LoadingState.IDLE,
         globalError: null,
       },
 
       notifications: {
         byAccount: new Map(),
         unreadCounts: new Map(),
-        loading: new Map(),
+        loadingStates: new Map(),
         errors: new Map(),
       },
 
@@ -173,8 +188,9 @@ export const useAppStore = create<AppState & AppActions>()(
         if (!services) throw new Error('Services not initialized');
 
         set((state) => {
-          state.session.isLoading = true;
+          state.session.loadingState = LoadingState.LOADING;
           state.session.error = null;
+          state.ui.initializationState = LoadingState.LOADING;
         });
 
         try {
@@ -183,24 +199,26 @@ export const useAppStore = create<AppState & AppActions>()(
           set((state) => {
             state.session = {
               ...response.session,
-              isLoading: false,
+              loadingState: LoadingState.READY,
               error: null,
             };
 
-            state.ui.isInitializing = false;
+            state.ui.initializationState = LoadingState.READY;
 
             if (response.accounts) {
               response.accounts.forEach((account) => {
                 state.accounts.data.set(account.id, account as Account);
+                state.accounts.loadingStates.set(account.id, LoadingState.READY);
               });
             }
           });
         } catch (error) {
           set((state) => {
-            state.session.isLoading = false;
+            state.session.loadingState = LoadingState.ERROR;
             state.session.error = error instanceof Error ? error.message : 'Failed to load session';
-            state.ui.isInitializing = false;
+            state.ui.initializationState = LoadingState.ERROR;
           });
+          throw error;
         }
       },
 
@@ -208,7 +226,7 @@ export const useAppStore = create<AppState & AppActions>()(
         if (!services) throw new Error('Services not initialized');
 
         set((state) => {
-          state.session.isLoading = true;
+          state.session.loadingState = LoadingState.LOADING;
         });
 
         try {
@@ -216,12 +234,12 @@ export const useAppStore = create<AppState & AppActions>()(
 
           set((state) => {
             state.session.currentAccountId = accountId;
-            state.session.isLoading = false;
+            state.session.loadingState = LoadingState.READY;
           });
         } catch (error) {
           set((state) => {
             state.session.error = error instanceof Error ? error.message : 'Failed to set current account';
-            state.session.isLoading = false;
+            state.session.loadingState = LoadingState.ERROR;
           });
         }
       },
@@ -237,7 +255,7 @@ export const useAppStore = create<AppState & AppActions>()(
             accountIds: [],
             currentAccountId: null,
             isValid: false,
-            isLoading: false,
+            loadingState: LoadingState.IDLE,
             error: null,
           };
 
@@ -247,10 +265,11 @@ export const useAppStore = create<AppState & AppActions>()(
 
           state.notifications.byAccount.clear();
           state.notifications.unreadCounts.clear();
-          state.notifications.loading.clear();
+          state.notifications.loadingStates.clear();
           state.notifications.errors.clear();
 
           state.tempToken = null;
+          state.ui.initializationState = LoadingState.IDLE;
         });
       },
 
@@ -258,7 +277,7 @@ export const useAppStore = create<AppState & AppActions>()(
         if (!services) throw new Error('Services not initialized');
 
         set((state) => {
-          state.accounts.loadingStates.set(accountId, true);
+          state.accounts.loadingStates.set(accountId, LoadingState.LOADING);
           state.accounts.errors.delete(accountId);
         });
 
@@ -267,13 +286,13 @@ export const useAppStore = create<AppState & AppActions>()(
 
           set((state) => {
             state.accounts.data.set(accountId, account);
-            state.accounts.loadingStates.set(accountId, false);
+            state.accounts.loadingStates.set(accountId, LoadingState.READY);
           });
 
           return account;
         } catch (error) {
           set((state) => {
-            state.accounts.loadingStates.set(accountId, false);
+            state.accounts.loadingStates.set(accountId, LoadingState.ERROR);
             state.accounts.errors.set(accountId, error instanceof Error ? error.message : 'Failed to load account');
           });
           throw error;
@@ -296,7 +315,7 @@ export const useAppStore = create<AppState & AppActions>()(
           state.accounts.errors.delete(accountId);
           state.notifications.byAccount.delete(accountId);
           state.notifications.unreadCounts.delete(accountId);
-          state.notifications.loading.delete(accountId);
+          state.notifications.loadingStates.delete(accountId);
           state.notifications.errors.delete(accountId);
 
           state.session.accountIds = state.session.accountIds.filter((id) => id !== accountId);
@@ -499,7 +518,7 @@ export const useAppStore = create<AppState & AppActions>()(
         if (!services) throw new Error('Services not initialized');
 
         set((state) => {
-          state.notifications.loading.set(accountId, true);
+          state.notifications.loadingStates.set(accountId, LoadingState.LOADING);
           state.notifications.errors.delete(accountId);
         });
 
@@ -509,13 +528,13 @@ export const useAppStore = create<AppState & AppActions>()(
           set((state) => {
             state.notifications.byAccount.set(accountId, result.notifications);
             state.notifications.unreadCounts.set(accountId, result.unreadCount);
-            state.notifications.loading.set(accountId, false);
+            state.notifications.loadingStates.set(accountId, LoadingState.READY);
           });
 
           return result;
         } catch (error) {
           set((state) => {
-            state.notifications.loading.set(accountId, false);
+            state.notifications.loadingStates.set(accountId, LoadingState.ERROR);
             state.notifications.errors.set(
               accountId,
               error instanceof Error ? error.message : 'Failed to load notifications',
@@ -744,6 +763,49 @@ export const useAppStore = create<AppState & AppActions>()(
             state.accounts.errors.delete(key);
             state.notifications.errors.delete(key);
           }
+        });
+      },
+
+      // Helper methods for checking states
+      isSessionLoading: () => get().session.loadingState === LoadingState.LOADING,
+      isSessionReady: () => get().session.loadingState === LoadingState.READY,
+      isSessionIdle: () => get().session.loadingState === LoadingState.IDLE,
+
+      isAccountLoading: (accountId: string) => {
+        return get().accounts.loadingStates.get(accountId) === LoadingState.LOADING;
+      },
+
+      isAccountReady: (accountId: string) => {
+        return get().accounts.loadingStates.get(accountId) === LoadingState.READY;
+      },
+
+      isNotificationsLoading: (accountId: string) => {
+        return get().notifications.loadingStates.get(accountId) === LoadingState.LOADING;
+      },
+
+      isNotificationsReady: (accountId: string) => {
+        return get().notifications.loadingStates.get(accountId) === LoadingState.READY;
+      },
+
+      // Reset methods
+      resetAccountState: (accountId: string) => {
+        set((state) => {
+          state.accounts.loadingStates.set(accountId, LoadingState.IDLE);
+          state.accounts.errors.delete(accountId);
+        });
+      },
+
+      resetSessionState: () => {
+        set((state) => {
+          state.session.loadingState = LoadingState.IDLE;
+          state.session.error = null;
+        });
+      },
+
+      resetNotificationsState: (accountId: string) => {
+        set((state) => {
+          state.notifications.loadingStates.set(accountId, LoadingState.IDLE);
+          state.notifications.errors.delete(accountId);
         });
       },
     })),

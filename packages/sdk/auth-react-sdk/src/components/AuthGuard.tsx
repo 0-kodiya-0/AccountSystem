@@ -1,5 +1,6 @@
 import React, { JSX } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { LoadingState } from '../types';
 
 // Base props that are always available
 interface BaseAuthGuardProps {
@@ -10,13 +11,17 @@ interface BaseAuthGuardProps {
   };
 
   // Customizable UI components
-  loadingComponent?: React.ComponentType<{ reason?: string }>;
+  loadingComponent?: React.ComponentType<{
+    reason?: string;
+    loadingState?: LoadingState;
+  }>;
   redirectingComponent?: React.ComponentType<{
     destination: string;
     reason?: string;
   }>;
   errorComponent?: React.ComponentType<{
     error: string;
+    loadingState?: LoadingState;
     retry?: () => void;
   }>;
 }
@@ -53,12 +58,50 @@ export function AuthGuard({
   redirectingComponent: RedirectingComponent,
   errorComponent: ErrorComponent,
 }: AuthGuardProps): JSX.Element | null {
-  const { session, isAuthenticated } = useAuth();
+  const { session, isAuthenticated, loadingState } = useAuth();
+
+  // Wait for session to be ready before making auth decisions
+  if (loadingState === LoadingState.IDLE) {
+    if (LoadingComponent) {
+      return <LoadingComponent reason="Initializing session" loadingState={loadingState} />;
+    }
+
+    return (
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          minHeight: '200px',
+          flexDirection: 'column',
+          gap: '16px',
+        }}
+      >
+        <div
+          style={{
+            width: '32px',
+            height: '32px',
+            border: '2px solid #e2e8f0',
+            borderTop: '2px solid #3b82f6',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+          }}
+        />
+        <p style={{ color: '#64748b', fontSize: '14px' }}>Initializing...</p>
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    );
+  }
 
   // Show loading state
-  if (session.isLoading) {
+  if (loadingState === LoadingState.LOADING) {
     if (LoadingComponent) {
-      return <LoadingComponent reason="Loading session" />;
+      return <LoadingComponent reason="Loading session" loadingState={loadingState} />;
     }
 
     // Default loading UI
@@ -95,9 +138,15 @@ export function AuthGuard({
   }
 
   // Show error state if session has error
-  if (session.error) {
+  if (loadingState === LoadingState.ERROR || session.error) {
     if (ErrorComponent) {
-      return <ErrorComponent error={session.error} retry={() => window.location.reload()} />;
+      return (
+        <ErrorComponent
+          error={session.error || 'Authentication error'}
+          loadingState={loadingState}
+          retry={() => window.location.reload()}
+        />
+      );
     }
 
     // Default error UI
@@ -114,7 +163,9 @@ export function AuthGuard({
           textAlign: 'center',
         }}
       >
-        <p style={{ color: '#dc2626', fontSize: '16px', margin: '0 0 16px 0' }}>{session.error}</p>
+        <p style={{ color: '#dc2626', fontSize: '16px', margin: '0 0 16px 0' }}>
+          {session.error || 'Authentication error'}
+        </p>
         <button
           onClick={() => window.location.reload()}
           style={{
@@ -134,12 +185,12 @@ export function AuthGuard({
   }
 
   // Allow guests if specified and no session
-  if (allowGuests && !session.hasSession) {
+  if (allowGuests && !session.hasSession && loadingState === LoadingState.READY) {
     return <>{children}</>;
   }
 
   // Redirect to login if not authenticated
-  if (!isAuthenticated) {
+  if (!isAuthenticated && loadingState === LoadingState.READY) {
     const loginUrl = customRedirects.loginUrl || '/login';
 
     if (RedirectingComponent) {
@@ -184,7 +235,7 @@ export function AuthGuard({
   }
 
   // Redirect to accounts if account selection required
-  if (requireAccount && !session.currentAccountId) {
+  if (requireAccount && !session.currentAccountId && loadingState === LoadingState.READY) {
     const accountsUrl = customRedirects.accountsUrl || '/accounts';
 
     if (RedirectingComponent) {
@@ -229,7 +280,7 @@ export function AuthGuard({
   }
 
   // All checks passed, show content or redirect
-  if (redirectOnSuccess) {
+  if (redirectOnSuccess && loadingState === LoadingState.READY) {
     if (RedirectingComponent) {
       return <RedirectingComponent destination={redirectOnSuccess} reason="Authentication successful" />;
     }

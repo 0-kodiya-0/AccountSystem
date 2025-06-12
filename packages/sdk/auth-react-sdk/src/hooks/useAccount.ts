@@ -1,13 +1,15 @@
 import { useCallback, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import type { Account } from '../types';
+import { LoadingState, type Account } from '../types';
 
 export const useAccount = (accountId?: string) => {
   const store = useAppStore();
 
   const targetAccountId = accountId || store.session.currentAccountId;
   const account = targetAccountId ? store.accounts.data.get(targetAccountId) : null;
-  const isLoading = targetAccountId ? store.accounts.loadingStates.get(targetAccountId) || false : false;
+  const loadingState = targetAccountId
+    ? store.accounts.loadingStates.get(targetAccountId) || LoadingState.IDLE
+    : LoadingState.IDLE;
   const error = targetAccountId ? store.accounts.errors.get(targetAccountId) : null;
 
   const loadAccount = useCallback(
@@ -37,19 +39,30 @@ export const useAccount = (accountId?: string) => {
     }
   }, [store.clearError, targetAccountId]);
 
+  const resetState = useCallback(() => {
+    if (targetAccountId) {
+      store.resetAccountState(targetAccountId);
+    }
+  }, [store.resetAccountState, targetAccountId]);
+
   useEffect(() => {
-    if (targetAccountId && !account && !isLoading && !error) {
+    if (targetAccountId && !account && loadingState === LoadingState.IDLE && !error) {
       loadAccount(targetAccountId);
     }
-  }, [targetAccountId, account, isLoading, error]);
+  }, [targetAccountId, loadingState, error]);
 
   return {
     account,
-    isLoading,
+    loadingState,
+    isLoading: loadingState === LoadingState.LOADING,
+    isReady: loadingState === LoadingState.READY,
+    isIdle: loadingState === LoadingState.IDLE,
+    isError: loadingState === LoadingState.ERROR,
     error,
     loadAccount,
     updateAccount,
     removeAccount,
     clearError,
+    resetState,
   };
 };

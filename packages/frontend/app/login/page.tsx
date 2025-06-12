@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { AuthLayout } from '@/components/layout/auth-layout';
-import { OAuthProviders, useAuth } from '../../../sdk/auth-react-sdk/src';
+import { LoadingState, OAuthProviders, useAuth } from '../../../sdk/auth-react-sdk/src';
 import { getEnvironmentConfig } from '@/lib/utils';
 
 // Base form data type that includes all possible fields
@@ -215,7 +215,7 @@ export default function LoginPage() {
               variant="outline"
               className="w-full"
               onClick={() => handleOAuthLogin(OAuthProviders.Google)}
-              disabled={isSubmitting || session.isLoading}
+              disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
             >
               <Chrome className="mr-2 h-4 w-4" />
               Continue with Google
@@ -266,7 +266,7 @@ export default function LoginPage() {
                 type="email"
                 placeholder="Enter your email"
                 error={!!errors.email}
-                disabled={isSubmitting || session.isLoading}
+                disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
                 {...register('email')}
                 autoComplete="email"
               />
@@ -276,7 +276,7 @@ export default function LoginPage() {
                 type="text"
                 placeholder="Enter your username"
                 error={!!errors.username}
-                disabled={isSubmitting || session.isLoading}
+                disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
                 {...register('username')}
                 autoComplete="username"
               />
@@ -301,7 +301,7 @@ export default function LoginPage() {
                 type={showPassword ? 'text' : 'password'}
                 placeholder="Enter your password"
                 error={!!errors.password}
-                disabled={isSubmitting || session.isLoading}
+                disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
                 {...register('password')}
                 autoComplete="current-password"
               />
@@ -311,7 +311,7 @@ export default function LoginPage() {
                 size="icon"
                 className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                 onClick={() => setShowPassword(!showPassword)}
-                disabled={isSubmitting || session.isLoading}
+                disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
               >
                 {showPassword ? (
                   <EyeOff className="h-4 w-4 text-muted-foreground" />
@@ -332,7 +332,7 @@ export default function LoginPage() {
               id="rememberMe"
               type="checkbox"
               className="rounded border-gray-300 text-primary focus:ring-primary"
-              disabled={isSubmitting || session.isLoading}
+              disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
               {...register('rememberMe')}
             />
             <Label htmlFor="rememberMe" className="text-sm">
@@ -346,8 +346,8 @@ export default function LoginPage() {
           <Button
             type="submit"
             className="w-full"
-            loading={isSubmitting || session.isLoading}
-            disabled={isSubmitting || session.isLoading}
+            loading={isSubmitting || session.loadingState === LoadingState.LOADING}
+            disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
             onClick={() => console.log('Sign in button clicked, form valid:', Object.keys(errors).length === 0)}
           >
             Sign in

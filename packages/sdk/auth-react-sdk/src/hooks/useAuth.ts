@@ -1,14 +1,15 @@
 import { useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import type {
-  LocalLoginRequest,
-  LocalSignupRequest,
-  TwoFactorVerifyRequest,
-  PasswordResetRequest,
-  ResetPasswordRequest,
-  PasswordChangeRequest,
-  TwoFactorSetupRequest,
-  OAuthProviders,
+import {
+  type LocalLoginRequest,
+  type LocalSignupRequest,
+  type TwoFactorVerifyRequest,
+  type PasswordResetRequest,
+  type ResetPasswordRequest,
+  type PasswordChangeRequest,
+  type TwoFactorSetupRequest,
+  type OAuthProviders,
+  LoadingState,
 } from '../types';
 
 export const useAuth = () => {
@@ -133,7 +134,15 @@ export const useAuth = () => {
     currentAccount,
     isAuthenticated,
     tempToken: store.tempToken,
-    isLoading: store.session.isLoading,
+
+    // Enhanced loading states
+    loadingState: store.session.loadingState,
+    isLoading: store.session.loadingState === LoadingState.LOADING,
+    isReady: store.session.loadingState === LoadingState.READY,
+    isIdle: store.session.loadingState === LoadingState.IDLE,
+    isError: store.session.loadingState === LoadingState.ERROR,
+
+    // Legacy compatibility
     error: store.session.error || store.ui.globalError,
 
     login,
@@ -159,5 +168,6 @@ export const useAuth = () => {
     clearError: store.clearError,
     setTempToken: store.setTempToken,
     clearTempToken: store.clearTempToken,
+    resetSessionState: store.resetSessionState,
   };
 };

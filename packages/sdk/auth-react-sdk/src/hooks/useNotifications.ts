@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import type { CreateNotificationRequest, Notification } from '../types';
+import { LoadingState, type CreateNotificationRequest, type Notification } from '../types';
 
 export const useNotifications = (accountId?: string) => {
   const store = useAppStore();
@@ -8,7 +8,9 @@ export const useNotifications = (accountId?: string) => {
   const targetAccountId = accountId || store.session.currentAccountId;
   const notifications = targetAccountId ? store.notifications.byAccount.get(targetAccountId) || [] : [];
   const unreadCount = targetAccountId ? store.notifications.unreadCounts.get(targetAccountId) || 0 : 0;
-  const isLoading = targetAccountId ? store.notifications.loading.get(targetAccountId) || false : false;
+  const loadingState = targetAccountId
+    ? store.notifications.loadingStates.get(targetAccountId) || LoadingState.IDLE
+    : LoadingState.IDLE;
   const error = targetAccountId ? store.notifications.errors.get(targetAccountId) : null;
 
   const loadNotifications = useCallback(
@@ -67,16 +69,26 @@ export const useNotifications = (accountId?: string) => {
     }
   }, [store.clearError, targetAccountId]);
 
+  const resetState = useCallback(() => {
+    if (targetAccountId) {
+      store.resetNotificationsState(targetAccountId);
+    }
+  }, [store.resetNotificationsState, targetAccountId]);
+
   useEffect(() => {
-    if (targetAccountId && notifications.length === 0 && !isLoading && !error) {
+    if (targetAccountId && notifications.length === 0 && loadingState === LoadingState.IDLE && !error) {
       loadNotifications();
     }
-  }, [targetAccountId, notifications.length, isLoading, error, loadNotifications]);
+  }, [targetAccountId, loadingState, error]);
 
   return {
     notifications,
     unreadCount,
-    isLoading,
+    loadingState,
+    isLoading: loadingState === LoadingState.LOADING,
+    isReady: loadingState === LoadingState.READY,
+    isIdle: loadingState === LoadingState.IDLE,
+    isError: loadingState === LoadingState.ERROR,
     error,
     loadNotifications,
     createNotification,
@@ -86,5 +98,6 @@ export const useNotifications = (accountId?: string) => {
     deleteNotification,
     deleteAllNotifications,
     clearError,
+    resetState,
   };
 };

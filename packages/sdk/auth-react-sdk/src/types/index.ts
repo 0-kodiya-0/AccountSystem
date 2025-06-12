@@ -377,3 +377,11 @@ export interface GetAccountSessionResponse {
   session: AccountSessionInfo;
   accounts?: SessionAccount[]; // Minimal account data for session management
 }
+
+// Enhanced loading states enum
+export enum LoadingState {
+  IDLE = 'idle',
+  LOADING = 'loading',
+  READY = 'ready',
+  ERROR = 'error',
+}

@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { AuthLayout } from '@/components/layout/auth-layout';
 import { PasswordStrengthIndicator } from '@/components/auth/password-strength-indicator';
-import { OAuthProviders, useAuth } from '../../../sdk/auth-react-sdk/src';
+import { LoadingState, OAuthProviders, useAuth } from '../../../sdk/auth-react-sdk/src';
 import { getEnvironmentConfig, validatePasswordStrength } from '@/lib/utils';
 
 const signupSchema = z
@@ -111,7 +111,7 @@ export default function SignupPage() {
               variant="outline"
               className="w-full"
               onClick={() => handleOAuthSignup(OAuthProviders.Google)}
-              disabled={isSubmitting || session.isLoading}
+              disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
             >
               <Chrome className="mr-2 h-4 w-4" />
               Continue with Google
@@ -138,7 +138,7 @@ export default function SignupPage() {
                   id="firstName"
                   placeholder="John"
                   error={!!errors.firstName}
-                  disabled={isSubmitting || session.isLoading}
+                  disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
                   {...register('firstName')}
                 />
                 {errors.firstName && <p className="text-sm text-destructive">{errors.firstName.message}</p>}
@@ -150,7 +150,7 @@ export default function SignupPage() {
                   id="lastName"
                   placeholder="Doe"
                   error={!!errors.lastName}
-                  disabled={isSubmitting || session.isLoading}
+                  disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
                   {...register('lastName')}
                 />
                 {errors.lastName && <p className="text-sm text-destructive">{errors.lastName.message}</p>}
@@ -165,7 +165,7 @@ export default function SignupPage() {
                 type="email"
                 placeholder="john@example.com"
                 error={!!errors.email}
-                disabled={isSubmitting || session.isLoading}
+                disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
                 {...register('email')}
               />
               {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
@@ -178,7 +178,7 @@ export default function SignupPage() {
                 id="username"
                 placeholder="johndoe"
                 error={!!errors.username}
-                disabled={isSubmitting || session.isLoading}
+                disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
                 {...register('username')}
               />
               {errors.username && <p className="text-sm text-destructive">{errors.username.message}</p>}
@@ -194,7 +194,7 @@ export default function SignupPage() {
                   type={showPassword ? 'text' : 'password'}
                   placeholder="Create a strong password"
                   error={!!errors.password}
-                  disabled={isSubmitting || session.isLoading}
+                  disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
                   {...register('password')}
                 />
                 <Button
@@ -203,7 +203,7 @@ export default function SignupPage() {
                   size="icon"
                   className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                   onClick={() => setShowPassword(!showPassword)}
-                  disabled={isSubmitting || session.isLoading}
+                  disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
                 >
                   {showPassword ? (
                     <EyeOff className="h-4 w-4 text-muted-foreground" />
@@ -225,7 +225,7 @@ export default function SignupPage() {
                   type={showConfirmPassword ? 'text' : 'password'}
                   placeholder="Confirm your password"
                   error={!!errors.confirmPassword}
-                  disabled={isSubmitting || session.isLoading}
+                  disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
                   {...register('confirmPassword')}
                 />
                 <Button
@@ -234,7 +234,7 @@ export default function SignupPage() {
                   size="icon"
                   className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  disabled={isSubmitting || session.isLoading}
+                  disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
                 >
                   {showConfirmPassword ? (
                     <EyeOff className="h-4 w-4 text-muted-foreground" />
@@ -253,7 +253,7 @@ export default function SignupPage() {
                 id="birthdate"
                 type="date"
                 error={!!errors.birthdate}
-                disabled={isSubmitting || session.isLoading}
+                disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
                 {...register('birthdate')}
               />
               {errors.birthdate && <p className="text-sm text-destructive">{errors.birthdate.message}</p>}
@@ -266,7 +266,7 @@ export default function SignupPage() {
                   id="agreeToTerms"
                   type="checkbox"
                   className="mt-0.5 rounded border-gray-300 text-primary focus:ring-primary"
-                  disabled={isSubmitting || session.isLoading}
+                  disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
                   {...register('agreeToTerms')}
                 />
                 <Label htmlFor="agreeToTerms" className="text-sm leading-5">
@@ -295,8 +295,8 @@ export default function SignupPage() {
             <Button
               type="submit"
               className="w-full"
-              loading={isSubmitting || session.isLoading}
-              disabled={isSubmitting || session.isLoading || !passwordStrength?.isValid}
+              loading={isSubmitting || session.loadingState === LoadingState.LOADING}
+              disabled={isSubmitting || session.loadingState === LoadingState.LOADING || !passwordStrength?.isValid}
             >
               Create account
             </Button>
