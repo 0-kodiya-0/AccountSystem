@@ -1,5 +1,6 @@
-import { SessionAccount } from "../../services/session/session.types";
-import { Account } from "./Account.types";
+import { SessionAccount } from '../../services/session/session.types';
+import { logger } from '../../utils/logger';
+import { Account } from './Account.types';
 
 /**
  * Convert account document to safe account object (full account data)
@@ -32,7 +33,7 @@ export function toSafeAccount(accountDoc: any): Account | null {
       provider: accountDoc.provider,
     };
   } catch (error) {
-    console.error("Error converting account document to safe account:", error);
+    logger.error('Error converting account document to safe account:', error);
     return null;
   }
 }
@@ -58,10 +59,7 @@ export function toSafeSessionAccount(accountDoc: any): SessionAccount | null {
       provider: accountDoc.provider,
     };
   } catch (error) {
-    console.error(
-      "Error converting account document to safe session account:",
-      error,
-    );
+    logger.error('Error converting account document to safe session account:', error);
     return null;
   }
 }

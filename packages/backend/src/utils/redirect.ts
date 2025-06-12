@@ -1,19 +1,19 @@
-import { Request } from "express";
-import * as path from "path";
-import { logger } from "./logger";
-import { getProxyUrl } from "../config/env.config";
+import { Request } from 'express';
+import * as path from 'path';
+import { logger } from './logger';
+import { getProxyUrl } from '../config/env.config';
 
 /**
  * Get the path prefix that was stripped by the proxy
  */
 export function getStrippedPathPrefix(req: Request): string {
   // First check if X-Path-Prefix header exists
-  const headerPrefix = req.get("X-Path-Prefix");
+  const headerPrefix = req.get('X-Path-Prefix');
   if (headerPrefix) {
     return headerPrefix;
   }
 
-  return "";
+  return '';
 }
 
 /**
@@ -25,15 +25,14 @@ export const createRedirectUrl = (
   data?: Record<string, any>,
   originalUrl?: string,
 ): string => {
-  let finalUrl = "";
+  let finalUrl = '';
   const queryParams = new URLSearchParams();
 
   // Get the path prefix that was stripped by proxy
   const pathPrefix = getStrippedPathPrefix(req);
 
   // Check if it's an absolute URL (starts with http:// or https://)
-  const isAbsoluteUrl =
-    baseUrl.startsWith("http://") || baseUrl.startsWith("https://");
+  const isAbsoluteUrl = baseUrl.startsWith('http://') || baseUrl.startsWith('https://');
 
   if (isAbsoluteUrl) {
     // For absolute URLs, use as-is
@@ -46,7 +45,7 @@ export const createRedirectUrl = (
         queryParams.append(key, value);
       });
     } catch (error) {
-      logger.error("Error parsing absolute URL:", error);
+      logger.error('Error parsing absolute URL:', error);
       finalUrl = baseUrl;
     }
   } else {
@@ -54,7 +53,7 @@ export const createRedirectUrl = (
     baseUrl = decodeURIComponent(baseUrl);
 
     // Extract any existing query parameters from original baseUrl
-    const queryIndex = baseUrl.indexOf("?");
+    const queryIndex = baseUrl.indexOf('?');
     let cleanPath = baseUrl;
     if (queryIndex !== -1) {
       cleanPath = baseUrl.substring(0, queryIndex);
@@ -65,70 +64,64 @@ export const createRedirectUrl = (
     }
 
     // Handle relative path notation
-    if (cleanPath.startsWith("../")) {
+    if (cleanPath.startsWith('../')) {
       // ../ means: pathPrefix + parent paths + target path
       const targetPath = cleanPath.substring(3); // Remove '../'
 
       // Use the parentUrl set by middleware
-      const parentPath = req.parentUrl || "";
+      const parentPath = req.parentUrl || '';
 
-      console.log("Parent URL from middleware:", parentPath);
-      console.log("Target path:", targetPath);
+      logger.info('Parent URL from middleware:', parentPath);
+      logger.info('Target path:', targetPath);
 
       // Combine: pathPrefix + parentPath + targetPath
       if (pathPrefix) {
-        finalUrl = path
-          .normalize(pathPrefix + parentPath + "/" + targetPath)
-          .replace(/\/+/g, "/");
+        finalUrl = path.normalize(pathPrefix + parentPath + '/' + targetPath).replace(/\/+/g, '/');
       } else {
-        finalUrl = path
-          .normalize(parentPath + "/" + targetPath)
-          .replace(/\/+/g, "/");
+        finalUrl = path.normalize(parentPath + '/' + targetPath).replace(/\/+/g, '/');
       }
 
-      console.log("Final URL:", finalUrl);
-    } else if (cleanPath.startsWith("./")) {
+      logger.info('Final URL:', finalUrl);
+    } else if (cleanPath.startsWith('./')) {
       // ./ means: add only pathPrefix + target path
       const targetPath = cleanPath.substring(2); // Remove './'
 
       if (pathPrefix) {
-        finalUrl = path
-          .normalize(pathPrefix + "/" + targetPath)
-          .replace(/\/+/g, "/");
+        finalUrl = path.normalize(pathPrefix + '/' + targetPath).replace(/\/+/g, '/');
       } else {
-        finalUrl = "/" + targetPath;
+        finalUrl = '/' + targetPath;
       }
     } else {
       finalUrl = cleanPath;
 
       // Ensure it starts with /
-      if (!finalUrl.startsWith("/")) {
-        finalUrl = "/" + finalUrl;
+      if (!finalUrl.startsWith('/')) {
+        finalUrl = '/' + finalUrl;
       }
     }
   }
 
   // Add data for success
   if (data) {
-    if (typeof data === "object" && data !== null) {
+    if (typeof data === 'object' && data !== null) {
       Object.keys(data).forEach((key) => {
         const value = data![key];
         queryParams.append(key, encodeURIComponent(value));
       });
     } else {
-      queryParams.append("data", encodeURIComponent(JSON.stringify(data)));
+      queryParams.append('data', encodeURIComponent(JSON.stringify(data)));
     }
   }
 
   // For permission redirects, include original URL (cleaned)
   if (originalUrl) {
-    queryParams.append("redirectUrl", encodeURIComponent(originalUrl));
+    queryParams.append('redirectUrl', encodeURIComponent(originalUrl));
   }
 
   // Construct the final URL with query parameters
   const queryString = queryParams.toString();
   if (queryString) {
-    finalUrl += (finalUrl.includes("?") ? "&" : "?") + queryString;
+    finalUrl += (finalUrl.includes('?') ? '&' : '?') + queryString;
   }
 
   return finalUrl;

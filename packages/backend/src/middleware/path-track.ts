@@ -1,4 +1,5 @@
-import { Request, Response, NextFunction } from "express";
+import { Request, Response, NextFunction } from 'express';
+import { logger } from '../utils/logger';
 
 /**
  * Middleware to track parent URL across route layers
@@ -9,9 +10,7 @@ import { Request, Response, NextFunction } from "express";
 export const trackParentUrl = (pathSegment: string) => {
   return (req: Request, res: Response, next: NextFunction) => {
     // Clean the path segment
-    const cleanSegment = pathSegment.startsWith("/")
-      ? pathSegment
-      : "/" + pathSegment;
+    const cleanSegment = pathSegment.startsWith('/') ? pathSegment : '/' + pathSegment;
 
     // Initialize or append to parentUrl
     if (!req.parentUrl) {
@@ -21,9 +20,7 @@ export const trackParentUrl = (pathSegment: string) => {
       req.parentUrl = req.parentUrl + cleanSegment;
     }
 
-    console.log(
-      `Parent URL updated: ${req.parentUrl} (added: ${cleanSegment})`,
-    );
+    logger.info(`Parent URL updated: ${req.parentUrl} (added: ${cleanSegment})`);
     next();
   };
 };
@@ -35,12 +32,12 @@ export const trackParentUrl = (pathSegment: string) => {
 export const autoTrackParentUrl = () => {
   return (req: Request, res: Response, next: NextFunction) => {
     // Get the base URL (what's been matched so far)
-    const baseUrl = req.baseUrl || "";
+    const baseUrl = req.baseUrl || '';
 
     // Set parent URL to the base URL
     req.parentUrl = baseUrl;
 
-    console.log(`Auto-tracked parent URL: ${req.parentUrl}`);
+    logger.info(`Auto-tracked parent URL: ${req.parentUrl}`);
     next();
   };
 };
