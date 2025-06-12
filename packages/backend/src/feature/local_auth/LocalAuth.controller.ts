@@ -1,20 +1,11 @@
-import { asyncHandler } from "../../utils/response";
-import {
-  JsonSuccess,
-  Redirect,
-  ValidationError,
-  ApiErrorCode,
-  BadRequestError,
-  AuthError,
-  CallbackCode,
-  CallbackData,
-} from "../../types/response.types";
-import * as LocalAuthService from "./LocalAuth.service";
+import { asyncHandler } from '../../utils/response';
+import { JsonSuccess, ValidationError, ApiErrorCode, BadRequestError, AuthError } from '../../types/response.types';
+import * as LocalAuthService from './LocalAuth.service';
 import {
   validateSignupRequest,
   validateLoginRequest,
   validatePasswordChangeRequest,
-} from "../account/Account.validation";
+} from '../account/Account.validation';
 import {
   LocalAuthRequest,
   SignupRequest,
@@ -24,16 +15,15 @@ import {
   VerifyTwoFactorRequest,
   VerifyEmailRequest,
   Account,
-} from "../account/Account.types";
-import { setupCompleteAccountSession } from "../../services";
-import { sendTwoFactorEnabledNotification } from "../email/Email.service";
-import QRCode from "qrcode";
-import { ValidationUtils } from "../../utils/validation";
-import { createLocalJwtToken, createLocalRefreshToken } from "./LocalAuth.jwt";
-import { findUserById } from "../account";
-import { logger } from "../../utils/logger";
-import { getCallbackUrl } from "../../utils/redirect";
-import { sendNonCriticalEmail } from "../email/Email.utils";
+} from '../account/Account.types';
+import { setupCompleteAccountSession } from '../../services';
+import { sendTwoFactorEnabledNotification } from '../email/Email.service';
+import QRCode from 'qrcode';
+import { ValidationUtils } from '../../utils/validation';
+import { createLocalJwtToken, createLocalRefreshToken } from './LocalAuth.jwt';
+import { findUserById } from '../account';
+import { logger } from '../../utils/logger';
+import { sendNonCriticalEmail } from '../email/Email.utils';
 
 /**
  * Sign up (register) with email and password
@@ -44,11 +34,7 @@ export const signup = asyncHandler(async (req, res, next) => {
   // Validate signup request
   const validationError = validateSignupRequest(signupData);
   if (validationError) {
-    throw new ValidationError(
-      validationError,
-      400,
-      ApiErrorCode.VALIDATION_ERROR,
-    );
+    throw new ValidationError(validationError, 400, ApiErrorCode.VALIDATION_ERROR);
   }
 
   // Create account
@@ -58,8 +44,7 @@ export const signup = asyncHandler(async (req, res, next) => {
   next(
     new JsonSuccess(
       {
-        message:
-          "Account created successfully. Please check your email to verify your account.",
+        message: 'Account created successfully. Please check your email to verify your account.',
         accountId: account.id,
       },
       201,
@@ -76,24 +61,20 @@ export const login = asyncHandler(async (req, res, next) => {
   // Validate login request
   const validationError = validateLoginRequest(loginData);
   if (validationError) {
-    throw new ValidationError(
-      validationError,
-      400,
-      ApiErrorCode.VALIDATION_ERROR,
-    );
+    throw new ValidationError(validationError, 400, ApiErrorCode.VALIDATION_ERROR);
   }
 
   // Authenticate user
   const result = await LocalAuthService.authenticateLocalUser(loginData);
 
   // Check if 2FA is required
-  if ("requiresTwoFactor" in result && result.requiresTwoFactor) {
+  if ('requiresTwoFactor' in result && result.requiresTwoFactor) {
     next(
       new JsonSuccess({
         requiresTwoFactor: true,
         tempToken: result.tempToken,
         accountId: result.accountId,
-        message: "Please enter your two-factor authentication code",
+        message: 'Please enter your two-factor authentication code',
       }),
     );
     return;
@@ -138,20 +119,13 @@ export const verifyTwoFactor = asyncHandler(async (req, res, next) => {
   };
 
   if (!token || !tempToken) {
-    throw new BadRequestError(
-      "Verification token and temporary token are required",
-      400,
-      ApiErrorCode.MISSING_DATA,
-    );
+    throw new BadRequestError('Verification token and temporary token are required', 400, ApiErrorCode.MISSING_DATA);
   }
 
   // Verify the temporary token first (ensures this is a valid 2FA session)
   try {
     // Verify 2FA using the temporary token system
-    const account = await LocalAuthService.verifyTwoFactorLogin(
-      tempToken,
-      token,
-    );
+    const account = await LocalAuthService.verifyTwoFactorLogin(tempToken, token);
 
     // Generate JWT token
     const jwtToken = await createLocalJwtToken(account.id);
@@ -175,15 +149,11 @@ export const verifyTwoFactor = asyncHandler(async (req, res, next) => {
       new JsonSuccess({
         accountId: account.id,
         name: account.userDetails.name,
-        message: "Two-factor authentication successful",
+        message: 'Two-factor authentication successful',
       }),
     );
   } catch {
-    throw new AuthError(
-      "Temporary token expired or invalid",
-      401,
-      ApiErrorCode.AUTH_FAILED,
-    );
+    throw new AuthError('Temporary token expired or invalid', 401, ApiErrorCode.AUTH_FAILED);
   }
 });
 
@@ -194,30 +164,14 @@ export const verifyEmail = asyncHandler(async (req, res, next) => {
   const { token } = req.query as unknown as VerifyEmailRequest;
 
   if (!token) {
-    const callbackData: CallbackData = {
-      code: CallbackCode.LOCAL_AUTH_ERROR,
-      error: "Verification token is required",
-    };
-    return next(new Redirect(callbackData, getCallbackUrl()));
+    throw new BadRequestError('Verification token is required', 400, ApiErrorCode.MISSING_DATA);
   }
 
-  try {
-    await LocalAuthService.verifyEmail(token);
+  // Verify email using cached token
+  await LocalAuthService.verifyEmail(token);
 
-    const callbackData: CallbackData = {
-      code: CallbackCode.LOCAL_EMAIL_VERIFIED,
-      message: "Email verified successfully. You can now log in.",
-    };
-
-    next(new Redirect(callbackData, getCallbackUrl()));
-  } catch (error) {
-    const callbackData: CallbackData = {
-      code: CallbackCode.LOCAL_AUTH_ERROR,
-      error:
-        error instanceof Error ? error.message : "Email verification failed",
-    };
-    next(new Redirect(callbackData, getCallbackUrl()));
-  }
+  // Redirect to login page with success message
+  next(new JsonSuccess({ message: 'Email verified successfully. You can now log in.' }));
 });
 
 /**
@@ -227,11 +181,7 @@ export const requestPasswordReset = asyncHandler(async (req, res, next) => {
   const data = req.body as PasswordResetRequest;
 
   if (!data.email) {
-    throw new BadRequestError(
-      "Email is required",
-      400,
-      ApiErrorCode.MISSING_DATA,
-    );
+    throw new BadRequestError('Email is required', 400, ApiErrorCode.MISSING_DATA);
   }
 
   // Request password reset using cached tokens
@@ -240,8 +190,7 @@ export const requestPasswordReset = asyncHandler(async (req, res, next) => {
   // Return success response (even if email not found for security)
   next(
     new JsonSuccess({
-      message:
-        "If your email is registered, you will receive instructions to reset your password.",
+      message: 'If your email is registered, you will receive instructions to reset your password.',
     }),
   );
 });
@@ -253,38 +202,24 @@ export const resetPassword = asyncHandler(async (req, res, next) => {
   const { token } = req.query;
   const { password, confirmPassword } = req.body;
 
-  ValidationUtils.validateRequiredFields(req.query, ["token"]);
-  ValidationUtils.validateRequiredFields(req.body, [
-    "password",
-    "confirmPassword",
-  ]);
+  ValidationUtils.validateRequiredFields(req.query, ['token']);
+  ValidationUtils.validateRequiredFields(req.body, ['password', 'confirmPassword']);
 
   if (password !== confirmPassword) {
-    const callbackData: CallbackData = {
-      code: CallbackCode.LOCAL_AUTH_ERROR,
-      error: "Passwords do not match",
-    };
-    return next(new Redirect(callbackData, getCallbackUrl()));
+    throw new ValidationError('Passwords do not match', 400, ApiErrorCode.VALIDATION_ERROR);
   }
 
-  try {
-    ValidationUtils.validatePasswordStrength(password);
-    await LocalAuthService.resetPassword(token as string, password);
+  // Use centralized password validation
+  ValidationUtils.validatePasswordStrength(password);
 
-    const callbackData: CallbackData = {
-      code: CallbackCode.LOCAL_PASSWORD_RESET_SUCCESS,
-      message:
-        "Password reset successfully. You can now log in with your new password.",
-    };
+  // Reset password using cached token
+  await LocalAuthService.resetPassword(token as string, password);
 
-    next(new Redirect(callbackData, getCallbackUrl()));
-  } catch (error) {
-    const callbackData: CallbackData = {
-      code: CallbackCode.LOCAL_AUTH_ERROR,
-      error: error instanceof Error ? error.message : "Password reset failed",
-    };
-    next(new Redirect(callbackData, getCallbackUrl()));
-  }
+  next(
+    new JsonSuccess({
+      message: 'Password reset successfully. You can now log in with your new password.',
+    }),
+  );
 });
 
 /**
@@ -297,11 +232,7 @@ export const changePassword = asyncHandler(async (req, res, next) => {
   // Validate change password request
   const validationError = validatePasswordChangeRequest(data);
   if (validationError) {
-    throw new ValidationError(
-      validationError,
-      400,
-      ApiErrorCode.VALIDATION_ERROR,
-    );
+    throw new ValidationError(validationError, 400, ApiErrorCode.VALIDATION_ERROR);
   }
 
   // Change password
@@ -310,7 +241,7 @@ export const changePassword = asyncHandler(async (req, res, next) => {
   // Return success response
   next(
     new JsonSuccess({
-      message: "Password changed successfully.",
+      message: 'Password changed successfully.',
     }),
   );
 });
@@ -323,11 +254,7 @@ export const setupTwoFactor = asyncHandler(async (req, res, next) => {
   const data = req.body as SetupTwoFactorRequest;
 
   if (!data.password) {
-    throw new BadRequestError(
-      "Password is required",
-      400,
-      ApiErrorCode.MISSING_DATA,
-    );
+    throw new BadRequestError('Password is required', 400, ApiErrorCode.MISSING_DATA);
   }
 
   // Set up 2FA
@@ -339,47 +266,35 @@ export const setupTwoFactor = asyncHandler(async (req, res, next) => {
       const qrCodeDataUrl = await QRCode.toDataURL(result.qrCodeUrl);
 
       // Generate backup codes if not already present
-      const backupCodes = await LocalAuthService.generateNewBackupCodes(
-        accountId,
-        data.password,
-      );
+      const backupCodes = await LocalAuthService.generateNewBackupCodes(accountId, data.password);
 
       // Send notification email (async - don't wait)
       const account = (await findUserById(accountId)) as Account;
       if (account.userDetails.email) {
         sendNonCriticalEmail(
           sendTwoFactorEnabledNotification,
-          [
-            account.userDetails.email,
-            account.userDetails.firstName ||
-              account.userDetails.name.split(" ")[0],
-          ],
+          [account.userDetails.email, account.userDetails.firstName || account.userDetails.name.split(' ')[0]],
           { maxAttempts: 2, delayMs: 1000 },
         );
       }
 
       next(
         new JsonSuccess({
-          message:
-            "2FA setup successful. Please scan the QR code with your authenticator app.",
+          message: '2FA setup successful. Please scan the QR code with your authenticator app.',
           qrCode: qrCodeDataUrl,
           secret: result.secret,
           backupCodes,
         }),
       );
     } catch (error) {
-      logger.error("Failed to generate QR code:", error);
-      throw new BadRequestError(
-        "Failed to generate QR code",
-        500,
-        ApiErrorCode.SERVER_ERROR,
-      );
+      logger.error('Failed to generate QR code:', error);
+      throw new BadRequestError('Failed to generate QR code', 500, ApiErrorCode.SERVER_ERROR);
     }
   } else {
     // If disabling 2FA
     next(
       new JsonSuccess({
-        message: "2FA has been disabled for your account.",
+        message: '2FA has been disabled for your account.',
       }),
     );
   }
@@ -393,32 +308,20 @@ export const verifyAndEnableTwoFactor = asyncHandler(async (req, res, next) => {
   const { token } = req.body;
 
   if (!token) {
-    throw new BadRequestError(
-      "Verification token is required",
-      400,
-      ApiErrorCode.MISSING_DATA,
-    );
+    throw new BadRequestError('Verification token is required', 400, ApiErrorCode.MISSING_DATA);
   }
 
   // Verify and enable 2FA
-  const success = await LocalAuthService.verifyAndEnableTwoFactor(
-    accountId,
-    token,
-  );
+  const success = await LocalAuthService.verifyAndEnableTwoFactor(accountId, token);
 
   if (success) {
     next(
       new JsonSuccess({
-        message:
-          "Two-factor authentication has been successfully enabled for your account.",
+        message: 'Two-factor authentication has been successfully enabled for your account.',
       }),
     );
   } else {
-    throw new AuthError(
-      "Failed to verify token",
-      400,
-      ApiErrorCode.AUTH_FAILED,
-    );
+    throw new AuthError('Failed to verify token', 400, ApiErrorCode.AUTH_FAILED);
   }
 });
 
@@ -430,23 +333,15 @@ export const generateBackupCodes = asyncHandler(async (req, res, next) => {
   const { password } = req.body;
 
   if (!password) {
-    throw new BadRequestError(
-      "Password is required",
-      400,
-      ApiErrorCode.MISSING_DATA,
-    );
+    throw new BadRequestError('Password is required', 400, ApiErrorCode.MISSING_DATA);
   }
 
   // Generate new backup codes
-  const backupCodes = await LocalAuthService.generateNewBackupCodes(
-    accountId,
-    password,
-  );
+  const backupCodes = await LocalAuthService.generateNewBackupCodes(accountId, password);
 
   next(
     new JsonSuccess({
-      message:
-        "New backup codes generated successfully. Please save these codes in a secure location.",
+      message: 'New backup codes generated successfully. Please save these codes in a secure location.',
       backupCodes,
     }),
   );

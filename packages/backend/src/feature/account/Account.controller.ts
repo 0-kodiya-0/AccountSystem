@@ -1,14 +1,9 @@
-import { NextFunction, Request, Response } from "express";
-import { JsonSuccess, Redirect } from "../../types/response.types";
-import { AccountDocument } from "./Account.model";
-import { asyncHandler } from "../../utils/response";
-import * as AccountService from "./Account.service";
-import { CallbackCode } from "../../types/response.types";
-import { getCallbackUrl } from "../../utils/redirect";
-import {
-  clearAllAccountsWithSession,
-  clearAccountWithSession,
-} from "../../services";
+import { NextFunction, Request, Response } from 'express';
+import { JsonSuccess, Redirect } from '../../types/response.types';
+import { AccountDocument } from './Account.model';
+import { asyncHandler } from '../../utils/response';
+import * as AccountService from './Account.service';
+import { clearAllAccountsWithSession, clearAccountWithSession } from '../../services';
 
 /**
  * Search for an account by email
@@ -27,24 +22,13 @@ export const searchAccount = asyncHandler(async (req, res, next) => {
 export const logoutAll = (req: Request, res: Response, next: NextFunction) => {
   const { accountIds } = req.query;
 
-  const accountIdArray = AccountService.validateAccountIds(
-    accountIds as string[],
-  );
+  const accountIdArray = AccountService.validateAccountIds(accountIds as string[]);
 
   // Clear both auth tokens and account session
   clearAllAccountsWithSession(req, res, accountIdArray);
 
   // Redirect to auth callback with logout success code
-  next(
-    new Redirect(
-      {
-        code: CallbackCode.LOGOUT_ALL_SUCCESS,
-        message: "All accounts logged out successfully",
-        accountIds: accountIdArray,
-      },
-      getCallbackUrl(),
-    ),
-  );
+  next(new JsonSuccess(null));
 };
 
 /**
@@ -53,30 +37,22 @@ export const logoutAll = (req: Request, res: Response, next: NextFunction) => {
 export const logout = (req: Request, res: Response, next: NextFunction) => {
   const { accountId, clearClientAccountState } = req.query;
 
-  const validatedAccountId = AccountService.validateSingleAccountId(
-    accountId as string,
-  );
+  const validatedAccountId = AccountService.validateSingleAccountId(accountId as string);
 
   // Always clear from session and auth tokens
   clearAccountWithSession(req, res, validatedAccountId);
 
-  const shouldClearClient = clearClientAccountState !== "false";
+  const shouldClearClient = clearClientAccountState !== 'false';
 
   // Redirect to auth callback with appropriate logout code
   next(
-    new Redirect(
-      {
-        code: shouldClearClient
-          ? CallbackCode.LOGOUT_SUCCESS
-          : CallbackCode.LOGOUT_DISABLE_SUCCESS,
-        message: shouldClearClient
-          ? "Account logged out successfully"
-          : "Account logged out and disabled for reactivation",
-        accountId: validatedAccountId,
-        clearClientAccountState: shouldClearClient,
-      },
-      getCallbackUrl(),
-    ),
+    new JsonSuccess({
+      message: shouldClearClient
+        ? 'Account logged out successfully'
+        : 'Account logged out and disabled for reactivation',
+      accountId: validatedAccountId,
+      clearClientAccountState: shouldClearClient,
+    }),
   );
 };
 
@@ -105,11 +81,7 @@ export const updateAccount = asyncHandler(async (req, res, next) => {
 /**
  * Get email address for a specific account
  */
-export const getAccountEmail = (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
+export const getAccountEmail = (req: Request, res: Response, next: NextFunction) => {
   const account = req.account as AccountDocument;
   const email = AccountService.getAccountEmail(account);
 
@@ -123,10 +95,7 @@ export const updateAccountSecurity = asyncHandler(async (req, res, next) => {
   const securityUpdates = req.body;
   const account = req.account as AccountDocument;
 
-  const updatedAccount = await AccountService.updateAccountSecurity(
-    account,
-    securityUpdates,
-  );
+  const updatedAccount = await AccountService.updateAccountSecurity(account, securityUpdates);
 
   next(new JsonSuccess(updatedAccount, 200));
 });
@@ -140,17 +109,9 @@ export const refreshToken = asyncHandler(async (req, res, next) => {
   const refreshToken = req.oauthRefreshToken as string;
   const { redirectUrl } = req.query;
 
-  const finalRedirectUrl = AccountService.validateRedirectUrl(
-    redirectUrl as string,
-  );
+  const finalRedirectUrl = AccountService.validateRedirectUrl(redirectUrl as string);
 
-  await AccountService.refreshAccountToken(
-    req,
-    res,
-    accountId,
-    account,
-    refreshToken,
-  );
+  await AccountService.refreshAccountToken(req, res, accountId, account, refreshToken);
 
   next(new Redirect(null, finalRedirectUrl));
 });
@@ -164,13 +125,7 @@ export const revokeToken = asyncHandler(async (req, res, next) => {
   const accessToken = req.oauthAccessToken as string;
   const refreshToken = req.oauthRefreshToken as string;
 
-  const result = await AccountService.revokeAccountTokens(
-    res,
-    accountId,
-    account,
-    accessToken,
-    refreshToken,
-  );
+  const result = await AccountService.revokeAccountTokens(res, accountId, account, accessToken, refreshToken);
 
-  next(new JsonSuccess(result, undefined, "Token revoked"));
+  next(new JsonSuccess(result, undefined, 'Token revoked'));
 });

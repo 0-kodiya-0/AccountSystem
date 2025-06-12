@@ -1,11 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import {
-  NextFunction,
-  RequestHandler,
-  Response,
-  Request,
-  ErrorRequestHandler,
-} from "express";
+import { NextFunction, RequestHandler, Response, Request, ErrorRequestHandler } from 'express';
 import {
   ApiResponse,
   ApiErrorCode,
@@ -21,23 +15,23 @@ import {
   SessionValidationError,
   ProviderValidationError,
   Redirect,
-} from "../types/response.types";
-import { MongoError } from "mongodb";
-import { Error as MongooseError } from "mongoose";
-import { GaxiosError } from "gaxios";
-import jwt from "jsonwebtoken";
-import { logger } from "./logger";
-import { createRedirectUrl } from "./redirect";
+  CallbackCode,
+  CallbackData,
+} from '../types/response.types';
+import { MongoError } from 'mongodb';
+import { Error as MongooseError } from 'mongoose';
+import { GaxiosError } from 'gaxios';
+import jwt from 'jsonwebtoken';
+import { logger } from './logger';
+import { createRedirectUrl } from './redirect';
+import { OAuthProviders } from '../feature/account';
 
 export const createSuccessResponse = <T>(data: T): ApiResponse<T> => ({
   success: true,
   data,
 });
 
-export const createErrorResponse = <T>(
-  code: ApiErrorCode,
-  message: T,
-): ApiResponse => ({
+export const createErrorResponse = <T>(code: ApiErrorCode, message: T): ApiResponse => ({
   success: false,
   error: {
     code,
@@ -45,20 +39,11 @@ export const createErrorResponse = <T>(
   },
 });
 
-export const sendSuccess = <T>(
-  res: Response,
-  status: number,
-  data: T,
-): void => {
+export const sendSuccess = <T>(res: Response, status: number, data: T): void => {
   res.status(status).send(createSuccessResponse(data));
 };
 
-export const sendError = <T>(
-  res: Response,
-  status: number,
-  code: ApiErrorCode,
-  message: T,
-): void => {
+export const sendError = <T>(res: Response, status: number, code: ApiErrorCode, message: T): void => {
   res.status(status).send(createErrorResponse(code, message));
 };
 
@@ -71,86 +56,76 @@ export const asyncHandler = <T extends Request>(
 };
 
 export const asyncHandlerWithErr = <T extends Error, K extends Request>(
-  fn: (
-    err: T,
-    req: K,
-    res: Response,
-    next: NextFunction,
-  ) => Promise<void> | void,
+  fn: (err: T, req: K, res: Response, next: NextFunction) => Promise<void> | void,
 ): ErrorRequestHandler => {
   return (err, req, res, next) => {
     Promise.resolve(fn(err, req as K, res, next)).catch(next);
   };
 };
 
-export const jwtErrorHandler = (
-  err: any,
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
+/**
+ * OAuth callback handler - handles both auth and permission callbacks
+ * Takes callback URL and error code as parameters for flexibility
+ */
+export const oauthCallbackHandler = <T extends Request>(
+  callbackUrl: string,
+  errorCode: CallbackCode,
+  fn: (req: T, res: Response, next: NextFunction) => Promise<void> | void,
+): RequestHandler => {
+  return (req, res, next) => {
+    Promise.resolve(fn(req as T, res, next)).catch((error) => {
+      logger.error('OAuth callback error:', error);
+
+      // Extract provider and accountId from request if available
+      const provider = req.params.provider as OAuthProviders | undefined;
+      const accountId = req.query.accountId as string | undefined;
+
+      // Create callback data using the actual error message and provided error code
+      const callbackData: CallbackData = {
+        code: errorCode,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        provider,
+        ...(accountId && { accountId }), // Only include accountId if it exists
+      };
+
+      // Always redirect for OAuth callbacks - never return JSON
+      next(new Redirect(callbackData, callbackUrl));
+    });
+  };
+};
+
+export const jwtErrorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
   // Check if error is a JWT error
   if (
     err instanceof jwt.JsonWebTokenError ||
     err instanceof jwt.TokenExpiredError ||
     err instanceof jwt.NotBeforeError ||
-    (err &&
-      (err.name === "JsonWebTokenError" ||
-        err.name === "TokenExpiredError" ||
-        err.name === "NotBeforeError"))
+    (err && (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError' || err.name === 'NotBeforeError'))
   ) {
-    logger.error("JWT Error:", err);
+    logger.error('JWT Error:', err);
 
     // Handle specific JWT error types
-    if (
-      err instanceof jwt.TokenExpiredError ||
-      err.name === "TokenExpiredError"
-    ) {
-      return res
-        .status(401)
-        .json(
-          createErrorResponse(
-            ApiErrorCode.TOKEN_EXPIRED,
-            "The provided token has expired",
-          ),
-        );
+    if (err instanceof jwt.TokenExpiredError || err.name === 'TokenExpiredError') {
+      return res.status(401).json(createErrorResponse(ApiErrorCode.TOKEN_EXPIRED, 'The provided token has expired'));
     }
 
-    if (err instanceof jwt.NotBeforeError || err.name === "NotBeforeError") {
+    if (err instanceof jwt.NotBeforeError || err.name === 'NotBeforeError') {
       return res
         .status(401)
-        .json(
-          createErrorResponse(
-            ApiErrorCode.TOKEN_INVALID,
-            "The token cannot be used yet (not before error)",
-          ),
-        );
+        .json(createErrorResponse(ApiErrorCode.TOKEN_INVALID, 'The token cannot be used yet (not before error)'));
     }
 
     // Handle generic JWT errors (malformed, invalid signature, etc.)
-    if (
-      err instanceof jwt.JsonWebTokenError ||
-      err.name === "JsonWebTokenError"
-    ) {
+    if (err instanceof jwt.JsonWebTokenError || err.name === 'JsonWebTokenError') {
       return res
         .status(401)
-        .json(
-          createErrorResponse(
-            ApiErrorCode.TOKEN_INVALID,
-            err.message || "Invalid token provided",
-          ),
-        );
+        .json(createErrorResponse(ApiErrorCode.TOKEN_INVALID, err.message || 'Invalid token provided'));
     }
 
     // Generic JWT error fallback
     return res
       .status(401)
-      .json(
-        createErrorResponse(
-          ApiErrorCode.AUTH_FAILED,
-          "Authentication failed due to token issues",
-        ),
-      );
+      .json(createErrorResponse(ApiErrorCode.AUTH_FAILED, 'Authentication failed due to token issues'));
   }
 
   // Not a JWT error, pass to next handler
@@ -158,19 +133,14 @@ export const jwtErrorHandler = (
 };
 
 // MongoDB Error Handler
-export const mongoErrorHandler = (
-  err: any,
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
+export const mongoErrorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
   // Check if error is a MongoDB or Mongoose error
   if (
     err instanceof MongoError ||
     err instanceof MongooseError ||
-    (err && (err.name === "MongoError" || err.name === "MongooseError"))
+    (err && (err.name === 'MongoError' || err.name === 'MongooseError'))
   ) {
-    logger.error("Database Error:", err);
+    logger.error('Database Error:', err);
 
     // Handle specific MongoDB error codes
     if (err.code === 11000) {
@@ -178,18 +148,12 @@ export const mongoErrorHandler = (
       return res
         .status(409)
         .json(
-          createErrorResponse(
-            ApiErrorCode.RESOURCE_EXISTS,
-            "Resource already exists with the provided unique fields",
-          ),
+          createErrorResponse(ApiErrorCode.RESOURCE_EXISTS, 'Resource already exists with the provided unique fields'),
         );
     }
 
     // Handle Mongoose validation errors
-    if (
-      err instanceof MongooseError.ValidationError ||
-      err.name === "ValidationError"
-    ) {
+    if (err instanceof MongooseError.ValidationError || err.name === 'ValidationError') {
       // Extract detailed validation errors from Mongoose
       const validationErrors: Record<
         string,
@@ -215,14 +179,14 @@ export const mongoErrorHandler = (
 
       return res.status(400).json(
         createErrorResponse(ApiErrorCode.VALIDATION_ERROR, {
-          message: "Schema validation failed",
+          message: 'Schema validation failed',
           fields: validationErrors,
         }),
       );
     }
 
     // Handle Mongoose cast errors (often from invalid ObjectId)
-    if (err instanceof MongooseError.CastError || err.name === "CastError") {
+    if (err instanceof MongooseError.CastError || err.name === 'CastError') {
       return res.status(400).json(
         createErrorResponse(ApiErrorCode.INVALID_PARAMETERS, {
           message: `Invalid ${err.path}: ${err.value}`,
@@ -233,22 +197,14 @@ export const mongoErrorHandler = (
     }
 
     // Handle Mongoose version error (document was modified between retrieving and saving)
-    if (
-      err instanceof MongooseError.VersionError ||
-      err.name === "VersionError"
-    ) {
+    if (err instanceof MongooseError.VersionError || err.name === 'VersionError') {
       return res
         .status(409)
-        .json(
-          createErrorResponse(
-            ApiErrorCode.INVALID_STATE,
-            "Document has been modified by another process",
-          ),
-        );
+        .json(createErrorResponse(ApiErrorCode.INVALID_STATE, 'Document has been modified by another process'));
     }
 
     // Handle Mongoose strict mode errors
-    if (err.name === "StrictModeError") {
+    if (err.name === 'StrictModeError') {
       return res.status(400).json(
         createErrorResponse(ApiErrorCode.INVALID_PARAMETERS, {
           message: err.message,
@@ -260,12 +216,7 @@ export const mongoErrorHandler = (
     // Handle other MongoDB/Mongoose errors
     return res
       .status(500)
-      .json(
-        createErrorResponse(
-          ApiErrorCode.DATABASE_ERROR,
-          err.message || "Database operation failed",
-        ),
-      );
+      .json(createErrorResponse(ApiErrorCode.DATABASE_ERROR, err.message || 'Database operation failed'));
   }
 
   // Not a MongoDB error, pass to next handler
@@ -273,21 +224,13 @@ export const mongoErrorHandler = (
 };
 
 // Google API Error Handler
-export const googleApiErrorHandler = (
-  err: any,
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
+export const googleApiErrorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
   // Check if error is a Google API error
-  if (err instanceof GaxiosError || (err && err.name === "GaxiosError")) {
-    logger.error("Google API Error:", err);
+  if (err instanceof GaxiosError || (err && err.name === 'GaxiosError')) {
+    logger.error('Google API Error:', err);
 
     const statusCode = err.response?.status || 500;
-    const errorMessage =
-      err.response?.data?.error?.message ||
-      err.message ||
-      "Google API request failed";
+    const errorMessage = err.response?.data?.error?.message || err.message || 'Google API request failed';
 
     // Map Google API error codes to our API error codes
     let apiErrorCode = ApiErrorCode.SERVICE_UNAVAILABLE;
@@ -304,9 +247,7 @@ export const googleApiErrorHandler = (
       apiErrorCode = ApiErrorCode.SERVICE_UNAVAILABLE;
     }
 
-    return res
-      .status(statusCode)
-      .json(createErrorResponse(apiErrorCode, errorMessage));
+    return res.status(statusCode).json(createErrorResponse(apiErrorCode, errorMessage));
   }
 
   // Not a Google API error, pass to next handler
@@ -314,30 +255,18 @@ export const googleApiErrorHandler = (
 };
 
 // Generic API request error handler
-export const apiRequestErrorHandler = (
-  err: any,
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
+export const apiRequestErrorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
   // Check if error is a generic API request error (axios, fetch, etc.)
-  if (
-    err.isAxiosError ||
-    (err.response && err.request) ||
-    err.name === "FetchError"
-  ) {
-    logger.error("API Request Error:", err);
+  if (err.isAxiosError || (err.response && err.request) || err.name === 'FetchError') {
+    logger.error('API Request Error:', err);
 
     const statusCode = err.response?.status || 500;
-    const errorMessage =
-      err.response?.data?.message ||
-      err.message ||
-      "External API request failed";
+    const errorMessage = err.response?.data?.message || err.message || 'External API request failed';
 
     // Map status codes to our error codes
     let apiErrorCode = ApiErrorCode.CONNECTION_ERROR;
 
-    if (err.code === "ECONNABORTED" || err.code === "ETIMEDOUT") {
+    if (err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT') {
       apiErrorCode = ApiErrorCode.TIMEOUT_ERROR;
     } else if (statusCode === 401 || statusCode === 403) {
       apiErrorCode = ApiErrorCode.AUTH_FAILED;
@@ -351,9 +280,7 @@ export const apiRequestErrorHandler = (
       apiErrorCode = ApiErrorCode.SERVICE_UNAVAILABLE;
     }
 
-    return res
-      .status(statusCode)
-      .json(createErrorResponse(apiErrorCode, errorMessage));
+    return res.status(statusCode).json(createErrorResponse(apiErrorCode, errorMessage));
   }
 
   // Not an API request error, pass to next handler
@@ -361,12 +288,7 @@ export const apiRequestErrorHandler = (
 };
 
 // Success response middleware
-export const successHandler = (
-  result: any,
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
+export const successHandler = (result: any, req: Request, res: Response, next: NextFunction) => {
   // Skip if not a success response or is an error
   if (!result || result instanceof Error || result instanceof BaseError) {
     next(result);
@@ -380,13 +302,13 @@ export const successHandler = (
   }
 
   if (result instanceof JsonSuccess) {
-    logger.info("Response", result);
+    logger.info('Response', result);
     res.status(result.statusCode).json(createSuccessResponse(result.data));
     return;
   }
 
   // Handle direct data responses (treat as JsonSuccess)
-  if (typeof result === "object" && result !== null) {
+  if (typeof result === 'object' && result !== null) {
     res.status(200).json(createSuccessResponse(result));
     return;
   }
@@ -402,12 +324,7 @@ export const successHandler = (
 };
 
 // Enhanced error handling middleware
-export const errorHandler = (
-  err: any,
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
+export const errorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
   // Skip redirects (handled by redirectHandler)
   if (err instanceof Redirect) {
     next(err);
@@ -415,7 +332,7 @@ export const errorHandler = (
   }
 
   // Log the error
-  logger.error("Error:", err);
+  logger.error('Error:', err);
 
   // Handle all the different BaseError types
   if (err instanceof AuthError) {
@@ -435,7 +352,7 @@ export const errorHandler = (
       .json(
         createErrorResponse(
           err.code,
-          typeof err.message === "object"
+          typeof err.message === 'object'
             ? { ...(err.message as object), data: err.data }
             : { message: err.message, data: err.data },
         ),
@@ -465,52 +382,28 @@ export const errorHandler = (
 
   // Handle other standard errors
   if (err instanceof Error) {
-    res
-      .status(500)
-      .json(
-        createErrorResponse(
-          ApiErrorCode.SERVER_ERROR,
-          err.message || "An unexpected error occurred",
-        ),
-      );
+    res.status(500).json(createErrorResponse(ApiErrorCode.SERVER_ERROR, err.message || 'An unexpected error occurred'));
     return;
   }
 
   // Handle generic errors as a fallback
-  res
-    .status(500)
-    .json(
-      createErrorResponse(
-        ApiErrorCode.SERVER_ERROR,
-        "An unexpected error occurred",
-      ),
-    );
+  res.status(500).json(createErrorResponse(ApiErrorCode.SERVER_ERROR, 'An unexpected error occurred'));
 };
 
 // Redirect response middleware (handle before success handler)
-export const redirectHandler = (
-  result: any,
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
+export const redirectHandler = (result: any, req: Request, res: Response, next: NextFunction) => {
   // Only handle Redirect responses
   if (result instanceof Redirect) {
-    logger.info("Processing redirect:", {
+    logger.info('Processing redirect:', {
       redirectPath: result.redirectPath,
       statusCode: result.statusCode,
       data: result.data,
     });
 
     // Use createRedirectUrl for proper URL handling with proxy support and relative paths
-    const redirectUrl = createRedirectUrl(
-      req,
-      result.redirectPath,
-      result.data,
-      result.originalUrl,
-    );
+    const redirectUrl = createRedirectUrl(req, result.redirectPath, result.data, result.originalUrl);
 
-    logger.info("Redirecting to:", { redirectUrl });
+    logger.info('Redirecting to:', { redirectUrl });
     res.redirect(result.statusCode, redirectUrl);
     return;
   }
@@ -534,14 +427,7 @@ export const applyErrorHandlers = (app: any) => {
 
   // Catch-all for unhandled errors
   app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-    logger.error("Unhandled error:", err);
-    res
-      .status(500)
-      .json(
-        createErrorResponse(
-          ApiErrorCode.SERVER_ERROR,
-          "A server error occurred",
-        ),
-      );
+    logger.error('Unhandled error:', err);
+    res.status(500).json(createErrorResponse(ApiErrorCode.SERVER_ERROR, 'A server error occurred'));
   });
 };
