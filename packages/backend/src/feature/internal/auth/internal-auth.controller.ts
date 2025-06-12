@@ -1,27 +1,13 @@
-import {
-  JsonSuccess,
-  NotFoundError,
-  BadRequestError,
-  ApiErrorCode,
-  AuthError,
-} from "../../../types/response.types";
-import { ValidationUtils } from "../../../utils/validation";
-import { toSafeAccount } from "../../account/Account.utils";
-import { AccountType } from "../../account/Account.types";
-import { verifyLocalJwtToken, verifyLocalRefreshToken } from "../../local_auth";
-import {
-  verifyOAuthJwtToken,
-  verifyOAuthRefreshToken,
-} from "../../oauth/OAuth.jwt";
-import {
-  getTokenInfo,
-  getGoogleAccountScopes,
-  hasScope,
-  verifyTokenOwnership,
-} from "../../google/services/token/token.services";
-import { buildGoogleScopeUrls } from "../../google/config";
-import db from "../../../config/db";
-import { asyncHandler } from "../../../utils/response";
+import { JsonSuccess, NotFoundError, BadRequestError, ApiErrorCode, AuthError } from '../../../types/response.types';
+import { ValidationUtils } from '../../../utils/validation';
+import { toSafeAccount } from '../../account/Account.utils';
+import { AccountType } from '../../account/Account.types';
+import { verifyLocalJwtToken, verifyLocalRefreshToken } from '../../local_auth';
+import { verifyOAuthJwtToken, verifyOAuthRefreshToken } from '../../oauth/OAuth.jwt';
+import { getTokenInfo, getGoogleAccountScopes, verifyTokenOwnership } from '../../google/services/token/token.services';
+import { buildGoogleScopeUrls } from '../../google/config';
+import db from '../../../config/db';
+import { asyncHandler } from '../../../utils/response';
 
 /**
  * Get user information without sensitive data
@@ -29,17 +15,13 @@ import { asyncHandler } from "../../../utils/response";
 export const getUserInfo = asyncHandler(async (req, res, next) => {
   const { accountId } = req.params;
 
-  ValidationUtils.validateObjectId(accountId, "Account ID");
+  ValidationUtils.validateObjectId(accountId, 'Account ID');
 
   const models = await db.getModels();
   const account = await models.accounts.Account.findById(accountId);
 
   if (!account) {
-    throw new NotFoundError(
-      "Account not found",
-      404,
-      ApiErrorCode.USER_NOT_FOUND,
-    );
+    throw new NotFoundError('Account not found', 404, ApiErrorCode.USER_NOT_FOUND);
   }
 
   const safeAccount = toSafeAccount(account);
@@ -59,23 +41,19 @@ export const getUserInfo = asyncHandler(async (req, res, next) => {
 export const searchUserByEmail = asyncHandler(async (req, res, next) => {
   const { email } = req.query;
 
-  if (!email || typeof email !== "string") {
-    throw new BadRequestError("Email query parameter is required");
+  if (!email || typeof email !== 'string') {
+    throw new BadRequestError('Email query parameter is required');
   }
 
   ValidationUtils.validateEmail(email);
 
   const models = await db.getModels();
   const account = await models.accounts.Account.findOne({
-    "userDetails.email": email,
+    'userDetails.email': email,
   });
 
   if (!account) {
-    throw new NotFoundError(
-      "Account not found",
-      404,
-      ApiErrorCode.USER_NOT_FOUND,
-    );
+    throw new NotFoundError('Account not found', 404, ApiErrorCode.USER_NOT_FOUND);
   }
 
   const safeAccount = toSafeAccount(account);
@@ -95,23 +73,17 @@ export const searchUserByEmail = asyncHandler(async (req, res, next) => {
 export const getUserScopes = asyncHandler(async (req, res, next) => {
   const { accountId } = req.params;
 
-  ValidationUtils.validateObjectId(accountId, "Account ID");
+  ValidationUtils.validateObjectId(accountId, 'Account ID');
 
   const models = await db.getModels();
   const account = await models.accounts.Account.findById(accountId);
 
   if (!account) {
-    throw new NotFoundError(
-      "Account not found",
-      404,
-      ApiErrorCode.USER_NOT_FOUND,
-    );
+    throw new NotFoundError('Account not found', 404, ApiErrorCode.USER_NOT_FOUND);
   }
 
   if (account.accountType !== AccountType.OAuth) {
-    throw new BadRequestError(
-      "Google scopes are only available for OAuth accounts",
-    );
+    throw new BadRequestError('Google scopes are only available for OAuth accounts');
   }
 
   const scopes = await getGoogleAccountScopes(accountId);
@@ -131,26 +103,22 @@ export const getUserScopes = asyncHandler(async (req, res, next) => {
 export const validateSession = asyncHandler(async (req, res, next) => {
   const { accountId, accessToken, refreshToken } = req.body;
 
-  ValidationUtils.validateRequiredFields(req.body, ["accountId"]);
-  ValidationUtils.validateObjectId(accountId, "Account ID");
+  ValidationUtils.validateRequiredFields(req.body, ['accountId']);
+  ValidationUtils.validateObjectId(accountId, 'Account ID');
 
   if (!accessToken && !refreshToken) {
-    throw new BadRequestError("Either accessToken or refreshToken is required");
+    throw new BadRequestError('Either accessToken or refreshToken is required');
   }
 
   const models = await db.getModels();
   const account = await models.accounts.Account.findById(accountId);
 
   if (!account) {
-    throw new NotFoundError(
-      "Account not found",
-      404,
-      ApiErrorCode.USER_NOT_FOUND,
-    );
+    throw new NotFoundError('Account not found', 404, ApiErrorCode.USER_NOT_FOUND);
   }
 
   let tokenValid = false;
-  let tokenType: "access" | "refresh" | null = null;
+  let tokenType: 'access' | 'refresh' | null = null;
   let oauthAccessToken: string | undefined;
   let oauthRefreshToken: string | undefined;
 
@@ -159,25 +127,22 @@ export const validateSession = asyncHandler(async (req, res, next) => {
       if (account.accountType === AccountType.Local) {
         const { accountId: tokenAccountId } = verifyLocalJwtToken(accessToken);
         tokenValid = tokenAccountId === accountId;
-        tokenType = "access";
+        tokenType = 'access';
       } else if (account.accountType === AccountType.OAuth) {
-        const { accountId: tokenAccountId, oauthAccessToken: extractedToken } =
-          verifyOAuthJwtToken(accessToken);
+        const { accountId: tokenAccountId, oauthAccessToken: extractedToken } = verifyOAuthJwtToken(accessToken);
         tokenValid = tokenAccountId === accountId;
-        tokenType = "access";
+        tokenType = 'access';
         oauthAccessToken = extractedToken;
       }
     } else if (refreshToken) {
       if (account.accountType === AccountType.Local) {
-        const { accountId: tokenAccountId } =
-          verifyLocalRefreshToken(refreshToken);
+        const { accountId: tokenAccountId } = verifyLocalRefreshToken(refreshToken);
         tokenValid = tokenAccountId === accountId;
-        tokenType = "refresh";
+        tokenType = 'refresh';
       } else if (account.accountType === AccountType.OAuth) {
-        const { accountId: tokenAccountId, oauthRefreshToken: extractedToken } =
-          verifyOAuthRefreshToken(refreshToken);
+        const { accountId: tokenAccountId, oauthRefreshToken: extractedToken } = verifyOAuthRefreshToken(refreshToken);
         tokenValid = tokenAccountId === accountId;
-        tokenType = "refresh";
+        tokenType = 'refresh';
         oauthRefreshToken = extractedToken;
       }
     }
@@ -186,11 +151,7 @@ export const validateSession = asyncHandler(async (req, res, next) => {
   }
 
   if (!tokenValid) {
-    throw new AuthError(
-      "Invalid or expired token",
-      401,
-      ApiErrorCode.TOKEN_INVALID,
-    );
+    throw new AuthError('Invalid or expired token', 401, ApiErrorCode.TOKEN_INVALID);
   }
 
   const safeAccount = toSafeAccount(account);
@@ -213,38 +174,25 @@ export const validateSession = asyncHandler(async (req, res, next) => {
 export const validateGoogleAccess = asyncHandler(async (req, res, next) => {
   const { accountId, accessToken, requiredScopes = [] } = req.body;
 
-  ValidationUtils.validateRequiredFields(req.body, [
-    "accountId",
-    "accessToken",
-  ]);
-  ValidationUtils.validateObjectId(accountId, "Account ID");
+  ValidationUtils.validateRequiredFields(req.body, ['accountId', 'accessToken']);
+  ValidationUtils.validateObjectId(accountId, 'Account ID');
 
   const models = await db.getModels();
   const account = await models.accounts.Account.findById(accountId);
 
   if (!account) {
-    throw new NotFoundError(
-      "Account not found",
-      404,
-      ApiErrorCode.USER_NOT_FOUND,
-    );
+    throw new NotFoundError('Account not found', 404, ApiErrorCode.USER_NOT_FOUND);
   }
 
   if (account.accountType !== AccountType.OAuth) {
-    throw new BadRequestError(
-      "Google API access is only available for OAuth accounts",
-    );
+    throw new BadRequestError('Google API access is only available for OAuth accounts');
   }
 
   try {
     // Verify token ownership
     const ownership = await verifyTokenOwnership(accessToken, accountId);
     if (!ownership.isValid) {
-      throw new AuthError(
-        `Token ownership verification failed: ${ownership.reason}`,
-        403,
-        ApiErrorCode.AUTH_FAILED,
-      );
+      throw new AuthError(`Token ownership verification failed: ${ownership.reason}`, 403, ApiErrorCode.AUTH_FAILED);
     }
 
     // Check required scopes if provided
@@ -257,7 +205,9 @@ export const validateGoogleAccess = asyncHandler(async (req, res, next) => {
       for (let i = 0; i < scopeUrls.length; i++) {
         const scopeUrl = scopeUrls[i];
         const scopeName = requiredScopes[i];
-        const hasAccess = await hasScope(accessToken, scopeUrl);
+        const tokenInfo = await getTokenInfo(accessToken);
+        const grantedScopes = tokenInfo.scope ? tokenInfo.scope.split(' ') : [];
+        const hasAccess = grantedScopes.includes(scopeUrl);
 
         scopeResults[scopeName] = hasAccess;
         if (!hasAccess) {
@@ -283,11 +233,7 @@ export const validateGoogleAccess = asyncHandler(async (req, res, next) => {
     if (error instanceof AuthError) {
       throw error;
     }
-    throw new AuthError(
-      "Failed to validate Google access",
-      403,
-      ApiErrorCode.AUTH_FAILED,
-    );
+    throw new AuthError('Failed to validate Google access', 403, ApiErrorCode.AUTH_FAILED);
   }
 });
 
@@ -297,27 +243,18 @@ export const validateGoogleAccess = asyncHandler(async (req, res, next) => {
 export const verifyGoogleToken = asyncHandler(async (req, res, next) => {
   const { accountId, accessToken } = req.body;
 
-  ValidationUtils.validateRequiredFields(req.body, [
-    "accountId",
-    "accessToken",
-  ]);
-  ValidationUtils.validateObjectId(accountId, "Account ID");
+  ValidationUtils.validateRequiredFields(req.body, ['accountId', 'accessToken']);
+  ValidationUtils.validateObjectId(accountId, 'Account ID');
 
   const models = await db.getModels();
   const account = await models.accounts.Account.findById(accountId);
 
   if (!account) {
-    throw new NotFoundError(
-      "Account not found",
-      404,
-      ApiErrorCode.USER_NOT_FOUND,
-    );
+    throw new NotFoundError('Account not found', 404, ApiErrorCode.USER_NOT_FOUND);
   }
 
   if (account.accountType !== AccountType.OAuth) {
-    throw new BadRequestError(
-      "Google token verification is only available for OAuth accounts",
-    );
+    throw new BadRequestError('Google token verification is only available for OAuth accounts');
   }
 
   try {
@@ -331,11 +268,7 @@ export const verifyGoogleToken = asyncHandler(async (req, res, next) => {
       }),
     );
   } catch {
-    throw new AuthError(
-      "Failed to verify Google token",
-      500,
-      ApiErrorCode.SERVER_ERROR,
-    );
+    throw new AuthError('Failed to verify Google token', 500, ApiErrorCode.SERVER_ERROR);
   }
 });
 
@@ -349,45 +282,35 @@ export const getGoogleTokenInfo = asyncHandler(async (req, res, next) => {
   const { accountId } = req.params;
   const { accessToken } = req.body;
 
-  ValidationUtils.validateObjectId(accountId, "Account ID");
+  ValidationUtils.validateObjectId(accountId, 'Account ID');
 
   if (!accessToken) {
-    throw new BadRequestError("Access token is required in request body");
+    throw new BadRequestError('Access token is required in request body');
   }
 
   const models = await db.getModels();
   const account = await models.accounts.Account.findById(accountId);
 
   if (!account) {
-    throw new NotFoundError(
-      "Account not found",
-      404,
-      ApiErrorCode.USER_NOT_FOUND,
-    );
+    throw new NotFoundError('Account not found', 404, ApiErrorCode.USER_NOT_FOUND);
   }
 
   if (account.accountType !== AccountType.OAuth) {
-    throw new BadRequestError(
-      "Google token information is only available for OAuth accounts",
-    );
+    throw new BadRequestError('Google token information is only available for OAuth accounts');
   }
 
   try {
     // Verify token ownership first
     const ownership = await verifyTokenOwnership(accessToken, accountId);
     if (!ownership.isValid) {
-      throw new AuthError(
-        `Token ownership verification failed: ${ownership.reason}`,
-        403,
-        ApiErrorCode.AUTH_FAILED,
-      );
+      throw new AuthError(`Token ownership verification failed: ${ownership.reason}`, 403, ApiErrorCode.AUTH_FAILED);
     }
 
     // Get token information from Google
     const tokenInfo = await getTokenInfo(accessToken);
 
     // Get granted scopes
-    const grantedScopes = tokenInfo.scope ? tokenInfo.scope.split(" ") : [];
+    const grantedScopes = tokenInfo.scope ? tokenInfo.scope.split(' ') : [];
 
     // Get stored scopes from our database
     const storedScopes = await getGoogleAccountScopes(accountId);
@@ -408,10 +331,6 @@ export const getGoogleTokenInfo = asyncHandler(async (req, res, next) => {
     if (error instanceof AuthError) {
       throw error;
     }
-    throw new AuthError(
-      "Failed to get Google token information",
-      500,
-      ApiErrorCode.SERVER_ERROR,
-    );
+    throw new AuthError('Failed to get Google token information', 500, ApiErrorCode.SERVER_ERROR);
   }
 });
