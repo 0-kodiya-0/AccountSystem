@@ -1,40 +1,38 @@
-import express from "express";
-import * as AuthController from "./OAuth.controller";
+import express from 'express';
+import * as AuthController from './OAuth.controller';
 
-export const router = express.Router({ mergeParams: true });
+export const authNotRequiredRouter = express.Router({ mergeParams: true });
+export const authRequiredRouter = express.Router({ mergeParams: true });
 
 /**
  * Common Google authentication route for all auth types
  */
-router.get("/auth/google", AuthController.initiateGoogleAuth);
+authNotRequiredRouter.get('/auth/google', AuthController.initiateGoogleAuth);
 
 /**
  * Signup route for all providers
  */
-router.get("/signup/:provider?", AuthController.signup);
+authNotRequiredRouter.get('/signup/:provider?', AuthController.signup);
 
 /**
  * Signin route for all providers
  */
-router.get("/signin/:provider?", AuthController.signin);
+authNotRequiredRouter.get('/signin/:provider?', AuthController.signin);
 
 /**
  * Callback route for OAuth providers
  */
-router.get("/callback/:provider", AuthController.handleCallback);
+authNotRequiredRouter.get('/callback/:provider', AuthController.handleCallback);
 
 /**
  * Dedicated callback route for permission requests - focused only on token handling
  */
-router.get(
-  "/callback/permission/:provider",
-  AuthController.handlePermissionCallback,
-);
+authNotRequiredRouter.get('/callback/permission/:provider', AuthController.handlePermissionCallback);
 
 /**
  * Route specifically for re-requesting all previously granted scopes during sign-in flow
  */
-router.get("/permission/reauthorize", AuthController.reauthorizePermissions);
+authNotRequiredRouter.get('/permission/reauthorize', AuthController.reauthorizePermissions);
 
 /**
  * Route to request permission for specific scope names
@@ -45,4 +43,14 @@ router.get("/permission/reauthorize", AuthController.reauthorizePermissions);
  * - GET /permission/gmail.readonly,calendar.events?accountId=123&redirectUrl=/dashboard
  * - GET /permission/["gmail.readonly","calendar.events"]?accountId=123&redirectUrl=/dashboard
  */
-router.get("/permission/:scopeNames", AuthController.requestPermission);
+authNotRequiredRouter.get('/permission/:scopeNames', AuthController.requestPermission);
+
+// Refresh token route
+authRequiredRouter.post('/refresh', AuthController.refreshOAuthToken);
+
+// Revoke tokens route
+authRequiredRouter.post('/revoke', AuthController.revokeOAuthToken);
+
+// Token information routes
+authRequiredRouter.get('/token', AuthController.getOAuthTokenInfo);
+authRequiredRouter.get('/refresh/token', AuthController.getOAuthRefreshTokenInfo);

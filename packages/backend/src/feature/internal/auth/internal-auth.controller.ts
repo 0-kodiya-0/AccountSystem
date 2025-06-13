@@ -4,7 +4,11 @@ import { toSafeAccount } from '../../account/Account.utils';
 import { AccountType } from '../../account/Account.types';
 import { verifyLocalJwtToken, verifyLocalRefreshToken } from '../../local_auth';
 import { verifyOAuthJwtToken, verifyOAuthRefreshToken } from '../../oauth/OAuth.jwt';
-import { getTokenInfo, getGoogleAccountScopes, verifyTokenOwnership } from '../../google/services/token/token.services';
+import {
+  getTokenInfo,
+  getGoogleAccountScopes,
+  verifyTokenOwnership,
+} from '../../google/services/tokenInfo/tokenInfo.services';
 import { buildGoogleScopeUrls } from '../../google/config';
 import db from '../../../config/db';
 import { asyncHandler } from '../../../utils/response';

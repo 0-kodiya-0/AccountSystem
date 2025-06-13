@@ -1,12 +1,9 @@
-export {
-  authenticatedNeedRouter,
-  authenticationNotNeedRouter,
-} from "./Account.routes";
+export { authRequiredRouter, authNotRequiredRouter } from './Account.routes';
 
-export * from "./Account.service";
+export * from './Account.service';
 
 // Export types and utilities
-export * from "./Account.types";
-export * from "./Account.utils";
-export * from "./Account.validation";
-export * from "./Account.model";
+export * from './Account.types';
+export * from './Account.utils';
+export * from './Account.validation';
+export * from './Account.model';

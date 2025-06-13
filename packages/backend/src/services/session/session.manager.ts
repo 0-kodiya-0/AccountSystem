@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { Request, Response } from 'express';
 import { AccountType } from '../../feature/account/Account.types';
-import { refreshGoogleToken, revokeTokens } from '../../feature/google/services/token/token.services';
+import { refreshGoogleToken, revokeTokens } from '../../feature/google/services/tokenInfo/tokenInfo.services';
 import { createLocalJwtToken } from '../../feature/local_auth';
 import { createOAuthJwtToken } from '../../feature/oauth/OAuth.jwt';
 import { getJwtSecret, getNodeEnv } from '../../config/env.config';

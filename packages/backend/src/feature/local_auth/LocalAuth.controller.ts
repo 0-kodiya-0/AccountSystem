@@ -1,5 +1,12 @@
 import { asyncHandler } from '../../utils/response';
-import { JsonSuccess, ValidationError, ApiErrorCode, BadRequestError, AuthError } from '../../types/response.types';
+import {
+  JsonSuccess,
+  ValidationError,
+  ApiErrorCode,
+  BadRequestError,
+  AuthError,
+  Redirect,
+} from '../../types/response.types';
 import * as LocalAuthService from './LocalAuth.service';
 import {
   validateSignupRequest,
@@ -15,13 +22,24 @@ import {
   VerifyTwoFactorRequest,
   VerifyEmailRequest,
   Account,
+  AccountType,
 } from '../account/Account.types';
-import { setupCompleteAccountSession } from '../../services';
+import {
+  extractAccessToken,
+  extractRefreshToken,
+  handleTokenRefresh,
+  setupCompleteAccountSession,
+} from '../../services';
 import { sendTwoFactorEnabledNotification } from '../email/Email.service';
 import QRCode from 'qrcode';
 import { ValidationUtils } from '../../utils/validation';
-import { createLocalJwtToken, createLocalRefreshToken } from './LocalAuth.jwt';
-import { findUserById } from '../account';
+import {
+  createLocalJwtToken,
+  createLocalRefreshToken,
+  verifyLocalJwtToken,
+  verifyLocalRefreshToken,
+} from './LocalAuth.jwt';
+import { AccountDocument, findUserById } from '../account';
 import { logger } from '../../utils/logger';
 import { sendNonCriticalEmail } from '../email/Email.utils';
 
@@ -345,4 +363,172 @@ export const generateBackupCodes = asyncHandler(async (req, res, next) => {
       backupCodes,
     }),
   );
+});
+
+/**
+ * Get local auth access token information
+ * Route: GET /:accountId/auth/token
+ */
+export const getLocalTokenInfo = asyncHandler(async (req, res, next) => {
+  const accountId = req.params.accountId;
+
+  // First try to get token from body, then from cookies
+  let accessToken = req.body.token;
+  if (!accessToken) {
+    accessToken = extractAccessToken(req, accountId);
+  }
+
+  if (!accessToken) {
+    throw new BadRequestError('Access token not found in body or cookies', 400, ApiErrorCode.TOKEN_INVALID);
+  }
+
+  try {
+    // Verify and decode our JWT token
+    const { accountId: tokenAccountId, exp } = verifyLocalJwtToken(accessToken);
+
+    // Check if token is expired
+    const isExpired = exp && Date.now() >= exp * 1000;
+    if (isExpired) {
+      return next(
+        new JsonSuccess({
+          isExpired: true,
+          type: 'local_jwt',
+        }),
+      );
+    }
+
+    // Verify token belongs to correct account
+    if (tokenAccountId !== accountId) {
+      throw new BadRequestError('Token does not belong to this account', 400, ApiErrorCode.TOKEN_INVALID);
+    }
+
+    const response = {
+      isExpired: false,
+      type: 'local_jwt',
+      expiresAt: exp ? exp * 1000 : null,
+      timeRemaining: exp ? Math.max(0, exp * 1000 - Date.now()) : null,
+      accountId: tokenAccountId,
+    };
+
+    next(new JsonSuccess(response));
+  } catch {
+    // If JWT verification fails, token is invalid/expired
+    next(
+      new JsonSuccess({
+        isExpired: true,
+        type: 'local_jwt',
+        error: 'Invalid or expired token',
+      }),
+    );
+  }
+});
+
+/**
+ * Get local auth refresh token information
+ * Route: GET /:accountId/auth/refresh/token
+ */
+export const getLocalRefreshTokenInfo = asyncHandler(async (req, res, next) => {
+  const accountId = req.params.accountId;
+
+  // First try to get token from body, then from cookies
+  let refreshToken = req.body.token;
+  if (!refreshToken) {
+    refreshToken = extractRefreshToken(req, accountId);
+  }
+
+  if (!refreshToken) {
+    throw new BadRequestError('Refresh token not found in body or cookies', 400, ApiErrorCode.TOKEN_INVALID);
+  }
+
+  try {
+    // Verify and decode our refresh token
+    const { accountId: tokenAccountId, exp } = verifyLocalRefreshToken(refreshToken);
+
+    // Check if token is expired
+    const isExpired = exp && Date.now() >= exp * 1000;
+    if (isExpired) {
+      return next(
+        new JsonSuccess({
+          isExpired: true,
+          type: 'local_refresh_jwt',
+        }),
+      );
+    }
+
+    // Verify token belongs to correct account
+    if (tokenAccountId !== accountId) {
+      throw new BadRequestError('Token does not belong to this account', 400, ApiErrorCode.TOKEN_INVALID);
+    }
+
+    const response = {
+      isExpired: false,
+      type: 'local_refresh_jwt',
+      expiresAt: exp ? exp * 1000 : null,
+      timeRemaining: exp ? Math.max(0, exp * 1000 - Date.now()) : null,
+      accountId: tokenAccountId,
+    };
+
+    next(new JsonSuccess(response));
+  } catch {
+    next(
+      new JsonSuccess({
+        isExpired: true,
+        type: 'local_refresh_jwt',
+        error: 'Invalid or expired refresh token',
+      }),
+    );
+  }
+});
+
+/**
+ * Refresh local auth access token
+ * Route: POST /:accountId/auth/refresh
+ */
+export const refreshLocalToken = asyncHandler(async (req, res, next) => {
+  const accountId = req.params.accountId;
+  const account = req.account as AccountDocument;
+  const { redirectUrl } = req.query;
+
+  // Validate account type
+  if (account.accountType !== AccountType.Local) {
+    throw new BadRequestError('Account is not a local authentication account', 400, ApiErrorCode.AUTH_FAILED);
+  }
+
+  // Extract refresh token
+  const refreshToken = extractRefreshToken(req, accountId);
+  if (!refreshToken) {
+    throw new BadRequestError('Refresh token not found', 400, ApiErrorCode.TOKEN_INVALID);
+  }
+
+  try {
+    // Refresh token is already verified by middleware, just use it
+    const refreshTokenToUse = req.refreshToken;
+
+    if (!refreshTokenToUse) {
+      throw new BadRequestError('Refresh token not available', 400, ApiErrorCode.TOKEN_INVALID);
+    }
+
+    // Use the session manager to handle token refresh
+    await handleTokenRefresh(accountId, refreshTokenToUse, AccountType.Local, req, res);
+
+    // Validate and determine redirect URL
+    if (!redirectUrl) {
+      throw new BadRequestError('Missing redirectUrl query parameter', 400, ApiErrorCode.MISSING_DATA);
+    }
+
+    ValidationUtils.validateUrl(redirectUrl as string, 'Redirect URL');
+
+    next(new Redirect(null, redirectUrl as string));
+  } catch {
+    // If refresh fails, redirect to logout
+    next(
+      new Redirect(
+        {
+          code: ApiErrorCode.TOKEN_INVALID,
+          message: 'Refresh token expired or invalid',
+        },
+        `./${accountId}/account/logout?accountId=${accountId}&clearClientAccountState=false`,
+      ),
+    );
+  }
 });

@@ -13,7 +13,7 @@ import {
   updateAccountScopes,
   getGoogleAccountScopes,
   checkForAdditionalScopes,
-} from '../google/services/token/token.services';
+} from '../google/services/tokenInfo/tokenInfo.services';
 
 /**
  * Process sign up with OAuth provider

@@ -10,19 +10,11 @@ import db from './config/db';
 import socketConfig from './config/socket.config';
 import { applyErrorHandlers, asyncHandler } from './utils/response';
 
-import { router as oauthRoutes } from './feature/oauth';
-import {
-  authenticatedNeedRouter as authNeedAccountRouter,
-  authenticationNotNeedRouter as authNotNeedAccountRouter,
-} from './feature/account';
-import { sessionRouter } from './services/session/session.routes'; // NEW: Session routes
-import tokenInfoRoutes from './services/tokenInfo/tokenInfo.route'; // NEW: Token info routes
-import { authenticatedNotNeedRouter as authNotNeedRouterGoogleRoutes } from './feature/google';
-import {
-  authNotRequiredRouter as localAuthNotRequiredRouter,
-  authRequiredRouter as localAuthRequiredRouter,
-} from './feature/local_auth';
-import notificationRoutes, { NotificationSocketHandler } from './feature/notifications';
+import * as oauthRouter from './feature/oauth';
+import * as accountRouter from './feature/account';
+import * as sessionRouter from './services/session/session.routes'; // NEW: Session routes
+import * as localAuthRouter from './feature/local_auth';
+import notificationRouter, { NotificationSocketHandler } from './feature/notifications';
 import { authenticateSession, validateAccountAccess, validateTokenAccess } from './middleware';
 import { ApiErrorCode, NotFoundError } from './types/response.types';
 import { logger } from './utils/logger';
@@ -61,21 +53,19 @@ function createMainApp(): express.Application {
 
   // OAuth routes (enabled unless specifically disabled)
   if (process.env.DISABLE_OAUTH !== 'true') {
-    app.use('/oauth', autoTrackParentUrl(), oauthRoutes);
+    app.use('/oauth', autoTrackParentUrl(), oauthRouter.authNotRequiredRouter);
     logger.info('OAuth routes enabled');
   } else {
     logger.info('OAuth routes disabled');
   }
 
   // Account routes (always enabled) - UPDATED to include session routes
-  app.use('/account', autoTrackParentUrl(), authNotNeedAccountRouter);
-  app.use('/account', autoTrackParentUrl(), sessionRouter); // NEW: Session routes
-  app.use('/token', autoTrackParentUrl(), tokenInfoRoutes);
-  app.use('/google', autoTrackParentUrl(), authNotNeedRouterGoogleRoutes);
+  app.use('/account', autoTrackParentUrl(), accountRouter.authNotRequiredRouter);
+  app.use('/session', autoTrackParentUrl(), sessionRouter.sessionRouter); // NEW: Session routes
 
   // Local auth routes (enabled unless specifically disabled)
   if (process.env.DISABLE_LOCAL_AUTH !== 'true') {
-    app.use('/auth', autoTrackParentUrl(), localAuthNotRequiredRouter);
+    app.use('/auth', autoTrackParentUrl(), localAuthRouter.authNotRequiredRouter);
     logger.info('Local authentication routes enabled');
   } else {
     logger.info('Local authentication routes disabled');
@@ -84,19 +74,24 @@ function createMainApp(): express.Application {
   // Routes that need authentication
   app.use('/:accountId', authenticateSession, validateAccountAccess, validateTokenAccess);
 
-  app.use('/:accountId/account', autoTrackParentUrl(), authNeedAccountRouter);
+  app.use('/:accountId/account', autoTrackParentUrl(), accountRouter.authRequiredRouter);
 
   // Notification routes (enabled unless specifically disabled)
   if (process.env.DISABLE_NOTIFICATIONS !== 'true') {
-    app.use('/:accountId/notifications', autoTrackParentUrl(), notificationRoutes);
+    app.use('/:accountId/notifications', autoTrackParentUrl(), notificationRouter);
     logger.info('Notification routes enabled');
   } else {
     logger.info('Notification routes disabled');
   }
 
+  if (process.env.DISABLE_OAUTH !== 'true') {
+    app.use('/:accountId/oauth', autoTrackParentUrl(), oauthRouter.authRequiredRouter);
+    logger.info('OAuth routes enabled');
+  }
+
   // Local auth authenticated routes (enabled unless specifically disabled)
   if (process.env.DISABLE_LOCAL_AUTH !== 'true') {
-    app.use('/:accountId/auth', autoTrackParentUrl(), localAuthRequiredRouter);
+    app.use('/:accountId/auth', autoTrackParentUrl(), localAuthRouter.authRequiredRouter);
   }
 
   applyErrorHandlers(app);

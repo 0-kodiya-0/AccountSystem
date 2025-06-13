@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
-import { JsonSuccess, Redirect } from '../../types/response.types';
+import { JsonSuccess } from '../../types/response.types';
 import { AccountDocument } from './Account.model';
 import { asyncHandler } from '../../utils/response';
 import * as AccountService from './Account.service';
@@ -98,34 +98,4 @@ export const updateAccountSecurity = asyncHandler(async (req, res, next) => {
   const updatedAccount = await AccountService.updateAccountSecurity(account, securityUpdates);
 
   next(new JsonSuccess(updatedAccount, 200));
-});
-
-/**
- * Refresh access token
- */
-export const refreshToken = asyncHandler(async (req, res, next) => {
-  const accountId = req.params.accountId as string;
-  const account = req.account as AccountDocument;
-  const refreshToken = req.oauthRefreshToken as string;
-  const { redirectUrl } = req.query;
-
-  const finalRedirectUrl = AccountService.validateRedirectUrl(redirectUrl as string);
-
-  await AccountService.refreshAccountToken(req, res, accountId, account, refreshToken);
-
-  next(new Redirect(null, finalRedirectUrl));
-});
-
-/**
- * Revoke refresh token
- */
-export const revokeToken = asyncHandler(async (req, res, next) => {
-  const accountId = req.params.accountId as string;
-  const account = req.account as AccountDocument;
-  const accessToken = req.oauthAccessToken as string;
-  const refreshToken = req.oauthRefreshToken as string;
-
-  const result = await AccountService.revokeAccountTokens(res, accountId, account, accessToken, refreshToken);
-
-  next(new JsonSuccess(result, undefined, 'Token revoked'));
 });

@@ -10,7 +10,7 @@ import {
 } from '../../types/response.types';
 import * as AuthService from './OAuth.service';
 import { AuthType, AuthUrls, OAuthState, PermissionState, ProviderResponse, SignInState } from './OAuth.types';
-import { OAuthProviders } from '../account/Account.types';
+import { AccountType, OAuthProviders } from '../account/Account.types';
 import {
   validateOAuthState,
   validateSignInState,
@@ -26,15 +26,30 @@ import {
   generateOAuthState,
   generatePermissionState,
 } from './OAuth.utils';
-import { getTokenInfo, verifyTokenOwnership } from '../google/services/token/token.services';
-import { setupCompleteAccountSession } from '../../services';
+import {
+  getTokenInfo as getGoogleTokenInfo,
+  verifyTokenOwnership,
+} from '../google/services/tokenInfo/tokenInfo.services';
+import {
+  extractAccessToken,
+  extractRefreshToken,
+  handleTokenRefresh,
+  revokeAuthTokens,
+  setupCompleteAccountSession,
+} from '../../services';
 import { getCallbackUrl } from '../../utils/redirect';
 import { SignUpRequest, SignInRequest, OAuthCallBackRequest } from './OAuth.dto';
 import { ValidationUtils } from '../../utils/validation';
 import { buildGoogleScopeUrls, validateScopeNames } from '../google/config';
 import { asyncHandler, oauthCallbackHandler } from '../../utils/response';
 import { logger } from '../../utils/logger';
-import { createOAuthJwtToken, createOAuthRefreshToken } from './OAuth.jwt';
+import {
+  createOAuthJwtToken,
+  createOAuthRefreshToken,
+  verifyOAuthJwtToken,
+  verifyOAuthRefreshToken,
+} from './OAuth.jwt';
+import { AccountDocument } from '../account';
 
 /**
  * Initiate Google authentication
@@ -326,7 +341,7 @@ export const handlePermissionCallback = oauthCallbackHandler(
             return next(new Redirect(callbackData, getCallbackUrl()));
           }
 
-          const accessTokenInfo = await getTokenInfo(result.tokenDetails.accessToken);
+          const accessTokenInfo = await getGoogleTokenInfo(result.tokenDetails.accessToken);
 
           if (!accessTokenInfo.expires_in) {
             const callbackData: CallbackData = {
@@ -503,4 +518,222 @@ export const reauthorizePermissions = asyncHandler(async (req, res, next) => {
 
   // Redirect to Google authorization page
   passport.authenticate('google-permission', authOptions)(req, res, next);
+});
+
+/**
+ * Get OAuth access token information
+ * Route: GET /:accountId/oauth/token
+ */
+export const getOAuthTokenInfo = asyncHandler(async (req, res, next) => {
+  const accountId = req.params.accountId;
+
+  // First try to get token from body, then from cookies
+  let systemToken = req.body.token;
+  if (!systemToken) {
+    systemToken = extractAccessToken(req, accountId);
+  }
+
+  if (!systemToken) {
+    throw new BadRequestError('Access token not found in body or cookies', 400, ApiErrorCode.TOKEN_INVALID);
+  }
+
+  try {
+    // Decode our JWT wrapper to get OAuth token and validate system token
+    const { accountId: tokenAccountId, oauthAccessToken, exp } = verifyOAuthJwtToken(systemToken);
+
+    // Check if our system token is expired
+    const isSystemTokenExpired = exp && Date.now() >= exp * 1000;
+    if (isSystemTokenExpired) {
+      return next(
+        new JsonSuccess({
+          systemToken: {
+            isExpired: true,
+            type: 'oauth_jwt',
+          },
+        }),
+      );
+    }
+
+    // Verify token belongs to correct account
+    if (tokenAccountId !== accountId) {
+      throw new BadRequestError('Token does not belong to this account', 400, ApiErrorCode.TOKEN_INVALID);
+    }
+
+    // Get Google provider token information
+    const providerTokenInfo = await getGoogleTokenInfo(oauthAccessToken);
+
+    const response = {
+      systemToken: {
+        isExpired: false,
+        type: 'oauth_jwt',
+        expiresAt: exp ? exp * 1000 : null,
+        timeRemaining: exp ? Math.max(0, exp * 1000 - Date.now()) : null,
+      },
+      providerToken: {
+        ...providerTokenInfo,
+        provider: 'google',
+      },
+    };
+
+    next(new JsonSuccess(response));
+  } catch {
+    // If JWT verification fails, token is invalid/expired
+    next(
+      new JsonSuccess({
+        systemToken: {
+          isExpired: true,
+          type: 'oauth_jwt',
+          error: 'Invalid or expired token',
+        },
+      }),
+    );
+  }
+});
+
+/**
+ * Get OAuth refresh token information
+ * Route: GET /:accountId/oauth/refresh/token
+ */
+export const getOAuthRefreshTokenInfo = asyncHandler(async (req, res, next) => {
+  const accountId = req.params.accountId;
+
+  // First try to get token from body, then from cookies
+  let refreshToken = req.body.token;
+  if (!refreshToken) {
+    refreshToken = extractRefreshToken(req, accountId);
+  }
+
+  if (!refreshToken) {
+    throw new BadRequestError('Refresh token not found in body or cookies', 400, ApiErrorCode.TOKEN_INVALID);
+  }
+
+  try {
+    // Decode our JWT wrapper
+    const { accountId: tokenAccountId, oauthRefreshToken, exp } = verifyOAuthRefreshToken(refreshToken);
+
+    // Check if our system refresh token is expired (if it has expiration)
+    const isSystemTokenExpired = exp && Date.now() >= exp * 1000;
+    if (isSystemTokenExpired) {
+      return next(
+        new JsonSuccess({
+          systemToken: {
+            isExpired: true,
+            type: 'oauth_refresh_jwt',
+          },
+        }),
+      );
+    }
+
+    // Verify token belongs to correct account
+    if (tokenAccountId !== accountId) {
+      throw new BadRequestError('Token does not belong to this account', 400, ApiErrorCode.TOKEN_INVALID);
+    }
+
+    const response = {
+      systemToken: {
+        isExpired: false,
+        type: 'oauth_refresh_jwt',
+        expiresAt: exp ? exp * 1000 : null,
+        timeRemaining: exp ? Math.max(0, exp * 1000 - Date.now()) : null,
+      },
+      providerToken: {
+        type: 'google_refresh_token',
+        provider: 'google',
+        // Note: Google refresh tokens don't expire, so we can't get info about them
+        hasToken: !!oauthRefreshToken,
+      },
+    };
+
+    next(new JsonSuccess(response));
+  } catch {
+    next(
+      new JsonSuccess({
+        systemToken: {
+          isExpired: true,
+          type: 'oauth_refresh_jwt',
+          error: 'Invalid or expired refresh token',
+        },
+      }),
+    );
+  }
+});
+
+/**
+ * Refresh OAuth access token
+ * Route: POST /:accountId/oauth/refresh
+ */
+export const refreshOAuthToken = asyncHandler(async (req, res, next) => {
+  const accountId = req.params.accountId;
+  const account = req.account as AccountDocument;
+  const { redirectUrl } = req.query;
+
+  // Validate account type
+  if (account.accountType !== AccountType.OAuth) {
+    throw new BadRequestError('Account is not an OAuth account', 400, ApiErrorCode.AUTH_FAILED);
+  }
+
+  // Extract refresh token
+  const refreshToken = extractRefreshToken(req, accountId);
+  if (!refreshToken) {
+    throw new BadRequestError('Refresh token not found', 400, ApiErrorCode.TOKEN_INVALID);
+  }
+
+  try {
+    // Extract OAuth refresh token from middleware (already verified)
+    const oauthRefreshToken = req.oauthRefreshToken;
+
+    if (!oauthRefreshToken) {
+      throw new BadRequestError('OAuth refresh token not available', 400, ApiErrorCode.TOKEN_INVALID);
+    }
+
+    // Use the session manager to handle token refresh
+    await handleTokenRefresh(accountId, oauthRefreshToken, AccountType.OAuth, req, res);
+
+    // Validate and determine redirect URL
+    if (!redirectUrl) {
+      throw new BadRequestError('Missing redirectUrl query parameter', 400, ApiErrorCode.MISSING_DATA);
+    }
+
+    ValidationUtils.validateUrl(redirectUrl as string, 'Redirect URL');
+
+    next(new Redirect(null, redirectUrl as string));
+  } catch {
+    // If refresh fails, redirect to logout
+    next(
+      new Redirect(
+        {
+          code: ApiErrorCode.TOKEN_INVALID,
+          message: 'Refresh token expired or invalid',
+        },
+        `./${accountId}/account/logout?accountId=${accountId}&clearClientAccountState=false`,
+      ),
+    );
+  }
+});
+
+/**
+ * Revoke OAuth tokens
+ * Route: POST /:accountId/oauth/revoke
+ */
+export const revokeOAuthToken = asyncHandler(async (req, res, next) => {
+  const accountId = req.params.accountId as string;
+  const account = req.account as AccountDocument;
+
+  // Validate account type
+  if (account.accountType !== AccountType.OAuth) {
+    throw new BadRequestError('Account is not an OAuth account', 400, ApiErrorCode.AUTH_FAILED);
+  }
+
+  // Tokens are already extracted by middleware
+  const accessToken = req.oauthAccessToken as string;
+  const refreshToken = req.oauthRefreshToken as string;
+
+  if (!accessToken || !refreshToken) {
+    throw new BadRequestError('OAuth tokens not available', 400, ApiErrorCode.TOKEN_INVALID);
+  }
+
+  // Use the existing service function to revoke tokens
+  const result = await revokeAuthTokens(accountId, account.accountType, accessToken, refreshToken, res);
+
+  next(new JsonSuccess(result, undefined, 'OAuth tokens revoked successfully'));
 });

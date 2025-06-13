@@ -1,39 +1,23 @@
-import { Request, Response, NextFunction } from "express";
-import {
-  ApiErrorCode,
-  BadRequestError,
-  NotFoundError,
-  Redirect,
-  ServerError,
-} from "../types/response.types";
-import db from "../config/db";
-import { asyncHandler } from "../utils/response";
-import { validateAccount } from "../feature/account/Account.validation";
-import { extractAccessToken, extractRefreshToken } from "../services";
-import { AccountType } from "../feature/account/Account.types";
-import { AccountDocument } from "../feature/account/Account.model";
-import { ValidationUtils } from "../utils/validation";
-import {
-  verifyLocalJwtToken,
-  verifyLocalRefreshToken,
-} from "../feature/local_auth";
-import {
-  verifyOAuthJwtToken,
-  verifyOAuthRefreshToken,
-} from "../feature/oauth/OAuth.jwt";
+import { Request, Response, NextFunction } from 'express';
+import { ApiErrorCode, BadRequestError, NotFoundError, Redirect, ServerError } from '../types/response.types';
+import db from '../config/db';
+import { asyncHandler } from '../utils/response';
+import { validateAccount } from '../feature/account/Account.validation';
+import { extractAccessToken, extractRefreshToken } from '../services';
+import { AccountType } from '../feature/account/Account.types';
+import { AccountDocument } from '../feature/account/Account.model';
+import { ValidationUtils } from '../utils/validation';
+import { verifyLocalJwtToken, verifyLocalRefreshToken } from '../feature/local_auth';
+import { verifyOAuthJwtToken, verifyOAuthRefreshToken } from '../feature/oauth/OAuth.jwt';
 
 /**
  * Middleware to verify token from cookies and add accountId to request
  */
-export const authenticateSession = (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
+export const authenticateSession = (req: Request, res: Response, next: NextFunction) => {
   const accountId = req.params.accountId;
 
   // Use centralized validation instead of duplicate logic
-  ValidationUtils.validateObjectId(accountId, "Account ID");
+  ValidationUtils.validateObjectId(accountId, 'Account ID');
 
   next();
 };
@@ -49,19 +33,13 @@ export const validateAccountAccess = asyncHandler(async (req, res, next) => {
   const account = await models.accounts.Account.findOne({ _id: accountId });
 
   if (!account) {
-    throw new NotFoundError(
-      "Account not found",
-      404,
-      ApiErrorCode.USER_NOT_FOUND,
-    );
+    throw new NotFoundError('Account not found', 404, ApiErrorCode.USER_NOT_FOUND);
   }
 
   try {
     validateAccount(account);
   } catch {
-    throw new ServerError(
-      "Invalid account object. Please contact system admins.",
-    );
+    throw new ServerError('Invalid account object. Please contact system admins.');
   }
 
   // Attach the account to the request for downstream middleware/handlers
@@ -80,28 +58,28 @@ export const validateAccountAccess = asyncHandler(async (req, res, next) => {
 
 /**
  * Middleware to validate token access
- * Now properly handles both OAuth and Local auth tokens with security verification
+ * Now properly handles both OAuth and Local auth tokens with correct redirect paths
  */
 export const validateTokenAccess = asyncHandler(async (req, res, next) => {
   const accountId = req.params.accountId;
   const account = req.account as AccountDocument;
 
   if (!account) {
-    throw new ServerError("Account not loaded in middleware chain");
+    throw new ServerError('Account not loaded in middleware chain');
   }
 
   const accessToken = extractAccessToken(req, accountId);
   const refreshToken = extractRefreshToken(req, accountId);
-  const isRefreshTokenPath = req.path === "/account/refreshToken";
+  const isRefreshTokenPath = req.path.endsWith('/refresh') || req.path.includes('/refresh/');
 
   const token: string | null = isRefreshTokenPath ? refreshToken : accessToken;
 
   try {
     if (!token) {
       if (isRefreshTokenPath) {
-        return next(new BadRequestError("Missing refresh token"));
+        return next(new BadRequestError('Missing refresh token'));
       } else {
-        throw new Error("Token not found");
+        throw new Error('Token not found');
       }
     }
 
@@ -113,7 +91,7 @@ export const validateTokenAccess = asyncHandler(async (req, res, next) => {
 
           // Check if token belongs to the right account
           if (tokenAccountId !== accountId) {
-            throw new Error("Invalid refresh token for this account");
+            throw new Error('Invalid refresh token for this account');
           }
 
           req.refreshToken = token;
@@ -122,49 +100,46 @@ export const validateTokenAccess = asyncHandler(async (req, res, next) => {
 
           // Check if token belongs to the right account
           if (tokenAccountId !== accountId) {
-            throw new Error("Invalid access token for this account");
+            throw new Error('Invalid access token for this account');
           }
 
           req.accessToken = token;
         }
       } catch {
-        throw new Error("Invalid or expired token");
+        throw new Error('Invalid or expired token');
       }
     } else if (account.accountType === AccountType.OAuth) {
       // For OAuth, verify our JWT wrapper and extract OAuth token
       try {
         if (isRefreshTokenPath) {
           // For refresh token path, we expect a refresh token
-          const { accountId: tokenAccountId, oauthRefreshToken } =
-            verifyOAuthRefreshToken(token);
+          const { accountId: tokenAccountId, oauthRefreshToken } = verifyOAuthRefreshToken(token);
 
           // Check if token belongs to the right account
           if (tokenAccountId !== accountId) {
-            throw new Error("Invalid refresh token for this account");
+            throw new Error('Invalid refresh token for this account');
           }
 
           req.refreshToken = token;
           req.oauthRefreshToken = oauthRefreshToken;
         } else {
           // For access token, verify and extract OAuth access token
-          const { accountId: tokenAccountId, oauthAccessToken } =
-            verifyOAuthJwtToken(token);
+          const { accountId: tokenAccountId, oauthAccessToken } = verifyOAuthJwtToken(token);
 
           // Check if token belongs to the right account
           if (tokenAccountId !== accountId) {
-            throw new Error("Invalid access token for this account");
+            throw new Error('Invalid access token for this account');
           }
 
           // Store both our JWT and the extracted OAuth token
           req.accessToken = token; // Our JWT wrapper
-          // We'll need the OAuth access token for Google API calls
           req.oauthAccessToken = oauthAccessToken;
         }
       } catch {
-        throw new Error("Invalid or expired OAuth token");
+        throw new Error('Invalid or expired OAuth token');
       }
     } else {
-      throw new Error("Unsupported account type");
+      throw new Error('Unsupported account type');
     }
 
     next();
@@ -175,19 +150,23 @@ export const validateTokenAccess = asyncHandler(async (req, res, next) => {
       throw new Redirect(
         {
           code: ApiErrorCode.TOKEN_INVALID,
-          message: "Refresh token expired",
+          message: 'Refresh token expired',
         },
-        `./account/logout?accountId=${accountPath}&clearClientAccountState=${false}`,
+        `./${accountPath}/account/logout?accountId=${accountPath}&clearClientAccountState=false`,
       );
     } else {
+      // Determine correct refresh path based on account type
+      const refreshPath =
+        account.accountType === AccountType.OAuth ? `./${accountPath}/oauth/refresh` : `./${accountPath}/auth/refresh`;
+
       throw new Redirect(
         {
           code: ApiErrorCode.TOKEN_INVALID,
-          message: "Access token expired",
+          message: 'Access token expired',
         },
-        `./${accountPath}/account/refreshToken`,
+        refreshPath,
         302,
-        `./${req.originalUrl}`,
+        `./${req.originalUrl}`, // Pass original URL for redirect after refresh
       );
     }
   }
