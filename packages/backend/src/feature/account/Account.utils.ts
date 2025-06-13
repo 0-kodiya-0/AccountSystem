@@ -1,4 +1,4 @@
-import { SessionAccount } from '../../services/session/session.types';
+import { SessionAccount } from '../session/session.types';
 import { logger } from '../../utils/logger';
 import { Account } from './Account.types';
 

@@ -2,17 +2,15 @@ import { getPort } from './config/env.config';
 
 import http, { Server } from 'http';
 import express from 'express';
-import passport from 'passport';
 import cookieParser from 'cookie-parser';
 
-import setupPassport from './config/passport';
 import db from './config/db';
 import socketConfig from './config/socket.config';
 import { applyErrorHandlers, asyncHandler } from './utils/response';
 
 import * as oauthRouter from './feature/oauth';
 import * as accountRouter from './feature/account';
-import * as sessionRouter from './services/session/session.routes'; // NEW: Session routes
+import * as sessionRouter from './feature/session/session.routes'; // NEW: Session routes
 import * as localAuthRouter from './feature/local_auth';
 import notificationRouter, { NotificationSocketHandler } from './feature/notifications';
 import { authenticateSession, validateAccountAccess, validateTokenAccess } from './middleware';
@@ -33,10 +31,6 @@ function createMainApp(): express.Application {
   // Middleware
   app.use(express.json());
   app.use(cookieParser());
-
-  // Initialize Passport
-  app.use(passport.initialize());
-  setupPassport();
 
   // Request logging middleware (configurable)
   if (process.env.NO_REQUEST_LOGS !== 'true') {

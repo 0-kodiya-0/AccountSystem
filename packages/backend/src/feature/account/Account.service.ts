@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { ApiErrorCode, BadRequestError } from '../../types/response.types';
 import { toSafeAccount } from './Account.utils';
-import { clearAllSessions, clearSession } from '../../services';
+import { clearAllSessions, clearSession } from '../session/session.utils';
 import { AccountDocument } from './Account.model';
 import { Account } from './Account.types';
 import db from '../../config/db';

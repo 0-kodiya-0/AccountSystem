@@ -1,19 +1,16 @@
 import jwt from 'jsonwebtoken';
 import { Request, Response } from 'express';
-import { AccountType } from '../../feature/account/Account.types';
-import { refreshGoogleToken, revokeTokens } from '../../feature/google/services/tokenInfo/tokenInfo.services';
-import { createLocalJwtToken } from '../../feature/local_auth';
-import { createOAuthJwtToken } from '../../feature/oauth/OAuth.jwt';
 import { getJwtSecret, getNodeEnv } from '../../config/env.config';
 import { getStrippedPathPrefix } from '../../utils/redirect';
 import { AccountSessionData, AccountSessionTokenPayload, AccountSessionInfo } from './session.types';
 import { logger } from '../../utils/logger';
-import { ApiErrorCode, BadRequestError } from '../../types/response.types';
+import { AccountType } from '../account';
 
 // Environment variables
 const JWT_SECRET = getJwtSecret();
 const COOKIE_MAX_AGE = 365 * 24 * 60 * 60 * 1000; // 1 year in milliseconds
 const ACCOUNT_SESSION_COOKIE_NAME = 'account_session';
+
 // ============================================================================
 // ACCOUNT SESSION TOKEN MANAGEMENT
 // ============================================================================
@@ -236,12 +233,20 @@ export const setAccessTokenCookie = (
 /**
  * Sets the refresh token as a cookie for a specific account
  */
-export const setRefreshTokenCookie = (req: Request, res: Response, accountId: string, refreshToken: string): void => {
+export const setRefreshTokenCookie = (
+  req: Request,
+  res: Response,
+  accountId: string,
+  accountType: AccountType,
+  refreshToken: string,
+): void => {
+  const authPath = accountType === AccountType.OAuth ? 'oauth' : 'auth';
+
   res.cookie(`refresh_token_${accountId}`, refreshToken, {
     httpOnly: true,
     secure: getNodeEnv() === 'production',
     maxAge: COOKIE_MAX_AGE,
-    path: `${getStrippedPathPrefix(req)}/${accountId}/account/refreshToken`,
+    path: `${getStrippedPathPrefix(req)}/${accountId}/${authPath}/refresh`,
     sameSite: 'lax',
   });
 };
@@ -253,6 +258,7 @@ export const setupCompleteAccountSession = (
   req: Request,
   res: Response,
   accountId: string,
+  accountType: AccountType,
   accessToken: string,
   expiresIn: number,
   refreshToken?: string,
@@ -262,7 +268,7 @@ export const setupCompleteAccountSession = (
   setAccessTokenCookie(req, res, accountId, accessToken, expiresIn);
 
   if (refreshToken) {
-    setRefreshTokenCookie(req, res, accountId, refreshToken);
+    setRefreshTokenCookie(req, res, accountId, accountType, refreshToken);
   }
 
   // Add account to session
@@ -334,87 +340,4 @@ export const clearAllAccountsWithSession = (req: Request, res: Response, account
 
   // Clear from account session
   clearAccountSession(req, res, accountIds);
-};
-
-/**
- * Refresh an access token using a refresh token
- */
-export const refreshAccessToken = async (
-  accountId: string,
-  oauthRefreshToken: string,
-  accountType: AccountType,
-  res: Response,
-): Promise<{ accessToken: string; expiresIn: number }> => {
-  try {
-    if (accountType === AccountType.OAuth) {
-      const tokens = await refreshGoogleToken(oauthRefreshToken);
-
-      if (!tokens.access_token || !tokens.expiry_date) {
-        throw new Error('Failed to refresh Google access token');
-      }
-
-      const newJwtToken = await createOAuthJwtToken(
-        accountId,
-        tokens.access_token,
-        Math.floor(((tokens.expiry_date as number) - Date.now()) / 1000),
-      );
-
-      return {
-        accessToken: newJwtToken,
-        expiresIn: (tokens.expiry_date as number) - Date.now(),
-      };
-    } else {
-      const newAccessToken = await createLocalJwtToken(accountId);
-      const expiresIn = 3600 * 1000; // 1 hour in milliseconds
-
-      return {
-        accessToken: newAccessToken,
-        expiresIn,
-      };
-    }
-  } catch {
-    clearSession(res, accountId);
-
-    // Throw clear error
-    throw new BadRequestError(
-      'Refresh token expired or invalid. Please sign in again.',
-      401,
-      ApiErrorCode.TOKEN_INVALID,
-    );
-  }
-};
-
-/**
- * Handle token refresh for any account type
- */
-export const handleTokenRefresh = async (
-  accountId: string,
-  extractedRefreshToken: string,
-  accountType: AccountType,
-  req: Request,
-  res: Response,
-): Promise<void> => {
-  const newTokenInfo = await refreshAccessToken(accountId, extractedRefreshToken, accountType, res);
-
-  setAccessTokenCookie(req, res, accountId, newTokenInfo.accessToken, newTokenInfo.expiresIn);
-};
-
-/**
- * Revoke tokens based on account type
- */
-export const revokeAuthTokens = async (
-  accountId: string,
-  accountType: AccountType,
-  extractedAccessToken: string,
-  extractedRefreshToken: string,
-  res: Response,
-): Promise<any> => {
-  if (accountType === AccountType.OAuth) {
-    const result = await revokeTokens(extractedAccessToken, extractedRefreshToken);
-    clearSession(res, accountId);
-    return result;
-  } else {
-    clearSession(res, accountId);
-    return { accessTokenRevoked: true, refreshTokenRevoked: true };
-  }
 };

@@ -84,7 +84,7 @@ authRequiredRouter.post('/verify-two-factor-setup', LocalAuthController.verifyAn
 authRequiredRouter.post('/generate-backup-codes', LocalAuthController.generateBackupCodes);
 
 // Refresh token route
-authRequiredRouter.post('/refresh', LocalAuthController.refreshLocalToken);
+authRequiredRouter.get('/refresh', LocalAuthController.refreshLocalToken);
 
 // Token information routes
 authRequiredRouter.get('/token', LocalAuthController.getLocalTokenInfo);

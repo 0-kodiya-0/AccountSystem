@@ -24,12 +24,7 @@ import {
   Account,
   AccountType,
 } from '../account/Account.types';
-import {
-  extractAccessToken,
-  extractRefreshToken,
-  handleTokenRefresh,
-  setupCompleteAccountSession,
-} from '../../services';
+import { extractAccessToken, extractRefreshToken, setupCompleteAccountSession } from '../session/session.utils';
 import { sendTwoFactorEnabledNotification } from '../email/Email.service';
 import QRCode from 'qrcode';
 import { ValidationUtils } from '../../utils/validation';
@@ -42,6 +37,7 @@ import {
 import { AccountDocument, findUserById } from '../account';
 import { logger } from '../../utils/logger';
 import { sendNonCriticalEmail } from '../email/Email.utils';
+import { refreshLocalAccessToken } from '../session/session.service';
 
 /**
  * Sign up (register) with email and password
@@ -113,6 +109,7 @@ export const login = asyncHandler(async (req, res, next) => {
     req,
     res,
     account.id,
+    AccountType.Local,
     accessToken,
     expiresIn,
     shouldSetRefreshToken ? refreshToken : undefined,
@@ -156,6 +153,7 @@ export const verifyTwoFactor = asyncHandler(async (req, res, next) => {
       req,
       res,
       account.id,
+      AccountType.Local,
       jwtToken,
       expiresIn,
       refreshToken, // Always set refresh token for 2FA verified sessions
@@ -495,20 +493,13 @@ export const refreshLocalToken = asyncHandler(async (req, res, next) => {
   }
 
   // Extract refresh token
-  const refreshToken = extractRefreshToken(req, accountId);
+  const refreshToken = req.refreshToken;
   if (!refreshToken) {
     throw new BadRequestError('Refresh token not found', 400, ApiErrorCode.TOKEN_INVALID);
   }
 
-  // Refresh token is already verified by middleware, just use it
-  const refreshTokenToUse = req.refreshToken;
-
-  if (!refreshTokenToUse) {
-    throw new BadRequestError('Refresh token not available', 400, ApiErrorCode.TOKEN_INVALID);
-  }
-
   // Use the session manager to handle token refresh
-  await handleTokenRefresh(accountId, refreshTokenToUse, AccountType.Local, req, res);
+  await refreshLocalAccessToken(req, res, accountId, refreshToken);
 
   // Validate and determine redirect URL
   if (!redirectUrl) {

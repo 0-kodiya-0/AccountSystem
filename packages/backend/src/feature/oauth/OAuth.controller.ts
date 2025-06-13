@@ -17,13 +17,7 @@ import {
   getGoogleTokenInfo,
   verifyTokenOwnership,
 } from '../google/services/tokenInfo/tokenInfo.services';
-import {
-  extractAccessToken,
-  extractRefreshToken,
-  handleTokenRefresh,
-  revokeAuthTokens,
-  setupCompleteAccountSession,
-} from '../../services';
+import { extractAccessToken, extractRefreshToken, setupCompleteAccountSession } from '../session/session.utils';
 import { getCallbackUrl } from '../../utils/redirect';
 import { ValidationUtils } from '../../utils/validation';
 import { buildGoogleScopeUrls, validateScopeNames } from '../google/config';
@@ -35,7 +29,6 @@ import {
   verifyOAuthJwtToken,
   verifyOAuthRefreshToken,
 } from './OAuth.jwt';
-import { AccountDocument } from '../account';
 import { getBaseUrl } from '../../config/env.config';
 import {
   buildGoogleSignupUrl,
@@ -43,16 +36,18 @@ import {
   buildGooglePermissionUrl,
   buildGoogleReauthorizeUrl,
 } from '../google/config';
+import { AccountDocument } from '../account';
+import { refreshOAuthAccessToken, revokeAuthTokens } from '../session/session.service';
 
 /**
  * Generate OAuth signup URL
  */
 export const generateSignupUrl = asyncHandler(async (req, res, next) => {
-  const provider = req.params.provider as OAuthProviders;
+  const provider = ValidationUtils.validateEnum(req.params.provider, OAuthProviders, 'OAuth provider');
 
-  // Validate provider
-  if (!Object.values(OAuthProviders).includes(provider)) {
-    throw new BadRequestError(`Unsupported OAuth provider: ${provider}`, 400, ApiErrorCode.INVALID_PROVIDER);
+  // Check if provider is implemented (only Google currently)
+  if (provider !== OAuthProviders.Google) {
+    throw new BadRequestError(`Provider ${provider} is not implemented yet`, 400, ApiErrorCode.INVALID_PROVIDER);
   }
 
   // Generate state for signup
@@ -86,11 +81,11 @@ export const generateSignupUrl = asyncHandler(async (req, res, next) => {
  * Generate OAuth signin URL
  */
 export const generateSigninUrl = asyncHandler(async (req, res, next) => {
-  const provider = req.params.provider as OAuthProviders;
+  const provider = ValidationUtils.validateEnum(req.params.provider, OAuthProviders, 'OAuth provider');
 
-  // Validate provider
-  if (!Object.values(OAuthProviders).includes(provider)) {
-    throw new BadRequestError(`Unsupported OAuth provider: ${provider}`, 400, ApiErrorCode.INVALID_PROVIDER);
+  // Check if provider is implemented (only Google currently)
+  if (provider !== OAuthProviders.Google) {
+    throw new BadRequestError(`Provider ${provider} is not implemented yet`, 400, ApiErrorCode.INVALID_PROVIDER);
   }
 
   // Generate state for signin
@@ -127,6 +122,13 @@ export const handleOAuthCallback = oauthCallbackHandler(
   getCallbackUrl(),
   CallbackCode.OAUTH_ERROR,
   async (req, res, next) => {
+    const provider = ValidationUtils.validateEnum(req.params.provider, OAuthProviders, 'OAuth provider');
+
+    // Check if provider is implemented (only Google currently)
+    if (provider !== OAuthProviders.Google) {
+      throw new BadRequestError(`Provider ${provider} is not implemented yet`, 400, ApiErrorCode.INVALID_PROVIDER);
+    }
+
     const { code, state } = req.body;
 
     ValidationUtils.validateRequiredFields(req.body, ['code', 'state']);
@@ -134,7 +136,7 @@ export const handleOAuthCallback = oauthCallbackHandler(
     // Validate the state parameter and get OAuth state details
     const stateDetails = (await validateState(
       state,
-      (state) => validateOAuthState(state, OAuthProviders.Google), // Fix: Don't use stateDetails.provider before it's defined
+      (state) => validateOAuthState(state, provider), // Fix: Don't use stateDetails.provider before it's defined
       res,
     )) as OAuthState;
 
@@ -189,6 +191,7 @@ export const handleOAuthCallback = oauthCallbackHandler(
           req,
           res,
           signupResult.accountId,
+          AccountType.OAuth,
           signupResult.accessToken,
           signupResult.accessTokenInfo.expires_in * 1000,
           signupResult.refreshToken,
@@ -219,6 +222,7 @@ export const handleOAuthCallback = oauthCallbackHandler(
           req,
           res,
           signinResult.userId,
+          AccountType.OAuth,
           signinResult.accessToken,
           signinResult.accessTokenInfo.expires_in * 1000,
           signinResult.refreshToken,
@@ -311,6 +315,7 @@ export const handlePermissionCallback = oauthCallbackHandler(
       req,
       res,
       accountId,
+      AccountType.OAuth,
       jwtAccessToken,
       accessTokenInfo.expires_in * 1000,
       jwtRefreshToken,
@@ -336,8 +341,15 @@ export const handlePermissionCallback = oauthCallbackHandler(
  * Generate permission request URL
  */
 export const generatePermissionUrl = asyncHandler(async (req, res, next) => {
-  const requestedScopeNames = req.params.scopeNames as string;
+  const requestedScopeNames = req.query.scopeNames as string;
   const { accountId } = req.query;
+
+  const provider = ValidationUtils.validateEnum(req.params.provider, OAuthProviders, 'OAuth provider');
+
+  // Check if provider is implemented (only Google currently)
+  if (provider !== OAuthProviders.Google) {
+    throw new BadRequestError(`Provider ${provider} is not implemented yet`, 400, ApiErrorCode.INVALID_PROVIDER);
+  }
 
   ValidationUtils.validateRequiredFields(req.query, ['accountId']);
   ValidationUtils.validateObjectId(accountId as string, 'Account ID');
@@ -378,12 +390,7 @@ export const generatePermissionUrl = asyncHandler(async (req, res, next) => {
   const scopes = buildGoogleScopeUrls(scopeNames);
 
   // Generate state and save permission state
-  const state = await generatePermissionState(
-    OAuthProviders.Google,
-    accountId as string,
-    'custom',
-    requestedScopeNames,
-  );
+  const state = await generatePermissionState(provider, accountId as string, 'custom', requestedScopeNames);
 
   // Use utility to build authorization URL
   const authorizationUrl = buildGooglePermissionUrl(state, scopes, userEmail);
@@ -408,6 +415,13 @@ export const generatePermissionUrl = asyncHandler(async (req, res, next) => {
  */
 export const generateReauthorizeUrl = asyncHandler(async (req, res, next) => {
   const { accountId } = req.query;
+
+  const provider = ValidationUtils.validateEnum(req.params.provider, OAuthProviders, 'OAuth provider');
+
+  // Check if provider is implemented (only Google currently)
+  if (provider !== OAuthProviders.Google) {
+    throw new BadRequestError(`Provider ${provider} is not implemented yet`, 400, ApiErrorCode.INVALID_PROVIDER);
+  }
 
   if (!accountId) {
     throw new BadRequestError('Missing required parameters');
@@ -437,7 +451,7 @@ export const generateReauthorizeUrl = asyncHandler(async (req, res, next) => {
   }
 
   // Generate a unique state for this re-authorization
-  const state = await generatePermissionState(OAuthProviders.Google, accountId as string, 'reauthorize', 'all');
+  const state = await generatePermissionState(provider, accountId as string, 'reauthorize', 'all');
 
   // Use utility to build authorization URL
   const authorizationUrl = buildGoogleReauthorizeUrl(state, storedScopes, account.userDetails.email);
@@ -609,7 +623,7 @@ export const refreshOAuthToken = asyncHandler(async (req, res, next) => {
   }
 
   // Extract refresh token
-  const refreshToken = extractRefreshToken(req, accountId);
+  const refreshToken = req.refreshToken;
   if (!refreshToken) {
     throw new BadRequestError('Refresh token not found', 400, ApiErrorCode.TOKEN_INVALID);
   }
@@ -622,7 +636,7 @@ export const refreshOAuthToken = asyncHandler(async (req, res, next) => {
   }
 
   // Use the session manager to handle token refresh
-  await handleTokenRefresh(accountId, oauthRefreshToken, AccountType.OAuth, req, res);
+  await refreshOAuthAccessToken(req, res, accountId, oauthRefreshToken);
 
   // Validate and determine redirect URL
   if (!redirectUrl) {

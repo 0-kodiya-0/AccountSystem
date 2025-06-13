@@ -3,7 +3,7 @@ import { ApiErrorCode, BadRequestError, NotFoundError, Redirect, ServerError } f
 import db from '../config/db';
 import { asyncHandler } from '../utils/response';
 import { validateAccount } from '../feature/account/Account.validation';
-import { extractAccessToken, extractRefreshToken } from '../services';
+import { extractAccessToken, extractRefreshToken } from '../feature/session/session.utils';
 import { AccountType } from '../feature/account/Account.types';
 import { AccountDocument } from '../feature/account/Account.model';
 import { ValidationUtils } from '../utils/validation';

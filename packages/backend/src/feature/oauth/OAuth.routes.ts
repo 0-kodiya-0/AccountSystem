@@ -1,21 +1,5 @@
 import express from 'express';
-import {
-  // URL Generation Functions (no auth required)
-  generateSignupUrl,
-  generateSigninUrl,
-  generatePermissionUrl,
-  generateReauthorizeUrl,
-
-  // OAuth Callback Handlers (no auth required)
-  handleOAuthCallback,
-  handlePermissionCallback,
-
-  // Authenticated OAuth Functions (require validateTokenAccess)
-  refreshOAuthToken,
-  getOAuthTokenInfo,
-  getOAuthRefreshTokenInfo,
-  revokeOAuthToken,
-} from './OAuth.controller';
+import * as OAuthController from './OAuth.controller';
 
 // ============================================================================
 // Public OAuth Routes (No Authentication Required)
@@ -24,14 +8,14 @@ import {
 export const oauthPublicRouter = express.Router({ mergeParams: true });
 
 // URL Generation Routes - Return authorization URLs for frontend
-oauthPublicRouter.get('/signup/:provider', generateSignupUrl);
-oauthPublicRouter.get('/signin/:provider', generateSigninUrl);
-oauthPublicRouter.get('/permission/:scopeNames', generatePermissionUrl);
-oauthPublicRouter.get('/reauthorize', generateReauthorizeUrl);
+oauthPublicRouter.get('/signup/:provider', OAuthController.generateSignupUrl);
+oauthPublicRouter.get('/signin/:provider', OAuthController.generateSigninUrl);
+oauthPublicRouter.get('/permission/:provider', OAuthController.generatePermissionUrl);
+oauthPublicRouter.get('/reauthorize/:provider', OAuthController.generateReauthorizeUrl);
 
 // OAuth Callback Routes - Handle code exchange from OAuth providers
-oauthPublicRouter.post('/callback', handleOAuthCallback);
-oauthPublicRouter.post('/permission/callback', handlePermissionCallback);
+oauthPublicRouter.post('/callback/:provider', OAuthController.handleOAuthCallback);
+oauthPublicRouter.post('/permission/callback/:provider', OAuthController.handlePermissionCallback);
 
 // ============================================================================
 // Authenticated OAuth Routes (Require Authentication)
@@ -40,9 +24,9 @@ oauthPublicRouter.post('/permission/callback', handlePermissionCallback);
 export const oauthAuthenticatedRouter = express.Router({ mergeParams: true });
 
 // Token Management Routes
-oauthAuthenticatedRouter.post('/refresh', refreshOAuthToken);
-oauthAuthenticatedRouter.post('/revoke', revokeOAuthToken);
+oauthAuthenticatedRouter.get('/refresh', OAuthController.refreshOAuthToken);
+oauthAuthenticatedRouter.post('/revoke', OAuthController.revokeOAuthToken);
 
 // Token Information Routes
-oauthAuthenticatedRouter.get('/token', getOAuthTokenInfo);
-oauthAuthenticatedRouter.get('/refresh/token', getOAuthRefreshTokenInfo);
+oauthAuthenticatedRouter.get('/token', OAuthController.getOAuthTokenInfo);
+oauthAuthenticatedRouter.get('/refresh/token', OAuthController.getOAuthRefreshTokenInfo);

@@ -3,7 +3,7 @@ import { JsonSuccess } from '../../types/response.types';
 import { AccountDocument } from './Account.model';
 import { asyncHandler } from '../../utils/response';
 import * as AccountService from './Account.service';
-import { clearAllAccountsWithSession, clearAccountWithSession } from '../../services';
+import { clearAllAccountsWithSession, clearAccountWithSession } from '../session/session.utils';
 
 /**
  * Search for an account by email
