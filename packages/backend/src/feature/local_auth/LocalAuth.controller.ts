@@ -500,35 +500,22 @@ export const refreshLocalToken = asyncHandler(async (req, res, next) => {
     throw new BadRequestError('Refresh token not found', 400, ApiErrorCode.TOKEN_INVALID);
   }
 
-  try {
-    // Refresh token is already verified by middleware, just use it
-    const refreshTokenToUse = req.refreshToken;
+  // Refresh token is already verified by middleware, just use it
+  const refreshTokenToUse = req.refreshToken;
 
-    if (!refreshTokenToUse) {
-      throw new BadRequestError('Refresh token not available', 400, ApiErrorCode.TOKEN_INVALID);
-    }
-
-    // Use the session manager to handle token refresh
-    await handleTokenRefresh(accountId, refreshTokenToUse, AccountType.Local, req, res);
-
-    // Validate and determine redirect URL
-    if (!redirectUrl) {
-      throw new BadRequestError('Missing redirectUrl query parameter', 400, ApiErrorCode.MISSING_DATA);
-    }
-
-    ValidationUtils.validateUrl(redirectUrl as string, 'Redirect URL');
-
-    next(new Redirect(null, redirectUrl as string));
-  } catch {
-    // If refresh fails, redirect to logout
-    next(
-      new Redirect(
-        {
-          code: ApiErrorCode.TOKEN_INVALID,
-          message: 'Refresh token expired or invalid',
-        },
-        `./${accountId}/account/logout?accountId=${accountId}&clearClientAccountState=false`,
-      ),
-    );
+  if (!refreshTokenToUse) {
+    throw new BadRequestError('Refresh token not available', 400, ApiErrorCode.TOKEN_INVALID);
   }
+
+  // Use the session manager to handle token refresh
+  await handleTokenRefresh(accountId, refreshTokenToUse, AccountType.Local, req, res);
+
+  // Validate and determine redirect URL
+  if (!redirectUrl) {
+    throw new BadRequestError('Missing redirectUrl query parameter', 400, ApiErrorCode.MISSING_DATA);
+  }
+
+  ValidationUtils.validateUrl(redirectUrl as string, 'Redirect URL');
+
+  next(new Redirect(null, redirectUrl as string));
 });

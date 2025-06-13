@@ -8,6 +8,7 @@ import { getJwtSecret, getNodeEnv } from '../../config/env.config';
 import { getStrippedPathPrefix } from '../../utils/redirect';
 import { AccountSessionData, AccountSessionTokenPayload, AccountSessionInfo } from './session.types';
 import { logger } from '../../utils/logger';
+import { ApiErrorCode, BadRequestError } from '../../types/response.types';
 
 // Environment variables
 const JWT_SECRET = getJwtSecret();
@@ -342,32 +343,44 @@ export const refreshAccessToken = async (
   accountId: string,
   oauthRefreshToken: string,
   accountType: AccountType,
+  res: Response,
 ): Promise<{ accessToken: string; expiresIn: number }> => {
-  if (accountType === AccountType.OAuth) {
-    const tokens = await refreshGoogleToken(oauthRefreshToken);
+  try {
+    if (accountType === AccountType.OAuth) {
+      const tokens = await refreshGoogleToken(oauthRefreshToken);
 
-    if (!tokens.access_token || !tokens.expiry_date) {
-      throw new Error('Failed to refresh Google access token');
+      if (!tokens.access_token || !tokens.expiry_date) {
+        throw new Error('Failed to refresh Google access token');
+      }
+
+      const newJwtToken = await createOAuthJwtToken(
+        accountId,
+        tokens.access_token,
+        Math.floor(((tokens.expiry_date as number) - Date.now()) / 1000),
+      );
+
+      return {
+        accessToken: newJwtToken,
+        expiresIn: (tokens.expiry_date as number) - Date.now(),
+      };
+    } else {
+      const newAccessToken = await createLocalJwtToken(accountId);
+      const expiresIn = 3600 * 1000; // 1 hour in milliseconds
+
+      return {
+        accessToken: newAccessToken,
+        expiresIn,
+      };
     }
+  } catch {
+    clearSession(res, accountId);
 
-    const newJwtToken = await createOAuthJwtToken(
-      accountId,
-      tokens.access_token,
-      Math.floor(((tokens.expiry_date as number) - Date.now()) / 1000),
+    // Throw clear error
+    throw new BadRequestError(
+      'Refresh token expired or invalid. Please sign in again.',
+      401,
+      ApiErrorCode.TOKEN_INVALID,
     );
-
-    return {
-      accessToken: newJwtToken,
-      expiresIn: (tokens.expiry_date as number) - Date.now(),
-    };
-  } else {
-    const newAccessToken = await createLocalJwtToken(accountId);
-    const expiresIn = 3600 * 1000; // 1 hour in milliseconds
-
-    return {
-      accessToken: newAccessToken,
-      expiresIn,
-    };
   }
 };
 
@@ -381,7 +394,7 @@ export const handleTokenRefresh = async (
   req: Request,
   res: Response,
 ): Promise<void> => {
-  const newTokenInfo = await refreshAccessToken(accountId, extractedRefreshToken, accountType);
+  const newTokenInfo = await refreshAccessToken(accountId, extractedRefreshToken, accountType, res);
 
   setAccessTokenCookie(req, res, accountId, newTokenInfo.accessToken, newTokenInfo.expiresIn);
 };

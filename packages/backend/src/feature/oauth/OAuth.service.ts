@@ -9,7 +9,7 @@ import { createOAuthJwtToken, createOAuthRefreshToken } from './OAuth.jwt';
 
 // Import centralized Google token services instead of duplicating logic
 import {
-  getTokenInfo,
+  getGoogleTokenInfo,
   updateAccountScopes,
   getGoogleAccountScopes,
   checkForAdditionalScopes,
@@ -23,6 +23,14 @@ export async function processSignup(stateDetails: SignInState, provider: OAuthPr
     throw new BadRequestError('Invalid or missing state details', 400, ApiErrorCode.INVALID_STATE);
   }
 
+  const oauthAccessToken = stateDetails.oAuthResponse.tokenDetails.accessToken;
+  const oauthRefreshToken = stateDetails.oAuthResponse.tokenDetails.refreshToken;
+
+  // Validate refresh token exists
+  if (!oauthRefreshToken) {
+    throw new BadRequestError('Missing refresh token from OAuth provider', 400, ApiErrorCode.TOKEN_INVALID);
+  }
+
   const models = await db.getModels();
 
   const newAccount: Omit<Account, 'id'> = {
@@ -34,7 +42,7 @@ export async function processSignup(stateDetails: SignInState, provider: OAuthPr
     userDetails: {
       name: stateDetails.oAuthResponse.name,
       email: stateDetails.oAuthResponse.email,
-      imageUrl: stateDetails.oAuthResponse.imageUrl,
+      imageUrl: stateDetails.oAuthResponse.imageUrl || '',
       emailVerified: true, // OAuth emails are pre-verified
     },
     security: {
@@ -58,11 +66,8 @@ export async function processSignup(stateDetails: SignInState, provider: OAuthPr
     await updateAccountScopes(accountId, accessToken);
   }
 
-  const oauthAccessToken = stateDetails.oAuthResponse.tokenDetails.accessToken;
-  const oauthRefreshToken = stateDetails.oAuthResponse.tokenDetails.refreshToken;
-
   // Get token info to determine expiration - use centralized service
-  const accessTokenInfo = await getTokenInfo(oauthAccessToken);
+  const accessTokenInfo = await getGoogleTokenInfo(oauthAccessToken);
   const expiresIn = accessTokenInfo.expires_in || 3600; // Default to 1 hour
 
   // Create our JWT tokens that wrap the OAuth tokens
@@ -100,13 +105,18 @@ export async function processSignIn(stateDetails: SignInState) {
   const oauthAccessToken = stateDetails.oAuthResponse.tokenDetails.accessToken;
   const oauthRefreshToken = stateDetails.oAuthResponse.tokenDetails.refreshToken;
 
+  // Validate refresh token exists
+  if (!oauthRefreshToken) {
+    throw new BadRequestError('Missing refresh token from OAuth provider', 400, ApiErrorCode.TOKEN_INVALID);
+  }
+
   // Update Google permissions if provider is Google - use centralized service
   if (user.provider === OAuthProviders.Google) {
     await updateAccountScopes(user.id, oauthAccessToken);
   }
 
   // Get token info to determine expiration - use centralized service
-  const accessTokenInfo = await getTokenInfo(oauthAccessToken);
+  const accessTokenInfo = await getGoogleTokenInfo(oauthAccessToken);
   const expiresIn = accessTokenInfo.expires_in || 3600; // Default to 1 hour
 
   // Create our JWT tokens that wrap the OAuth tokens

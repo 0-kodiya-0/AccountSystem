@@ -1,56 +1,48 @@
 import express from 'express';
-import * as AuthController from './OAuth.controller';
+import {
+  // URL Generation Functions (no auth required)
+  generateSignupUrl,
+  generateSigninUrl,
+  generatePermissionUrl,
+  generateReauthorizeUrl,
 
-export const authNotRequiredRouter = express.Router({ mergeParams: true });
-export const authRequiredRouter = express.Router({ mergeParams: true });
+  // OAuth Callback Handlers (no auth required)
+  handleOAuthCallback,
+  handlePermissionCallback,
 
-/**
- * Common Google authentication route for all auth types
- */
-authNotRequiredRouter.get('/auth/google', AuthController.initiateGoogleAuth);
+  // Authenticated OAuth Functions (require validateTokenAccess)
+  refreshOAuthToken,
+  getOAuthTokenInfo,
+  getOAuthRefreshTokenInfo,
+  revokeOAuthToken,
+} from './OAuth.controller';
 
-/**
- * Signup route for all providers
- */
-authNotRequiredRouter.get('/signup/:provider?', AuthController.signup);
+// ============================================================================
+// Public OAuth Routes (No Authentication Required)
+// ============================================================================
 
-/**
- * Signin route for all providers
- */
-authNotRequiredRouter.get('/signin/:provider?', AuthController.signin);
+export const oauthPublicRouter = express.Router({ mergeParams: true });
 
-/**
- * Callback route for OAuth providers
- */
-authNotRequiredRouter.get('/callback/:provider', AuthController.handleCallback);
+// URL Generation Routes - Return authorization URLs for frontend
+oauthPublicRouter.get('/signup/:provider', generateSignupUrl);
+oauthPublicRouter.get('/signin/:provider', generateSigninUrl);
+oauthPublicRouter.get('/permission/:scopeNames', generatePermissionUrl);
+oauthPublicRouter.get('/reauthorize', generateReauthorizeUrl);
 
-/**
- * Dedicated callback route for permission requests - focused only on token handling
- */
-authNotRequiredRouter.get('/callback/permission/:provider', AuthController.handlePermissionCallback);
+// OAuth Callback Routes - Handle code exchange from OAuth providers
+oauthPublicRouter.post('/callback', handleOAuthCallback);
+oauthPublicRouter.post('/permission/callback', handlePermissionCallback);
 
-/**
- * Route specifically for re-requesting all previously granted scopes during sign-in flow
- */
-authNotRequiredRouter.get('/permission/reauthorize', AuthController.reauthorizePermissions);
+// ============================================================================
+// Authenticated OAuth Routes (Require Authentication)
+// ============================================================================
 
-/**
- * Route to request permission for specific scope names
- * Now accepts scope names that get auto-converted to proper Google OAuth URLs
- *
- * Examples:
- * - GET /permission/gmail.readonly?accountId=123&redirectUrl=/dashboard
- * - GET /permission/gmail.readonly,calendar.events?accountId=123&redirectUrl=/dashboard
- * - GET /permission/["gmail.readonly","calendar.events"]?accountId=123&redirectUrl=/dashboard
- */
-authNotRequiredRouter.get('/permission/:scopeNames', AuthController.requestPermission);
+export const oauthAuthenticatedRouter = express.Router({ mergeParams: true });
 
-// Refresh token route
-authRequiredRouter.post('/refresh', AuthController.refreshOAuthToken);
+// Token Management Routes
+oauthAuthenticatedRouter.post('/refresh', refreshOAuthToken);
+oauthAuthenticatedRouter.post('/revoke', revokeOAuthToken);
 
-// Revoke tokens route
-authRequiredRouter.post('/revoke', AuthController.revokeOAuthToken);
-
-// Token information routes
-authRequiredRouter.get('/token', AuthController.getOAuthTokenInfo);
-authRequiredRouter.get('/refresh/token', AuthController.getOAuthRefreshTokenInfo);
+// Token Information Routes
+oauthAuthenticatedRouter.get('/token', getOAuthTokenInfo);
+oauthAuthenticatedRouter.get('/refresh/token', getOAuthRefreshTokenInfo);

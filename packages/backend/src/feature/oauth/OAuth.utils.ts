@@ -1,6 +1,6 @@
-import { OAuthProviders } from "../account/Account.types";
-import { AuthType, ProviderResponse } from "./OAuth.types";
-import crypto from "crypto";
+import { OAuthProviders } from '../account/Account.types';
+import { AuthType, ProviderResponse } from './OAuth.types';
+import crypto from 'crypto';
 import {
   saveOAuthState,
   saveSignInState,
@@ -10,13 +10,10 @@ import {
   removeSignUpState,
   savePermissionState,
   removePermissionState,
-} from "./OAuth.cache";
+} from './OAuth.cache';
 
-export const generateOAuthState = async (
-  provider: OAuthProviders,
-  authType: AuthType,
-): Promise<string> => {
-  const state = crypto.randomBytes(32).toString("hex");
+export const generateOAuthState = async (provider: OAuthProviders, authType: AuthType): Promise<string> => {
+  const state = crypto.randomBytes(32).toString('hex');
 
   // Save state in cache without redirect URL
   saveOAuthState(state, provider, authType);
@@ -24,10 +21,8 @@ export const generateOAuthState = async (
   return state;
 };
 
-export const generateSignupState = async (
-  providerResponse: ProviderResponse,
-): Promise<string> => {
-  const state = crypto.randomBytes(32).toString("hex");
+export const generateSignupState = async (providerResponse: ProviderResponse): Promise<string> => {
+  const state = crypto.randomBytes(32).toString('hex');
 
   // Save state in cache without redirect URL
   saveSignUpState(state, providerResponse);
@@ -35,10 +30,8 @@ export const generateSignupState = async (
   return state;
 };
 
-export const generateSignInState = async (
-  providerResponse: ProviderResponse,
-): Promise<string> => {
-  const state = crypto.randomBytes(32).toString("hex");
+export const generateSignInState = async (providerResponse: ProviderResponse): Promise<string> => {
+  const state = crypto.randomBytes(32).toString('hex');
 
   // Save state in cache without redirect URL
   saveSignInState(state, providerResponse);
@@ -52,7 +45,7 @@ export const generatePermissionState = async (
   service: string,
   scopeLevel: string,
 ): Promise<string> => {
-  const state = crypto.randomBytes(32).toString("hex");
+  const state = crypto.randomBytes(32).toString('hex');
 
   // Save state in cache without redirect URL
   savePermissionState(state, provider, accountId, service, scopeLevel);

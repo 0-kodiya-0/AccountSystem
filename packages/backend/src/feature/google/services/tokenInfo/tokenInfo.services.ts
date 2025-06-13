@@ -10,7 +10,7 @@ import { ValidationUtils } from '../../../../utils/validation';
  * Get detailed token information from Google
  * @param accessToken The access token to check
  */
-export async function getTokenInfo(accessToken: string) {
+export async function getGoogleTokenInfo(accessToken: string) {
   ValidationUtils.validateAccessToken(accessToken, 'getTokenInfo');
 
   try {
@@ -35,7 +35,7 @@ export async function getTokenInfo(accessToken: string) {
  * @param accessToken The access token to check
  * @returns Array of granted scope URLs
  */
-export async function getTokenScopes(accessToken: string): Promise<string[]> {
+export async function getGoogleTokenScopes(accessToken: string): Promise<string[]> {
   ValidationUtils.validateAccessToken(accessToken, 'getTokenScopes');
 
   try {
@@ -66,7 +66,7 @@ export async function updateAccountScopes(accountId: string, accessToken: string
 
   try {
     // Get token info for scopes
-    const tokenInfo = await getTokenInfo(accessToken);
+    const tokenInfo = await getGoogleTokenInfo(accessToken);
     const grantedScopes = tokenInfo.scope ? tokenInfo.scope.split(' ') : [];
 
     if (grantedScopes.length === 0) {
@@ -227,7 +227,7 @@ export async function checkForAdditionalScopes(
   missingScopes: string[];
 }> {
   // Get scopes from the current token
-  const tokenInfo = await getTokenInfo(accessToken);
+  const tokenInfo = await getGoogleTokenInfo(accessToken);
   const currentScopes = tokenInfo.scope ? tokenInfo.scope.split(' ') : [];
 
   // Get previously granted scopes from GooglePermissions
@@ -306,4 +306,40 @@ export async function verifyTokenOwnership(
     logger.error('Error verifying token ownership:', error);
     return { isValid: false, reason: 'Error verifying token ownership' };
   }
+}
+
+/**
+ * Exchange Google authorization code for tokens
+ * @param code Authorization code from Google
+ * @param redirectUri The redirect URI that was used in the authorization request
+ */
+export async function exchangeGoogleCode(code: string, redirectUri: string) {
+  const oAuth2Client = new google.auth.OAuth2(getGoogleClientId(), getGoogleClientSecret(), redirectUri);
+
+  const { tokens } = await oAuth2Client.getToken(code);
+
+  if (!tokens.access_token) {
+    throw new Error('Missing access token in Google OAuth response');
+  }
+
+  // Get user info using the access token
+  oAuth2Client.setCredentials(tokens);
+  const oauth2 = google.oauth2({ version: 'v2', auth: oAuth2Client });
+  const userInfoResponse = await oauth2.userinfo.get();
+
+  const userInfo = {
+    email: userInfoResponse.data.email,
+    name: userInfoResponse.data.name,
+    imageUrl: userInfoResponse.data.picture,
+    provider: OAuthProviders.Google,
+  };
+
+  return {
+    tokens: {
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      expiryDate: tokens.expiry_date,
+    },
+    userInfo,
+  };
 }

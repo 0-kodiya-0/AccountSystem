@@ -1,4 +1,3 @@
-import passport from 'passport';
 import {
   ApiErrorCode,
   BadRequestError,
@@ -9,25 +8,13 @@ import {
   Redirect,
 } from '../../types/response.types';
 import * as AuthService from './OAuth.service';
-import { AuthType, AuthUrls, OAuthState, PermissionState, ProviderResponse, SignInState } from './OAuth.types';
+import { AuthType, OAuthState, PermissionState } from './OAuth.types';
 import { AccountType, OAuthProviders } from '../account/Account.types';
+import { validateOAuthState, validatePermissionState, validateState } from './OAuth.validation';
+import { generateOAuthState, generatePermissionState } from './OAuth.utils';
 import {
-  validateOAuthState,
-  validateSignInState,
-  validateSignUpState,
-  validatePermissionState,
-  validateProvider,
-  validateState,
-} from './OAuth.validation';
-import {
-  clearOAuthState,
-  clearSignInState,
-  clearSignUpState,
-  generateOAuthState,
-  generatePermissionState,
-} from './OAuth.utils';
-import {
-  getTokenInfo as getGoogleTokenInfo,
+  exchangeGoogleCode,
+  getGoogleTokenInfo,
   verifyTokenOwnership,
 } from '../google/services/tokenInfo/tokenInfo.services';
 import {
@@ -38,7 +25,6 @@ import {
   setupCompleteAccountSession,
 } from '../../services';
 import { getCallbackUrl } from '../../utils/redirect';
-import { SignUpRequest, SignInRequest, OAuthCallBackRequest } from './OAuth.dto';
 import { ValidationUtils } from '../../utils/validation';
 import { buildGoogleScopeUrls, validateScopeNames } from '../google/config';
 import { asyncHandler, oauthCallbackHandler } from '../../utils/response';
@@ -50,364 +36,306 @@ import {
   verifyOAuthRefreshToken,
 } from './OAuth.jwt';
 import { AccountDocument } from '../account';
+import { getBaseUrl } from '../../config/env.config';
+import {
+  buildGoogleSignupUrl,
+  buildGoogleSigninUrl,
+  buildGooglePermissionUrl,
+  buildGoogleReauthorizeUrl,
+} from '../google/config';
 
 /**
- * Initiate Google authentication
+ * Generate OAuth signup URL
  */
-export const initiateGoogleAuth = asyncHandler(async (req, res, next) => {
-  const { state } = req.query;
-
-  await validateState(state as string, (state) => validateOAuthState(state, OAuthProviders.Google), res);
-
-  // Default Google authentication options
-  const authOptions = {
-    scope: ['profile', 'email'],
-    state: state as string,
-    accessType: 'offline',
-    prompt: 'consent',
-  };
-
-  // Pass control to passport middleware
-  passport.authenticate('google', authOptions)(req, res, next);
-});
-
-/**
- * Handle sign up process - UPDATED with session integration
- */
-export const signup = asyncHandler(async (req: SignUpRequest, res, next) => {
+export const generateSignupUrl = asyncHandler(async (req, res, next) => {
   const provider = req.params.provider as OAuthProviders;
 
-  validateProvider(provider, res);
-
-  const reqState = req.query.state;
-  if (reqState && typeof reqState === 'string') {
-    const stateDetails = (await validateState(reqState, validateSignUpState, res)) as SignInState;
-
-    try {
-      const result = await AuthService.processSignup(stateDetails, provider);
-      await clearSignUpState(stateDetails.state);
-
-      if (result.accessTokenInfo && result.accessTokenInfo.expires_in) {
-        // Set up complete account session (auth cookies + account session)
-        setupCompleteAccountSession(
-          req,
-          res,
-          result.accountId,
-          result.accessToken,
-          result.accessTokenInfo.expires_in * 1000,
-          result.refreshToken,
-          true, // set as current account
-        );
-      }
-
-      const callbackData: CallbackData = {
-        code: CallbackCode.OAUTH_SIGNUP_SUCCESS,
-        accountId: result.accountId,
-        name: result.name,
-        provider,
-      };
-
-      next(new Redirect(callbackData, getCallbackUrl()));
-      return;
-    } catch (error) {
-      logger.error(error);
-      const callbackData: CallbackData = {
-        code: CallbackCode.OAUTH_ERROR,
-        error: 'Signup processing failed',
-        provider,
-      };
-      next(new Redirect(callbackData, getCallbackUrl()));
-      return;
-    }
+  // Validate provider
+  if (!Object.values(OAuthProviders).includes(provider)) {
+    throw new BadRequestError(`Unsupported OAuth provider: ${provider}`, 400, ApiErrorCode.INVALID_PROVIDER);
   }
 
-  // Generate state without redirectUrl
-  const generatedState = await generateOAuthState(provider as OAuthProviders, AuthType.SIGN_UP);
-  const authUrls: AuthUrls = {
-    [OAuthProviders.Google]: '../auth/google',
-    [OAuthProviders.Microsoft]: '../auth/microsoft',
-    [OAuthProviders.Facebook]: '../auth/facebook',
-  };
+  // Generate state for signup
+  const state = await generateOAuthState(provider, AuthType.SIGN_UP);
 
-  next(new JsonSuccess({ state: generatedState, authUrl: authUrls[provider] }));
+  let authorizationUrl: string;
+
+  // Build authorization URL based on provider
+  switch (provider) {
+    case OAuthProviders.Google:
+      authorizationUrl = buildGoogleSignupUrl(state);
+      break;
+
+    default:
+      throw new BadRequestError(`Provider ${provider} not implemented`, 400, ApiErrorCode.INVALID_PROVIDER);
+  }
+
+  logger.info(`Generated signup URL for provider: ${provider}`);
+
+  next(
+    new JsonSuccess({
+      authorizationUrl,
+      state,
+      provider,
+      authType: 'signup',
+    }),
+  );
 });
 
 /**
- * Handle sign in process - UPDATED with session integration
+ * Generate OAuth signin URL
  */
-export const signin = asyncHandler(async (req: SignInRequest, res, next) => {
+export const generateSigninUrl = asyncHandler(async (req, res, next) => {
   const provider = req.params.provider as OAuthProviders;
-  const { state } = req.query;
 
-  validateProvider(provider, res);
-
-  if (state && typeof state === 'string') {
-    const stateDetails = (await validateState(state, validateSignInState, res)) as SignInState;
-
-    try {
-      const result = await AuthService.processSignIn(stateDetails);
-      await clearSignInState(stateDetails.state);
-
-      if (result.accessTokenInfo && result.accessTokenInfo.expires_in) {
-        // Set up complete account session (auth cookies + account session)
-        setupCompleteAccountSession(
-          req,
-          res,
-          result.userId,
-          result.accessToken,
-          result.accessTokenInfo.expires_in * 1000,
-          result.refreshToken,
-          true, // set as current account
-        );
-      }
-
-      // Handle additional scopes
-      const callbackData: CallbackData = {
-        code: CallbackCode.OAUTH_SIGNIN_SUCCESS,
-        accountId: result.userId,
-        name: result.userName,
-        provider,
-        needsAdditionalScopes: result.needsAdditionalScopes,
-        missingScopes: result.missingScopes,
-      };
-      next(new Redirect(callbackData, getCallbackUrl()));
-      return;
-    } catch (error) {
-      logger.error(error);
-      const callbackData: CallbackData = {
-        code: CallbackCode.OAUTH_ERROR,
-        error: 'Signin processing failed',
-        provider,
-      };
-      next(new Redirect(callbackData, getCallbackUrl()));
-      return;
-    }
+  // Validate provider
+  if (!Object.values(OAuthProviders).includes(provider)) {
+    throw new BadRequestError(`Unsupported OAuth provider: ${provider}`, 400, ApiErrorCode.INVALID_PROVIDER);
   }
 
-  const generatedState = await generateOAuthState(provider as OAuthProviders, AuthType.SIGN_IN);
-  const authUrls: AuthUrls = {
-    [OAuthProviders.Google]: '../auth/google',
-    [OAuthProviders.Microsoft]: '../auth/microsoft',
-    [OAuthProviders.Facebook]: '../auth/facebook',
-  };
+  // Generate state for signin
+  const state = await generateOAuthState(provider, AuthType.SIGN_IN);
 
-  next(new JsonSuccess({ state: generatedState, authUrl: authUrls[provider] }));
+  let authorizationUrl: string;
+
+  // Build authorization URL based on provider
+  switch (provider) {
+    case OAuthProviders.Google:
+      authorizationUrl = buildGoogleSigninUrl(state);
+      break;
+
+    default:
+      throw new BadRequestError(`Provider ${provider} not implemented`, 400, ApiErrorCode.INVALID_PROVIDER);
+  }
+
+  logger.info(`Generated signin URL for provider: ${provider}`);
+
+  next(
+    new JsonSuccess({
+      authorizationUrl,
+      state,
+      provider,
+      authType: 'signin',
+    }),
+  );
 });
 
 /**
- * Handle callback from OAuth provider
+ * Handle OAuth callback from provider
  */
-export const handleCallback = oauthCallbackHandler(
+export const handleOAuthCallback = oauthCallbackHandler(
   getCallbackUrl(),
-  CallbackCode.PERMISSION_ERROR,
-  async (req: OAuthCallBackRequest, res, next) => {
-    const provider = req.params.provider;
-    const stateFromProvider = req.query.state;
+  CallbackCode.OAUTH_ERROR,
+  async (req, res, next) => {
+    const { code, state } = req.body;
 
-    validateProvider(provider, res);
+    ValidationUtils.validateRequiredFields(req.body, ['code', 'state']);
 
+    // Validate the state parameter and get OAuth state details
     const stateDetails = (await validateState(
-      stateFromProvider,
-      (state) => validateOAuthState(state, provider as OAuthProviders),
+      state,
+      (state) => validateOAuthState(state, OAuthProviders.Google), // Fix: Don't use stateDetails.provider before it's defined
       res,
     )) as OAuthState;
 
-    await clearOAuthState(stateDetails.state);
+    // Exchange authorization code for tokens based on provider
+    let tokens;
+    let userInfo;
 
-    passport.authenticate(
-      provider as OAuthProviders,
-      { session: false },
-      async (err: Error | null, userData: ProviderResponse) => {
-        try {
-          if (err) {
-            const callbackData: CallbackData = {
-              code: CallbackCode.OAUTH_ERROR,
-              error: 'Authentication failed',
-              provider: provider as OAuthProviders,
-            };
-            return next(new Redirect(callbackData, getCallbackUrl()));
-          }
+    switch (stateDetails.provider) {
+      case OAuthProviders.Google: {
+        // Fix: Pass the correct redirect URI based on auth type
+        const redirectUri =
+          stateDetails.authType === AuthType.SIGN_UP
+            ? `${getBaseUrl()}/oauth/callback/signup`
+            : `${getBaseUrl()}/oauth/callback/signin`;
+        ({ tokens, userInfo } = await exchangeGoogleCode(code, redirectUri));
+        break;
+      }
 
-          if (!userData) {
-            const callbackData: CallbackData = {
-              code: CallbackCode.OAUTH_ERROR,
-              error: 'No user data received',
-              provider: provider as OAuthProviders,
-            };
-            return next(new Redirect(callbackData, getCallbackUrl()));
-          }
+      default:
+        throw new BadRequestError(
+          `Provider ${stateDetails.provider} exchange not implemented`,
+          400,
+          ApiErrorCode.INVALID_PROVIDER,
+        );
+    }
 
-          const result = await AuthService.processSignInSignupCallback(userData, stateDetails);
+    // Fix: Ensure userInfo has required fields for ProviderResponse
+    const providerResponse = {
+      email: userInfo.email || '',
+      name: userInfo.name || '',
+      imageUrl: userInfo.imageUrl || '',
+      tokenDetails: tokens,
+      provider: stateDetails.provider,
+    };
 
-          if (result.authType === AuthType.SIGN_UP) {
-            next(new Redirect({ state: result.state }, `../signup/${provider}`));
-          } else {
-            next(new Redirect({ state: result.state }, `../signin/${provider}`));
-          }
-        } catch (error) {
-          logger.error(error);
-          const callbackData: CallbackData = {
-            code: CallbackCode.OAUTH_ERROR,
-            error: 'Failed to process authentication',
-            provider: provider as OAuthProviders,
-          };
-          next(new Redirect(callbackData, getCallbackUrl()));
-        }
-      },
-    )(req, res, next);
+    // Process the OAuth response based on auth type (signup vs signin)
+    await AuthService.processSignInSignupCallback(providerResponse, stateDetails);
+
+    if (stateDetails.authType === AuthType.SIGN_UP) {
+      // Process signup
+      const signupResult = await AuthService.processSignup(
+        {
+          ...stateDetails,
+          oAuthResponse: providerResponse,
+        },
+        stateDetails.provider,
+      );
+
+      // Set up account session
+      if (signupResult.accessTokenInfo && signupResult.accessTokenInfo.expires_in) {
+        setupCompleteAccountSession(
+          req,
+          res,
+          signupResult.accountId,
+          signupResult.accessToken,
+          signupResult.accessTokenInfo.expires_in * 1000,
+          signupResult.refreshToken,
+          true, // set as current account
+        );
+      }
+
+      logger.info(`OAuth signup successful for provider: ${stateDetails.provider}`);
+
+      const callbackData: CallbackData = {
+        code: CallbackCode.OAUTH_SIGNUP_SUCCESS,
+        accountId: signupResult.accountId,
+        name: signupResult.name,
+        provider: stateDetails.provider,
+      };
+
+      next(new Redirect(callbackData, getCallbackUrl()));
+    } else {
+      // Process signin
+      const signinResult = await AuthService.processSignIn({
+        ...stateDetails,
+        oAuthResponse: providerResponse,
+      });
+
+      // Set up account session
+      if (signinResult.accessTokenInfo && signinResult.accessTokenInfo.expires_in) {
+        setupCompleteAccountSession(
+          req,
+          res,
+          signinResult.userId,
+          signinResult.accessToken,
+          signinResult.accessTokenInfo.expires_in * 1000,
+          signinResult.refreshToken,
+          true, // set as current account
+        );
+      }
+
+      logger.info(`OAuth signin successful for provider: ${stateDetails.provider}`);
+
+      const callbackData: CallbackData = {
+        code: CallbackCode.OAUTH_SIGNIN_SUCCESS,
+        accountId: signinResult.userId,
+        name: signinResult.userName,
+        provider: stateDetails.provider,
+        needsAdditionalScopes: signinResult.needsAdditionalScopes,
+        missingScopes: signinResult.missingScopes,
+      };
+
+      next(new Redirect(callbackData, getCallbackUrl()));
+    }
   },
 );
 
 /**
- * Handle callback for permission request - UPDATED with session integration
+ * Handle permission code exchange
  */
 export const handlePermissionCallback = oauthCallbackHandler(
   getCallbackUrl(),
   CallbackCode.PERMISSION_ERROR,
   async (req, res, next) => {
-    const provider = req.params.provider;
-    const stateFromProvider = req.query.state as string;
+    const { code, state } = req.body;
 
-    validateProvider(provider, res);
+    ValidationUtils.validateRequiredFields(req.body, ['code', 'state']);
 
+    // Validate the state parameter
     const permissionDetails = (await validateState(
-      stateFromProvider,
-      (state) => validatePermissionState(state, provider as OAuthProviders),
+      state,
+      (state) => validatePermissionState(state, OAuthProviders.Google),
       res,
     )) as PermissionState;
 
-    // Get the details we need from the permission state
     const { accountId, service, scopeLevel } = permissionDetails;
 
-    // Use the permission-specific passport strategy
-    passport.authenticate(
-      `${provider}-permission`,
-      { session: false },
-      async (err: Error | null, result: ProviderResponse) => {
-        try {
-          if (err) {
-            logger.error('Permission token exchange error:', err);
-            const callbackData: CallbackData = {
-              code: CallbackCode.PERMISSION_ERROR,
-              error: 'Permission token exchange failed',
-              provider: provider as OAuthProviders,
-              accountId,
-            };
-            return next(new Redirect(callbackData, getCallbackUrl()));
-          }
+    // Use existing Google code exchange function
+    const redirectUri = `${getBaseUrl()}/oauth/callback/permission`;
+    const { tokens } = await exchangeGoogleCode(code, redirectUri); // Fix: Remove unused userInfo
 
-          if (
-            !result ||
-            !result.tokenDetails ||
-            !result.tokenDetails.accessToken ||
-            !result.tokenDetails.refreshToken
-          ) {
-            const callbackData: CallbackData = {
-              code: CallbackCode.PERMISSION_ERROR,
-              error: 'Permission request failed - no tokens received',
-              provider: provider as OAuthProviders,
-              accountId,
-            };
-            return next(new Redirect(callbackData, getCallbackUrl()));
-          }
+    // Verify user account exists
+    const exists = await AuthService.checkUserExists(accountId);
+    if (!exists) {
+      throw new NotFoundError('User record not found in database', 404, ApiErrorCode.USER_NOT_FOUND);
+    }
 
-          const exists = await AuthService.checkUserExists(accountId);
+    // Fix: Ensure accessToken is not null/undefined
+    if (!tokens.accessToken) {
+      throw new BadRequestError('Missing access token from OAuth response', 400, ApiErrorCode.TOKEN_INVALID);
+    }
 
-          if (!exists) {
-            const callbackData: CallbackData = {
-              code: CallbackCode.USER_NOT_FOUND,
-              error: 'User record not found in database',
-              accountId,
-            };
-            return next(new Redirect(callbackData, getCallbackUrl()));
-          }
+    // Verify that the token belongs to the correct user account
+    const tokenVerification = await verifyTokenOwnership(tokens.accessToken, accountId);
+    if (!tokenVerification.isValid) {
+      throw new BadRequestError(
+        'Permission was granted with an incorrect account. Please try again and ensure you use the correct Google account.',
+        400,
+        ApiErrorCode.AUTH_FAILED,
+      );
+    }
 
-          logger.info(
-            `Processing permission callback for account ${accountId}, service ${service}, scope ${scopeLevel}`,
-          );
+    // Get token info for expiration details
+    const accessTokenInfo = await getGoogleTokenInfo(tokens.accessToken);
+    if (!accessTokenInfo.expires_in) {
+      throw new BadRequestError('Failed to fetch token information', 400, ApiErrorCode.TOKEN_INVALID);
+    }
 
-          // Verify that the token belongs to the correct user account
-          const token = await verifyTokenOwnership(result.tokenDetails.accessToken, accountId);
+    // Update tokens and scopes in database
+    await AuthService.updateTokensAndScopes(accountId, tokens.accessToken);
 
-          if (!token.isValid) {
-            logger.error('Token ownership verification failed:', token.reason);
-            const callbackData: CallbackData = {
-              code: CallbackCode.PERMISSION_ERROR,
-              error:
-                'Permission was granted with an incorrect account. Please try again and ensure you use the correct Google account.',
-              provider: provider as OAuthProviders,
-              accountId,
-            };
-            return next(new Redirect(callbackData, getCallbackUrl()));
-          }
+    // Create JWT tokens for our system
+    const jwtAccessToken = await createOAuthJwtToken(accountId, tokens.accessToken, accessTokenInfo.expires_in);
 
-          const accessTokenInfo = await getGoogleTokenInfo(result.tokenDetails.accessToken);
+    // Fix: Ensure refreshToken is not null/undefined
+    if (!tokens.refreshToken) {
+      throw new BadRequestError('Missing refresh token from OAuth response', 400, ApiErrorCode.TOKEN_INVALID);
+    }
 
-          if (!accessTokenInfo.expires_in) {
-            const callbackData: CallbackData = {
-              code: CallbackCode.PERMISSION_ERROR,
-              error: 'Failed to fetch token information',
-              provider: provider as OAuthProviders,
-              accountId,
-            };
-            return next(new Redirect(callbackData, getCallbackUrl()));
-          }
+    const jwtRefreshToken = await createOAuthRefreshToken(accountId, tokens.refreshToken);
 
-          // Update tokens and scopes
-          await AuthService.updateTokensAndScopes(accountId, result.tokenDetails.accessToken);
+    // Set up complete account session (auth cookies + account session)
+    setupCompleteAccountSession(
+      req,
+      res,
+      accountId,
+      jwtAccessToken,
+      accessTokenInfo.expires_in * 1000,
+      jwtRefreshToken,
+      false, // don't set as current account for permission updates
+    );
 
-          const jwtAccessToken = await createOAuthJwtToken(
-            accountId,
-            result.tokenDetails.accessToken,
-            accessTokenInfo.expires_in,
-          );
+    logger.info(`Permission tokens exchanged successfully for account ${accountId}`);
 
-          const jwtRefreshToken = await createOAuthRefreshToken(accountId, result.tokenDetails.refreshToken);
+    const callbackData: CallbackData = {
+      code: CallbackCode.OAUTH_PERMISSION_SUCCESS,
+      accountId,
+      service,
+      scopeLevel,
+      provider: OAuthProviders.Google,
+      message: `Successfully granted ${service} ${scopeLevel} permissions`,
+    };
 
-          // Set up complete account session (auth cookies + account session)
-          // Note: Don't change current account for permission updates
-          setupCompleteAccountSession(
-            req,
-            res,
-            accountId,
-            jwtAccessToken,
-            accessTokenInfo.expires_in * 1000,
-            jwtRefreshToken,
-            false, // don't set as current account
-          );
-
-          logger.info(`Token updated for ${service} ${scopeLevel}. Processing success callback.`);
-
-          const callbackData: CallbackData = {
-            code: CallbackCode.OAUTH_PERMISSION_SUCCESS,
-            accountId,
-            service,
-            scopeLevel,
-            provider: provider as OAuthProviders,
-            message: `Successfully granted ${service} ${scopeLevel} permissions`,
-          };
-
-          next(new Redirect(callbackData, getCallbackUrl()));
-        } catch (error) {
-          logger.error('Error updating token:', error);
-          const callbackData: CallbackData = {
-            code: CallbackCode.PERMISSION_ERROR,
-            error: 'Failed to update token',
-            provider: provider as OAuthProviders,
-            accountId,
-          };
-          next(new Redirect(callbackData, getCallbackUrl()));
-        }
-      },
-    )(req, res, next);
+    next(new Redirect(callbackData, getCallbackUrl()));
   },
 );
 
 /**
- * Request permission for specific scope names
- * Accepts scope names and converts them to proper Google OAuth scope URLs
+ * Generate permission request URL
  */
-export const requestPermission = asyncHandler(async (req, res, next) => {
+export const generatePermissionUrl = asyncHandler(async (req, res, next) => {
   const requestedScopeNames = req.params.scopeNames as string;
   const { accountId } = req.query;
 
@@ -453,37 +381,39 @@ export const requestPermission = asyncHandler(async (req, res, next) => {
   const state = await generatePermissionState(
     OAuthProviders.Google,
     accountId as string,
-    'custom', // service field - keeping for backward compatibility
-    requestedScopeNames, // Store original scope names string
+    'custom',
+    requestedScopeNames,
   );
 
-  // CRITICAL: These options force Google to use the specified account
-  const authOptions = {
-    scope: scopes, // Full Google OAuth scope URLs - Google will validate these
-    accessType: 'offline',
-    prompt: 'consent',
-    loginHint: userEmail, // Pre-select the account
-    state,
-    includeGrantedScopes: true,
-  };
+  // Use utility to build authorization URL
+  const authorizationUrl = buildGooglePermissionUrl(state, scopes, userEmail);
 
-  logger.info(`Initiating permission request for scope names: ${scopeNames.join(', ')}`);
+  logger.info(`Generated permission URL for scope names: ${scopeNames.join(', ')}`);
   logger.info(`Converted to scope URLs: ${scopes.join(', ')}`);
   logger.info(`Account: ${userEmail}`);
 
-  // Redirect to Google authorization page - Google will validate the scopes
-  passport.authenticate('google-permission', authOptions)(req, res, next);
+  next(
+    new JsonSuccess({
+      authorizationUrl,
+      state,
+      scopes: scopeNames,
+      accountId,
+      userEmail,
+    }),
+  );
 });
 
 /**
- * Reauthorize permissions
+ * Generate reauthorization URL
  */
-export const reauthorizePermissions = asyncHandler(async (req, res, next) => {
+export const generateReauthorizeUrl = asyncHandler(async (req, res, next) => {
   const { accountId } = req.query;
 
   if (!accountId) {
     throw new BadRequestError('Missing required parameters');
   }
+
+  ValidationUtils.validateObjectId(accountId as string, 'Account ID');
 
   // Get the user's account details
   const account = await AuthService.getUserAccount(accountId as string);
@@ -496,28 +426,34 @@ export const reauthorizePermissions = asyncHandler(async (req, res, next) => {
   const storedScopes = await AuthService.getAccountScopes(accountId as string);
 
   if (!storedScopes || storedScopes.length === 0) {
-    // No additional scopes to request, redirect with success
-    next(new JsonSuccess({ message: 'No additional scopes needed' }));
+    next(
+      new JsonSuccess({
+        message: 'No additional scopes needed',
+        authorizationUrl: null,
+        accountId,
+      }),
+    );
     return;
   }
 
   // Generate a unique state for this re-authorization
   const state = await generatePermissionState(OAuthProviders.Google, accountId as string, 'reauthorize', 'all');
 
-  // Build the authentication options
-  const authOptions = {
-    scope: storedScopes,
-    accessType: 'offline',
-    prompt: 'consent',
-    loginHint: account.userDetails.email,
-    state,
-    includeGrantedScopes: true,
-  };
+  // Use utility to build authorization URL
+  const authorizationUrl = buildGoogleReauthorizeUrl(state, storedScopes, account.userDetails.email);
 
-  logger.info(`Re-requesting scopes for account ${accountId}:`, storedScopes);
+  logger.info(`Generated reauthorization URL for account ${accountId}`);
+  logger.info(`Scopes: ${storedScopes.join(', ')}`);
 
-  // Redirect to Google authorization page
-  passport.authenticate('google-permission', authOptions)(req, res, next);
+  next(
+    new JsonSuccess({
+      authorizationUrl,
+      state,
+      scopes: storedScopes,
+      accountId,
+      userEmail: account.userDetails.email,
+    }),
+  );
 });
 
 /**
@@ -678,37 +614,24 @@ export const refreshOAuthToken = asyncHandler(async (req, res, next) => {
     throw new BadRequestError('Refresh token not found', 400, ApiErrorCode.TOKEN_INVALID);
   }
 
-  try {
-    // Extract OAuth refresh token from middleware (already verified)
-    const oauthRefreshToken = req.oauthRefreshToken;
+  // Extract OAuth refresh token from middleware (already verified)
+  const oauthRefreshToken = req.oauthRefreshToken;
 
-    if (!oauthRefreshToken) {
-      throw new BadRequestError('OAuth refresh token not available', 400, ApiErrorCode.TOKEN_INVALID);
-    }
-
-    // Use the session manager to handle token refresh
-    await handleTokenRefresh(accountId, oauthRefreshToken, AccountType.OAuth, req, res);
-
-    // Validate and determine redirect URL
-    if (!redirectUrl) {
-      throw new BadRequestError('Missing redirectUrl query parameter', 400, ApiErrorCode.MISSING_DATA);
-    }
-
-    ValidationUtils.validateUrl(redirectUrl as string, 'Redirect URL');
-
-    next(new Redirect(null, redirectUrl as string));
-  } catch {
-    // If refresh fails, redirect to logout
-    next(
-      new Redirect(
-        {
-          code: ApiErrorCode.TOKEN_INVALID,
-          message: 'Refresh token expired or invalid',
-        },
-        `./${accountId}/account/logout?accountId=${accountId}&clearClientAccountState=false`,
-      ),
-    );
+  if (!oauthRefreshToken) {
+    throw new BadRequestError('OAuth refresh token not available', 400, ApiErrorCode.TOKEN_INVALID);
   }
+
+  // Use the session manager to handle token refresh
+  await handleTokenRefresh(accountId, oauthRefreshToken, AccountType.OAuth, req, res);
+
+  // Validate and determine redirect URL
+  if (!redirectUrl) {
+    throw new BadRequestError('Missing redirectUrl query parameter', 400, ApiErrorCode.MISSING_DATA);
+  }
+
+  ValidationUtils.validateUrl(redirectUrl as string, 'Redirect URL');
+
+  next(new Redirect(null, redirectUrl as string));
 });
 
 /**

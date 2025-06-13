@@ -1,14 +1,14 @@
-import { OAuthProviders } from "../account/Account.types";
+import { OAuthProviders } from '../account/Account.types';
 
 export interface TokenDetails {
   accessToken: string;
-  refreshToken: string;
+  refreshToken?: string | null;
 }
 
 export enum AuthType {
-  SIGN_UP = "signup",
-  SIGN_IN = "signin",
-  PERMISSION = "permission",
+  SIGN_UP = 'signup',
+  SIGN_IN = 'signin',
+  PERMISSION = 'permission',
 }
 
 export interface OAuthState {
@@ -31,7 +31,7 @@ export interface SignUpState {
   expiresAt: string;
 }
 
-export type SignUpDetails = "device" | undefined | null;
+export type SignUpDetails = 'device' | undefined | null;
 
 export interface SignInState {
   state: string;
@@ -48,8 +48,8 @@ export interface AuthUrls {
 export interface ProviderResponse {
   provider: OAuthProviders;
   name: string;
-  email?: string;
-  imageUrl?: string;
+  email?: string | null;
+  imageUrl?: string | null;
   tokenDetails: TokenDetails;
   permissionState?: PermissionState | null;
 }

@@ -5,7 +5,7 @@ import { AccountType } from '../../account/Account.types';
 import { verifyLocalJwtToken, verifyLocalRefreshToken } from '../../local_auth';
 import { verifyOAuthJwtToken, verifyOAuthRefreshToken } from '../../oauth/OAuth.jwt';
 import {
-  getTokenInfo,
+  getGoogleTokenInfo as getTokenInfo,
   getGoogleAccountScopes,
   verifyTokenOwnership,
 } from '../../google/services/tokenInfo/tokenInfo.services';
