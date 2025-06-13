@@ -69,16 +69,27 @@ export const use2FAVerification = (options: Use2FAVerificationOptions = {}) => {
         let errorMessage = 'Invalid verification code';
         let errorStatus = TwoFactorVerificationStatus.INVALID_TOKEN;
 
-        if (err.message?.includes('expired') || err.message?.includes('timeout')) {
-          errorStatus = TwoFactorVerificationStatus.EXPIRED_SESSION;
-          errorMessage = 'Session expired. Please sign in again.';
-        } else if (err.message?.includes('invalid') || err.message?.includes('incorrect')) {
-          errorMessage = isBackupCode ? 'Invalid backup code' : 'Invalid verification code';
-          if (newAttemptsRemaining > 0) {
-            errorMessage += `. ${newAttemptsRemaining} attempts remaining.`;
+        // Handle errors based on HTTP status codes or error codes
+        if (err.statusCode === 401) {
+          if (err.code === 'TOKEN_INVALID') {
+            errorStatus = TwoFactorVerificationStatus.EXPIRED_SESSION;
+            errorMessage = 'Session expired. Please sign in again.';
+          } else if (err.code === 'AUTH_FAILED') {
+            errorMessage = isBackupCode ? 'Invalid backup code' : 'Invalid verification code';
+            if (newAttemptsRemaining > 0) {
+              errorMessage += `. ${newAttemptsRemaining} attempts remaining.`;
+            }
+          } else {
+            errorMessage = err.message || 'Authentication failed';
           }
-        } else if (err.message) {
-          errorMessage = err.message;
+        } else if (err.statusCode === 400) {
+          if (err.code === 'VALIDATION_ERROR') {
+            errorMessage = err.message || 'Invalid verification code format';
+          } else {
+            errorMessage = err.message || 'Invalid verification request';
+          }
+        } else {
+          errorMessage = err.message || 'Verification failed';
         }
 
         if (newAttemptsRemaining <= 0) {

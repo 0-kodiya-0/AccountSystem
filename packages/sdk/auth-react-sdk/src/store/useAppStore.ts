@@ -4,14 +4,15 @@ import { immer } from 'zustand/middleware/immer';
 import { AuthService } from '../services/AuthService';
 import { AccountService } from '../services/AccountService';
 import { NotificationService } from '../services/NotificationService';
-import { GoogleService } from '../services/GoogleService';
 import {
   Account,
   GetAccountSessionResponse,
+  GetAccountSessionDataResponse,
   AccountSessionInfo,
   LocalLoginRequest,
   LocalLoginResponse,
   LocalSignupRequest,
+  LocalSignupResponse,
   TwoFactorVerifyRequest,
   PasswordResetRequest,
   ResetPasswordRequest,
@@ -22,9 +23,9 @@ import {
   Notification,
   CreateNotificationRequest,
   NotificationListResponse,
-  GoogleTokenInfo,
-  TokenCheckResponse,
+  OAuthTokenInfoResponse,
   LoadingState,
+  SessionAccount,
 } from '../types';
 import { enableMapSet } from 'immer';
 
@@ -62,16 +63,21 @@ interface AppState {
 }
 
 interface AppActions {
+  // Session Management
   initializeSession: () => Promise<void>;
   setCurrentAccount: (accountId: string | null) => Promise<void>;
   refreshSession: () => Promise<void>;
   clearSession: () => void;
 
+  // Account Management
   loadAccount: (accountId: string) => Promise<Account>;
+  loadSessionAccountsData: (accountIds?: string[]) => Promise<SessionAccount[]>;
   updateAccount: (accountId: string, updates: Partial<Account>) => void;
   removeAccount: (accountId: string) => void;
 
-  localSignup: (data: LocalSignupRequest) => Promise<{ accountId: string }>;
+  // Email Verification
+  verifyEmail: (token: string) => Promise<void>;
+  localSignup: (data: LocalSignupRequest) => Promise<LocalSignupResponse>;
   localLogin: (data: LocalLoginRequest) => Promise<LocalLoginResponse>;
   verifyTwoFactor: (data: TwoFactorVerifyRequest) => Promise<LocalLoginResponse>;
   requestPasswordReset: (email: string) => Promise<void>;
@@ -81,12 +87,20 @@ interface AppActions {
   verifyTwoFactorSetup: (accountId: string, token: string) => Promise<void>;
   generateBackupCodes: (accountId: string, password: string) => Promise<string[]>;
 
+  // OAuth Authentication
   startOAuthSignup: (provider: OAuthProviders) => void;
   startOAuthSignin: (provider: OAuthProviders) => void;
+  requestGooglePermission: (accountId: string, scopeNames: string[]) => void;
+  reauthorizePermissions: (accountId: string) => void;
 
-  logout: (accountId?: string) => void;
-  logoutAll: () => void;
+  // Token Management
+  getOAuthTokenInfo: (accountId: string) => Promise<OAuthTokenInfoResponse>;
 
+  // Logout
+  logout: (accountId?: string) => Promise<void>;
+  logoutAll: () => Promise<void>;
+
+  // Notifications
   loadNotifications: (
     accountId: string,
     options?: {
@@ -107,11 +121,7 @@ interface AppActions {
   deleteNotification: (accountId: string, notificationId: string) => Promise<void>;
   deleteAllNotifications: (accountId: string) => Promise<number>;
 
-  requestGooglePermission: (accountId: string, scopeNames: string[]) => void;
-  reauthorizePermissions: (accountId: string) => void;
-  getGoogleTokenInfo: (accountId: string) => Promise<GoogleTokenInfo>;
-  checkGoogleScopes: (accountId: string, scopeNames: string[]) => Promise<TokenCheckResponse>;
-
+  // State Management
   setTempToken: (token: string) => void;
   clearTempToken: () => void;
   setGlobalError: (error: string | null) => void;
@@ -131,11 +141,11 @@ interface AppActions {
   resetSessionState: () => void;
   resetNotificationsState: (accountId: string) => void;
 
+  // Service injection
   _setServices: (services: {
     authService: AuthService;
     accountService: AccountService;
     notificationService: NotificationService;
-    googleService: GoogleService;
   }) => void;
 }
 
@@ -143,7 +153,6 @@ interface Services {
   authService: AuthService;
   accountService: AccountService;
   notificationService: NotificationService;
-  googleService: GoogleService;
 }
 
 let services: Services | null = null;
@@ -151,6 +160,7 @@ let services: Services | null = null;
 export const useAppStore = create<AppState & AppActions>()(
   subscribeWithSelector(
     immer((set, get) => ({
+      // Initial State
       session: {
         hasSession: false,
         accountIds: [],
@@ -180,10 +190,12 @@ export const useAppStore = create<AppState & AppActions>()(
 
       tempToken: null,
 
+      // Service Injection
       _setServices: (newServices: Services) => {
         services = newServices;
       },
 
+      // Session Management
       initializeSession: async () => {
         if (!services) throw new Error('Services not initialized');
 
@@ -194,7 +206,7 @@ export const useAppStore = create<AppState & AppActions>()(
         });
 
         try {
-          const response = await services.authService.getAccountSession();
+          const response: GetAccountSessionResponse = await services.authService.getAccountSession();
 
           set((state) => {
             state.session = {
@@ -202,16 +214,23 @@ export const useAppStore = create<AppState & AppActions>()(
               loadingState: LoadingState.READY,
               error: null,
             };
-
             state.ui.initializationState = LoadingState.READY;
-
-            if (response.accounts) {
-              response.accounts.forEach((account) => {
-                state.accounts.data.set(account.id, account as Account);
-                state.accounts.loadingStates.set(account.id, LoadingState.READY);
-              });
-            }
           });
+
+          // Load account data if session has accounts
+          if (response.session.accountIds.length > 0) {
+            try {
+              const accountsData = await services.authService.getSessionAccountsData(response.session.accountIds);
+              set((state) => {
+                accountsData.forEach((account) => {
+                  state.accounts.data.set(account.id, account as Account);
+                  state.accounts.loadingStates.set(account.id, LoadingState.READY);
+                });
+              });
+            } catch (error) {
+              console.warn('Failed to load session accounts data:', error);
+            }
+          }
         } catch (error) {
           set((state) => {
             state.session.loadingState = LoadingState.ERROR;
@@ -241,6 +260,7 @@ export const useAppStore = create<AppState & AppActions>()(
             state.session.error = error instanceof Error ? error.message : 'Failed to set current account';
             state.session.loadingState = LoadingState.ERROR;
           });
+          throw error;
         }
       },
 
@@ -273,6 +293,7 @@ export const useAppStore = create<AppState & AppActions>()(
         });
       },
 
+      // Account Management
       loadAccount: async (accountId: string) => {
         if (!services) throw new Error('Services not initialized');
 
@@ -294,6 +315,19 @@ export const useAppStore = create<AppState & AppActions>()(
           set((state) => {
             state.accounts.loadingStates.set(accountId, LoadingState.ERROR);
             state.accounts.errors.set(accountId, error instanceof Error ? error.message : 'Failed to load account');
+          });
+          throw error;
+        }
+      },
+
+      loadSessionAccountsData: async (accountIds?: string[]) => {
+        if (!services) throw new Error('Services not initialized');
+
+        try {
+          return await services.authService.getSessionAccountsData(accountIds);
+        } catch (error) {
+          set((state) => {
+            state.ui.globalError = error instanceof Error ? error.message : 'Failed to load session accounts data';
           });
           throw error;
         }
@@ -325,6 +359,22 @@ export const useAppStore = create<AppState & AppActions>()(
         });
       },
 
+      // Email Verification
+      verifyEmail: async (token: string) => {
+        if (!services) throw new Error('Services not initialized');
+
+        try {
+          await services.authService.verifyEmail(token);
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Email verification failed';
+          set((state) => {
+            state.ui.globalError = errorMessage;
+          });
+          throw error;
+        }
+      },
+
+      // Local Authentication
       localSignup: async (data: LocalSignupRequest) => {
         if (!services) throw new Error('Services not initialized');
 
@@ -404,7 +454,7 @@ export const useAppStore = create<AppState & AppActions>()(
         if (!services) throw new Error('Services not initialized');
 
         try {
-          await services.authService.requestPasswordReset(email);
+          await services.authService.requestPasswordReset({ email });
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Password reset request failed';
           set((state) => {
@@ -486,6 +536,7 @@ export const useAppStore = create<AppState & AppActions>()(
         }
       },
 
+      // OAuth Authentication
       startOAuthSignup: (provider: OAuthProviders) => {
         if (!services) throw new Error('Services not initialized');
         services.authService.redirectToOAuthSignup(provider);
@@ -496,24 +547,68 @@ export const useAppStore = create<AppState & AppActions>()(
         services.authService.redirectToOAuthSignin(provider);
       },
 
-      logout: (accountId?: string) => {
+      requestGooglePermission: (accountId: string, scopeNames: string[]) => {
         if (!services) throw new Error('Services not initialized');
+        services.authService.requestGooglePermission(accountId, scopeNames);
+      },
+
+      reauthorizePermissions: (accountId: string) => {
+        if (!services) throw new Error('Services not initialized');
+        services.authService.reauthorizePermissions(accountId);
+      },
+
+      // Token Management
+      getOAuthTokenInfo: async (accountId: string) => {
+        if (!services) throw new Error('Services not initialized');
+
+        try {
+          return await services.authService.getOAuthTokenInfo(accountId);
+        } catch (error) {
+          set((state) => {
+            state.accounts.errors.set(accountId, error instanceof Error ? error.message : 'Failed to get token info');
+          });
+          throw error;
+        }
+      },
+
+      // Logout
+      logout: async (accountId?: string) => {
+        if (!services) throw new Error('Services not initialized');
+
         const targetAccountId = accountId || get().session.currentAccountId;
+        if (!targetAccountId) throw new Error('No account ID provided');
 
-        if (targetAccountId) {
-          services.authService.logout(targetAccountId);
+        try {
+          await services.authService.logout(targetAccountId);
+          await get().refreshSession();
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Logout failed';
+          set((state) => {
+            state.ui.globalError = errorMessage;
+          });
+          throw error;
         }
       },
 
-      logoutAll: () => {
+      logoutAll: async () => {
         if (!services) throw new Error('Services not initialized');
-        const { accountIds } = get().session;
 
-        if (accountIds.length > 0) {
-          services.authService.logoutAll(accountIds);
+        const { accountIds } = get().session;
+        if (accountIds.length === 0) return;
+
+        try {
+          await services.authService.logoutAll(accountIds);
+          get().clearSession();
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Logout all failed';
+          set((state) => {
+            state.ui.globalError = errorMessage;
+          });
+          throw error;
         }
       },
 
+      // Notifications
       loadNotifications: async (accountId: string, options = {}) => {
         if (!services) throw new Error('Services not initialized');
 
@@ -699,42 +794,7 @@ export const useAppStore = create<AppState & AppActions>()(
         }
       },
 
-      requestGooglePermission: (accountId: string, scopeNames: string[]) => {
-        if (!services) throw new Error('Services not initialized');
-        services.authService.requestGooglePermission(accountId, scopeNames);
-      },
-
-      reauthorizePermissions: (accountId: string) => {
-        if (!services) throw new Error('Services not initialized');
-        services.authService.reauthorizePermissions(accountId);
-      },
-
-      getGoogleTokenInfo: async (accountId: string) => {
-        if (!services) throw new Error('Services not initialized');
-
-        try {
-          return await services.googleService.getGoogleTokenInfo(accountId);
-        } catch (error) {
-          set((state) => {
-            state.accounts.errors.set(accountId, error instanceof Error ? error.message : 'Failed to get token info');
-          });
-          throw error;
-        }
-      },
-
-      checkGoogleScopes: async (accountId: string, scopeNames: string[]) => {
-        if (!services) throw new Error('Services not initialized');
-
-        try {
-          return await services.googleService.checkGoogleScopes(accountId, scopeNames);
-        } catch (error) {
-          set((state) => {
-            state.accounts.errors.set(accountId, error instanceof Error ? error.message : 'Failed to check scopes');
-          });
-          throw error;
-        }
-      },
-
+      // State Management
       setTempToken: (token: string) => {
         set((state) => {
           state.tempToken = token;

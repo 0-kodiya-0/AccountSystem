@@ -79,6 +79,7 @@ export interface LocalLoginResponse {
   name?: string;
   requiresTwoFactor?: boolean;
   tempToken?: string;
+  message?: string;
 }
 
 export interface TwoFactorVerifyRequest {
@@ -86,7 +87,9 @@ export interface TwoFactorVerifyRequest {
   tempToken: string;
 }
 
-export type PasswordResetRequest = string;
+export interface PasswordResetRequest {
+  email: string;
+}
 
 export interface ResetPasswordRequest {
   password: string;
@@ -122,7 +125,8 @@ export interface BackupCodesResponse {
 
 export interface SessionUpdateResponse {
   message: string;
-  currentAccountId: string | null;
+  currentAccountId?: string | null;
+  accountId?: string;
 }
 
 export interface TwoFactorSetupRequest {
@@ -134,6 +138,96 @@ export interface TwoFactorSetupResponse {
   qrCode?: string;
   secret?: string;
   backupCodes?: string[];
+  message?: string;
+}
+
+// OAuth URL Generation Response Types
+export interface OAuthUrlResponse {
+  authorizationUrl: string;
+  state: string;
+  provider: string;
+  authType: string;
+}
+
+export interface PermissionUrlResponse {
+  authorizationUrl: string;
+  state: string;
+  scopes: string[];
+  accountId: string;
+  userEmail: string;
+}
+
+export interface ReauthorizeUrlResponse {
+  authorizationUrl: string | null;
+  state?: string;
+  scopes?: string[];
+  accountId: string;
+  userEmail?: string;
+  message?: string;
+}
+
+// Token Info Response Types
+export interface LocalTokenInfoResponse {
+  isExpired: boolean;
+  type: string;
+  expiresAt?: number;
+  timeRemaining?: number;
+  accountId?: string;
+  error?: string;
+}
+
+export interface OAuthSystemTokenInfo {
+  isExpired: boolean;
+  type: string;
+  expiresAt?: number;
+  timeRemaining?: number;
+  error?: string;
+}
+
+export interface OAuthProviderTokenInfo extends GoogleTokenInfo {
+  provider: string;
+}
+
+export interface OAuthTokenInfoResponse {
+  systemToken: OAuthSystemTokenInfo;
+  providerToken?: OAuthProviderTokenInfo;
+}
+
+export interface OAuthRefreshTokenInfoResponse {
+  systemToken: OAuthSystemTokenInfo;
+  providerToken?: {
+    type: string;
+    provider: string;
+    hasToken: boolean;
+  };
+}
+
+// Token Revocation Response
+export interface TokenRevocationResponse {
+  accessTokenRevoked: boolean;
+  refreshTokenRevoked: boolean;
+}
+
+// Logout Response Types
+export interface LogoutResponse {
+  message: string;
+  accountId: string;
+  clearClientAccountState: boolean;
+}
+
+export interface LogoutAllResponse {
+  message?: string;
+}
+
+// Email Verification Response
+export interface EmailVerificationResponse {
+  message: string;
+}
+
+// Local Signup Response
+export interface LocalSignupResponse {
+  accountId: string;
+  message: string;
 }
 
 // Google Permission Types
@@ -141,14 +235,15 @@ export type ServiceType = 'gmail' | 'calendar' | 'drive' | 'docs' | 'sheets' | '
 export type ScopeLevel = 'readonly' | 'full' | 'send' | 'compose' | 'events' | 'file' | 'create' | 'edit';
 
 export interface GoogleTokenInfo {
-  accessToken: string;
+  accessToken?: string;
   scope?: string;
   audience?: string;
-  expiresIn?: number;
-  issuedAt?: number;
-  userId?: string;
+  expires_in?: number;
+  issued_to?: string;
+  user_id?: string;
   email?: string;
-  emailVerified?: boolean;
+  verified_email?: boolean;
+  access_type?: string;
 }
 
 export interface ScopeCheckResult {
@@ -375,8 +470,9 @@ export interface AccountSessionInfo {
 
 export interface GetAccountSessionResponse {
   session: AccountSessionInfo;
-  accounts?: SessionAccount[]; // Minimal account data for session management
 }
+
+export type GetAccountSessionDataResponse = SessionAccount[];
 
 // Enhanced loading states enum
 export enum LoadingState {

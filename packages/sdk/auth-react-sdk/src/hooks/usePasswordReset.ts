@@ -1,71 +1,108 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from './useAuth';
 
 export enum PasswordResetStatus {
   IDLE = 'idle',
-  REQUESTING = 'requesting',
-  REQUEST_SUCCESS = 'request_success',
   RESETTING = 'resetting',
-  RESET_SUCCESS = 'reset_success',
+  SUCCESS = 'success',
   ERROR = 'error',
+  INVALID_TOKEN = 'invalid_token',
+  EXPIRED_TOKEN = 'expired_token',
+  NO_TOKEN = 'no_token',
 }
 
 export interface UsePasswordResetOptions {
-  onRequestSuccess?: (message: string) => void;
-  onResetSuccess?: (message: string) => void;
+  onSuccess?: (message: string) => void;
   onError?: (error: string) => void;
+  autoReset?: boolean; // Default false - only reset when performReset is called
 }
 
 export const usePasswordReset = (options: UsePasswordResetOptions = {}) => {
-  const { onRequestSuccess, onResetSuccess, onError } = options;
-  const { requestPasswordReset, resetPassword } = useAuth();
+  const { onSuccess, onError, autoReset = false } = options;
+  const { resetPassword } = useAuth();
 
   const [status, setStatus] = useState<PasswordResetStatus>(PasswordResetStatus.IDLE);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const requestReset = useCallback(
-    async (email: string) => {
-      try {
-        setStatus(PasswordResetStatus.REQUESTING);
-        setError(null);
-
-        await requestPasswordReset(email);
-
-        const successMessage = 'Password reset instructions have been sent to your email.';
-        setStatus(PasswordResetStatus.REQUEST_SUCCESS);
-        setMessage(successMessage);
-        onRequestSuccess?.(successMessage);
-      } catch (err: any) {
-        const errorMessage = err.message || 'Failed to send password reset email';
-        setStatus(PasswordResetStatus.ERROR);
-        setError(errorMessage);
-        onError?.(errorMessage);
-      }
-    },
-    [requestPasswordReset, onRequestSuccess, onError],
-  );
+  const [token, setToken] = useState<string | null>(null);
 
   const performReset = useCallback(
-    async (token: string, password: string, confirmPassword: string) => {
+    async (resetToken: string, password: string, confirmPassword: string) => {
       try {
         setStatus(PasswordResetStatus.RESETTING);
         setError(null);
 
-        await resetPassword(token, { password, confirmPassword });
+        await resetPassword(resetToken, { password, confirmPassword });
 
         const successMessage = 'Password reset successful! You can now sign in with your new password.';
-        setStatus(PasswordResetStatus.RESET_SUCCESS);
+        setStatus(PasswordResetStatus.SUCCESS);
         setMessage(successMessage);
-        onResetSuccess?.(successMessage);
+        onSuccess?.(successMessage);
       } catch (err: any) {
-        const errorMessage = err.message || 'Failed to reset password';
-        setStatus(PasswordResetStatus.ERROR);
+        let errorStatus = PasswordResetStatus.ERROR;
+        let errorMessage = 'Failed to reset password';
+
+        // Handle errors based on HTTP status codes or error codes
+        if (err.statusCode === 400) {
+          if (err.code === 'TOKEN_INVALID') {
+            errorStatus = PasswordResetStatus.INVALID_TOKEN;
+            errorMessage = 'Invalid reset link. Please request a new password reset.';
+          } else if (err.code === 'TOKEN_EXPIRED') {
+            errorStatus = PasswordResetStatus.EXPIRED_TOKEN;
+            errorMessage = 'Reset link has expired. Please request a new password reset.';
+          } else if (err.code === 'VALIDATION_ERROR') {
+            errorMessage = err.message || 'Password validation failed';
+          } else {
+            errorMessage = err.message || 'Invalid reset request';
+          }
+        } else if (err.statusCode === 404) {
+          errorStatus = PasswordResetStatus.INVALID_TOKEN;
+          errorMessage = 'Reset token not found. Please request a new password reset.';
+        } else {
+          errorMessage = err.message || 'Failed to reset password';
+        }
+
+        setStatus(errorStatus);
         setError(errorMessage);
         onError?.(errorMessage);
       }
     },
-    [resetPassword, onResetSuccess, onError],
+    [resetPassword, onSuccess, onError],
+  );
+
+  const manualReset = useCallback(
+    (resetToken: string, password: string, confirmPassword: string) => {
+      setToken(resetToken);
+      return performReset(resetToken, password, confirmPassword);
+    },
+    [performReset],
+  );
+
+  // Extract token from URL if autoReset is enabled
+  useEffect(() => {
+    if (!autoReset) return;
+
+    // Extract token from current URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlToken = urlParams.get('token');
+
+    if (!urlToken) {
+      setStatus(PasswordResetStatus.NO_TOKEN);
+      setError('No reset token found in URL');
+      return;
+    }
+
+    setToken(urlToken);
+    setStatus(PasswordResetStatus.IDLE); // Ready to reset with token
+  }, []);
+
+  const retry = useCallback(
+    (password: string, confirmPassword: string) => {
+      if (token) {
+        performReset(token, password, confirmPassword);
+      }
+    },
+    [token, performReset],
   );
 
   const clearState = useCallback(() => {
@@ -78,9 +115,17 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}) => {
     status,
     message,
     error,
-    isLoading: status === PasswordResetStatus.REQUESTING || status === PasswordResetStatus.RESETTING,
-    requestReset,
-    performReset,
+    token,
+    isLoading: status === PasswordResetStatus.RESETTING,
+    isSuccess: status === PasswordResetStatus.SUCCESS,
+    isError: [PasswordResetStatus.ERROR, PasswordResetStatus.INVALID_TOKEN, PasswordResetStatus.EXPIRED_TOKEN].includes(
+      status,
+    ),
+    hasToken: !!token,
+    performReset: token
+      ? (password: string, confirmPassword: string) => performReset(token, password, confirmPassword)
+      : manualReset,
+    retry,
     clearState,
   };
 };

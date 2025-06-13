@@ -3,7 +3,6 @@ import { useAppStore } from '../store/useAppStore';
 import { AuthService } from '../services/AuthService';
 import { AccountService } from '../services/AccountService';
 import { NotificationService } from '../services/NotificationService';
-import { GoogleService } from '../services/GoogleService';
 import { HttpClient } from '../client/HttpClient';
 
 interface AuthProviderProps {
@@ -18,13 +17,11 @@ export const AuthProvider = ({ children, httpClient }: AuthProviderProps): JSX.E
     const authService = new AuthService(httpClient);
     const accountService = new AccountService(httpClient);
     const notificationService = new NotificationService(httpClient);
-    const googleService = new GoogleService(httpClient);
 
     _setServices({
       authService,
       accountService,
       notificationService,
-      googleService,
     });
 
     initializeSession();

@@ -1,5 +1,6 @@
 import {
   GetAccountSessionResponse,
+  GetAccountSessionDataResponse,
   LocalSignupRequest,
   LocalLoginRequest,
   LocalLoginResponse,
@@ -15,21 +16,52 @@ import {
   ResetPasswordResponse,
   TwoFactorSetupVerificationResponse,
   BackupCodesResponse,
+  OAuthProviders,
+  OAuthUrlResponse,
+  PermissionUrlResponse,
+  ReauthorizeUrlResponse,
+  LocalTokenInfoResponse,
+  OAuthTokenInfoResponse,
+  OAuthRefreshTokenInfoResponse,
+  TokenRevocationResponse,
+  LogoutResponse,
+  LogoutAllResponse,
+  EmailVerificationResponse,
+  LocalSignupResponse,
 } from '../types';
 import { HttpClient } from '../client/HttpClient';
 
 export class AuthService {
   constructor(private httpClient: HttpClient) {}
 
+  // Session Management
   async getAccountSession(): Promise<GetAccountSessionResponse> {
-    return this.httpClient.get('/account/session');
+    return this.httpClient.get('/session');
+  }
+
+  async getSessionAccountsData(accountIds?: string[]): Promise<GetAccountSessionDataResponse> {
+    const params = new URLSearchParams();
+    if (accountIds && accountIds.length > 0) {
+      accountIds.forEach((id) => params.append('accountIds', id));
+    }
+    const queryString = params.toString();
+    return this.httpClient.get(`/session/accounts${queryString ? `?${queryString}` : ''}`);
   }
 
   async setCurrentAccountInSession(accountId: string | null): Promise<SessionUpdateResponse> {
-    return this.httpClient.post('/account/session/current', { accountId });
+    return this.httpClient.post('/session/current', { accountId });
   }
 
-  async localSignup(data: LocalSignupRequest): Promise<{ accountId: string }> {
+  async addAccountToSession(accountId: string, setAsCurrent: boolean = true): Promise<SessionUpdateResponse> {
+    return this.httpClient.post('/session/add', { accountId, setAsCurrent });
+  }
+
+  async removeAccountFromSession(accountId: string): Promise<SessionUpdateResponse> {
+    return this.httpClient.post('/session/remove', { accountId });
+  }
+
+  // Local Authentication
+  async localSignup(data: LocalSignupRequest): Promise<LocalSignupResponse> {
     return this.httpClient.post('/auth/signup', data);
   }
 
@@ -41,8 +73,8 @@ export class AuthService {
     return this.httpClient.post('/auth/verify-two-factor', data);
   }
 
-  async verifyEmail(token: string): Promise<void> {
-    return this.httpClient.get(`/auth/verify-email?token=${token}`);
+  async verifyEmail(token: string): Promise<EmailVerificationResponse> {
+    return this.httpClient.get(`/auth/verify-email?token=${encodeURIComponent(token)}`);
   }
 
   async requestPasswordReset(data: PasswordResetRequest): Promise<PasswordResetRequestResponse> {
@@ -50,7 +82,7 @@ export class AuthService {
   }
 
   async resetPassword(token: string, data: ResetPasswordRequest): Promise<ResetPasswordResponse> {
-    return this.httpClient.post(`/auth/reset-password?token=${token}`, data);
+    return this.httpClient.post(`/auth/reset-password?token=${encodeURIComponent(token)}`, data);
   }
 
   async changePassword(accountId: string, data: PasswordChangeRequest): Promise<PasswordChangeResponse> {
@@ -73,43 +105,114 @@ export class AuthService {
     });
   }
 
-  redirectToOAuthSignup(provider: string): void {
-    const baseUrl = this.httpClient.getRedirectBaseUrl();
-    window.location.href = `${baseUrl}/oauth/signup/${provider}`;
+  // Token Information
+  async getLocalTokenInfo(accountId: string): Promise<LocalTokenInfoResponse> {
+    return this.httpClient.get(`/${accountId}/auth/token`);
   }
 
-  redirectToOAuthSignin(provider: string): void {
-    const baseUrl = this.httpClient.getRedirectBaseUrl();
-    window.location.href = `${baseUrl}/oauth/signin/${provider}`;
+  async getLocalRefreshTokenInfo(accountId: string): Promise<LocalTokenInfoResponse> {
+    return this.httpClient.get(`/${accountId}/auth/refresh/token`);
+  }
+
+  // OAuth Authentication
+  async generateOAuthSignupUrl(provider: OAuthProviders): Promise<OAuthUrlResponse> {
+    return this.httpClient.get(`/oauth/signup/${provider}`);
+  }
+
+  async generateOAuthSigninUrl(provider: OAuthProviders): Promise<OAuthUrlResponse> {
+    return this.httpClient.get(`/oauth/signin/${provider}`);
+  }
+
+  async generatePermissionUrl(
+    provider: OAuthProviders,
+    accountId: string,
+    scopeNames: string[],
+  ): Promise<PermissionUrlResponse> {
+    const params = new URLSearchParams();
+    params.append('accountId', accountId);
+    params.append('scopeNames', JSON.stringify(scopeNames));
+
+    return this.httpClient.get(`/oauth/permission/${provider}?${params.toString()}`);
+  }
+
+  async generateReauthorizeUrl(provider: OAuthProviders, accountId: string): Promise<ReauthorizeUrlResponse> {
+    const params = new URLSearchParams();
+    params.append('accountId', accountId);
+
+    return this.httpClient.get(`/oauth/reauthorize/${provider}?${params.toString()}`);
+  }
+
+  // OAuth Token Management
+  async getOAuthTokenInfo(accountId: string): Promise<OAuthTokenInfoResponse> {
+    return this.httpClient.get(`/${accountId}/oauth/token`);
+  }
+
+  async getOAuthRefreshTokenInfo(accountId: string): Promise<OAuthRefreshTokenInfoResponse> {
+    return this.httpClient.get(`/${accountId}/oauth/refresh/token`);
+  }
+
+  async revokeOAuthTokens(accountId: string): Promise<TokenRevocationResponse> {
+    return this.httpClient.post(`/${accountId}/oauth/revoke`);
+  }
+
+  // Redirect Methods (for browser navigation)
+  redirectToOAuthSignup(provider: OAuthProviders): void {
+    this.generateOAuthSignupUrl(provider)
+      .then((response) => {
+        window.location.href = response.authorizationUrl;
+      })
+      .catch((error) => {
+        console.error('Failed to generate OAuth signup URL:', error);
+      });
+  }
+
+  redirectToOAuthSignin(provider: OAuthProviders): void {
+    this.generateOAuthSigninUrl(provider)
+      .then((response) => {
+        window.location.href = response.authorizationUrl;
+      })
+      .catch((error) => {
+        console.error('Failed to generate OAuth signin URL:', error);
+      });
   }
 
   requestGooglePermission(accountId: string, scopeNames: string[]): void {
-    const params = new URLSearchParams();
-    params.append('accountId', accountId);
-
-    const scopes = Array.isArray(scopeNames) ? scopeNames.join(',') : scopeNames;
-    window.location.href = `${this.httpClient.getRedirectBaseUrl()}/oauth/permission/${scopes}?${params.toString()}`;
+    this.generatePermissionUrl(OAuthProviders.Google, accountId, scopeNames)
+      .then((response) => {
+        window.location.href = response.authorizationUrl;
+      })
+      .catch((error) => {
+        console.error('Failed to generate permission URL:', error);
+      });
   }
 
   reauthorizePermissions(accountId: string): void {
-    const params = new URLSearchParams();
-    params.append('accountId', accountId);
-
-    window.location.href = `${this.httpClient.getRedirectBaseUrl()}/oauth/permission/reauthorize?${params.toString()}`;
+    this.generateReauthorizeUrl(OAuthProviders.Google, accountId)
+      .then((response) => {
+        if (response.authorizationUrl) {
+          window.location.href = response.authorizationUrl;
+        } else {
+          console.log('No reauthorization needed:', response.message);
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to generate reauthorization URL:', error);
+      });
   }
 
-  logout(accountId: string, clearClientAccountState: boolean = true): void {
-    const baseUrl = this.httpClient.getRedirectBaseUrl();
+  // Logout Methods
+  async logout(accountId: string, clearClientAccountState: boolean = true): Promise<LogoutResponse> {
     const params = new URLSearchParams();
     params.append('accountId', accountId);
     params.append('clearClientAccountState', clearClientAccountState.toString());
-    window.location.href = `${baseUrl}/account/logout?${params.toString()}`;
+
+    return this.httpClient.get(`/account/logout?${params.toString()}`);
   }
 
-  logoutAll(accountIds: string[]): void {
-    const baseUrl = this.httpClient.getRedirectBaseUrl();
+  async logoutAll(accountIds: string[]): Promise<LogoutAllResponse> {
     const params = new URLSearchParams();
     accountIds.forEach((id) => params.append('accountIds', id));
-    window.location.href = `${baseUrl}/account/logout/all?${params.toString()}`;
+
+    return this.httpClient.get(`/account/logout/all?${params.toString()}`);
   }
 }

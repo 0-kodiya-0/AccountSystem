@@ -83,6 +83,13 @@ export const useAuth = () => {
     [store.generateBackupCodes],
   );
 
+  const verifyEmail = useCallback(
+    async (token: string) => {
+      return store.verifyEmail(token);
+    },
+    [store.verifyEmail],
+  );
+
   const startOAuthSignup = useCallback(
     (provider: OAuthProviders) => {
       store.startOAuthSignup(provider);
@@ -118,14 +125,14 @@ export const useAuth = () => {
   }, [store.reauthorizePermissions, currentAccount?.id]);
 
   const logout = useCallback(
-    (accountId?: string) => {
-      store.logout(accountId);
+    async (accountId?: string) => {
+      return store.logout(accountId);
     },
     [store.logout],
   );
 
-  const logoutAll = useCallback(() => {
-    store.logoutAll();
+  const logoutAll = useCallback(async () => {
+    return store.logoutAll();
   }, [store.logoutAll]);
 
   return {
@@ -148,6 +155,7 @@ export const useAuth = () => {
     login,
     signup,
     verifyTwoFactor,
+    verifyEmail,
     requestPasswordReset,
     resetPassword,
     changePassword,
