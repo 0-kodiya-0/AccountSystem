@@ -63,6 +63,7 @@ export function setAccountSessionCookie(req: Request, res: Response, sessionData
     httpOnly: true,
     secure: getNodeEnv() === 'production',
     path: '/', // Set at root path as requested
+    maxAge: COOKIE_MAX_AGE,
     sameSite: 'lax',
   });
 
