@@ -12,7 +12,10 @@ export default function DashboardPage() {
 
   return (
     <AuthGuard
-      requireAccount
+      allowGuests={false}
+      requireAccount={true}
+      redirectToLogin="/login"
+      redirectToAccountSelection="/accounts"
       loadingComponent={LoadingSpinner}
       errorComponent={ErrorDisplay}
       redirectingComponent={RedirectingDisplay}

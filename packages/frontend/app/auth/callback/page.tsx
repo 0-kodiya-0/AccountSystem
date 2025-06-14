@@ -75,78 +75,6 @@ export default function AuthCallbackPage() {
       redirectWithCountdown(config.homeUrl || '/dashboard', 2);
     },
 
-    // Local auth success handlers
-    onLocalSigninSuccess: async (data) => {
-      console.log('Local signin success:', data.name);
-      setStatus({
-        type: 'success',
-        title: 'Sign in successful!',
-        message: `Welcome back, ${data.name}! Redirecting to your dashboard...`,
-      });
-      redirectWithCountdown(config.homeUrl || '/dashboard', 2);
-    },
-
-    onLocalSignupSuccess: async (data) => {
-      console.log('Local signup success:', data.message);
-      setStatus({
-        type: 'success',
-        title: 'Account created!',
-        message: data.message || 'Account created successfully. Redirecting to sign in...',
-      });
-      redirectWithCountdown('/login', 2);
-    },
-
-    onLocal2FARequired: async (data) => {
-      console.log('2FA required:', data.tempToken);
-      setStatus({
-        type: 'redirecting',
-        title: 'Two-factor authentication required',
-        message: 'Redirecting to verification page...',
-      });
-      redirectWithCountdown(`/two-factor-verify?tempToken=${data.tempToken}`, 1);
-    },
-
-    onLocalEmailVerified: async (data) => {
-      console.log('Email verified:', data.message);
-      setStatus({
-        type: 'success',
-        title: 'Email verified!',
-        message: data.message || 'Email verified successfully. You can now sign in.',
-      });
-      redirectWithCountdown('/login', 2);
-    },
-
-    onLocalPasswordResetSuccess: async (data) => {
-      console.log('Password reset success:', data.message);
-      setStatus({
-        type: 'success',
-        title: 'Password reset successful!',
-        message: data.message || 'Password reset successfully. You can now sign in.',
-      });
-      redirectWithCountdown('/login', 2);
-    },
-
-    // Logout success handlers
-    onLogoutSuccess: async (data) => {
-      console.log('Logout success:', data.accountId, data.message);
-      setStatus({
-        type: 'success',
-        title: 'Logged out successfully',
-        message: data.message || 'You have been logged out successfully.',
-      });
-      redirectWithCountdown('/accounts', 2);
-    },
-
-    onLogoutAllSuccess: async (data) => {
-      console.log('Logout all success:', data.accountIds, data.message);
-      setStatus({
-        type: 'success',
-        title: 'All accounts logged out',
-        message: data.message || 'All accounts have been logged out successfully.',
-      });
-      redirectWithCountdown('/login', 2);
-    },
-
     // Error handlers with UI updates - using correct CallbackCode enum
     onError: async (data) => {
       console.error('Authentication error:', data.error, 'Code:', data.code);
@@ -161,19 +89,10 @@ export default function AuthCallbackPage() {
           title = 'OAuth authentication failed';
           message = data.error || 'OAuth authentication failed. Please try again.';
           break;
-        case CallbackCode.LOCAL_AUTH_ERROR:
-          title = 'Authentication failed';
-          message = data.error || 'Authentication failed. Please try again.';
-          break;
         case CallbackCode.PERMISSION_ERROR:
           title = 'Permission request failed';
           message = data.error || 'Permission request failed. Returning to dashboard.';
           redirectUrl = config.homeUrl || '/dashboard';
-          break;
-        case CallbackCode.USER_NOT_FOUND:
-          title = 'Account not found';
-          message = 'Please sign up for an account first.';
-          redirectUrl = '/signup';
           break;
         default:
           title = 'Unknown error';
@@ -195,13 +114,7 @@ export default function AuthCallbackPage() {
       // Get all URL parameters from current page
       const params = new URLSearchParams(window.location.search);
 
-      // Check if we have a callback code
-      const code = params.get('code');
-      if (!code) {
-        throw new Error('No callback code found');
-      }
-
-      console.log('Starting handleAuthCallback...');
+      console.log('Starting handleAuthCallback with params:', params);
       await handleAuthCallback(params);
       console.log('handleAuthCallback completed');
     } catch (error: any) {
@@ -216,18 +129,19 @@ export default function AuthCallbackPage() {
   };
 
   useEffect(() => {
-    // Only handle callback if we have URL parameters
+    // Check if we have any URL parameters at all
     const params = new URLSearchParams(window.location.search);
-    if (params.has('code')) {
-      console.log('Callback params:', params);
+
+    if (params.size > 0) {
+      console.log('Callback params found:', Object.fromEntries(params.entries()));
       // Add small delay to ensure component is fully mounted
       handleCallback();
     } else {
-      // No callback code, redirect to login
+      // No parameters, redirect to login
       setStatus({
         type: 'error',
         title: 'Invalid callback',
-        message: 'No authentication code found in the URL.',
+        message: 'No authentication parameters found in the URL.',
       });
       redirectWithCountdown('/login', 3);
     }

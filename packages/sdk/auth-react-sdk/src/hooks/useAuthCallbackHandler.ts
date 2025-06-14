@@ -15,7 +15,7 @@ export enum CallbackCode {
 }
 
 export interface CallbackData {
-  code: CallbackCode;
+  code?: CallbackCode;
   accountId?: string;
   name?: string;
   provider?: OAuthProviders;
@@ -54,7 +54,7 @@ interface UseCallbackHandlerOptions {
   onError?: CallbackHandler<{
     error: string;
     provider?: OAuthProviders;
-    code: CallbackCode;
+    code?: CallbackCode;
   }>;
 }
 
@@ -135,30 +135,23 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
   const handleAuthCallback = useCallback(
     async (params: URLSearchParams) => {
       try {
-        const code = params.get('code');
-        if (!code) {
-          throw new Error('No callback code found');
-        }
+        // Convert all URL parameters to a simple object with decoded values
+        const callbackData: CallbackData = {};
 
-        const callbackData: CallbackData = { code: code as CallbackCode };
+        params.forEach((value, key) => {
+          const decodedValue = decodeURIComponent(value);
 
-        // Parse other parameters
-        for (const [key, value] of params.entries()) {
-          if (key !== 'code') {
-            if (key === 'missingScopes') {
-              // Handle comma-separated missing scopes
-              callbackData[key] = value ? value.split(',').map((s) => s.trim()) : [];
-            } else if (key === 'needsAdditionalScopes') {
-              callbackData[key] = value === 'true';
-            } else {
-              callbackData[key] = value;
-            }
+          // Handle arrays - if value contains commas, split into array
+          if (decodedValue.includes(',')) {
+            callbackData[key] = decodedValue.split(',').map((s) => s.trim());
+          } else {
+            callbackData[key] = decodedValue;
           }
-        }
+        });
 
         await executeCallback(callbackData);
 
-        // Clean up URL parameters
+        // Clean up URL
         if (typeof window !== 'undefined') {
           const url = new URL(window.location.href);
           url.search = '';

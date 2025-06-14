@@ -21,7 +21,8 @@ export default function NotificationsPage() {
 
   return (
     <AuthGuard
-      requireAccount
+      allowGuests={false}
+      requireAccount={true}
       loadingComponent={LoadingSpinner}
       redirectingComponent={RedirectingDisplay}
       errorComponent={ErrorDisplay}

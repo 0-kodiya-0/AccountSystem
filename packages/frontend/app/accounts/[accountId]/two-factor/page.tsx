@@ -25,7 +25,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
-import { AuthGuard, use2FASetup, TwoFactorSetupStatus } from '../../../../../sdk/auth-react-sdk/src';
+import { AuthGuard, use2FASetup, TwoFactorSetupStatus, useAuth } from '../../../../../sdk/auth-react-sdk/src';
 import { LoadingSpinner } from '@/components/auth/loading-spinner';
 import { RedirectingDisplay } from '@/components/auth/redirecting-display';
 import Image from 'next/image';
@@ -40,13 +40,8 @@ const verificationSchema = z.object({
   token: z.string().min(6, 'Code must be at least 6 characters').max(8, 'Code must be at most 8 characters'),
 });
 
-const backupCodeSchema = z.object({
-  password: z.string().min(1, 'Password is required to generate backup codes'),
-});
-
 type PasswordFormData = z.infer<typeof passwordSchema>;
 type VerificationFormData = z.infer<typeof verificationSchema>;
-type BackupCodeFormData = z.infer<typeof backupCodeSchema>;
 
 export default function TwoFactorSetupPage() {
   const params = useParams();
@@ -55,42 +50,21 @@ export default function TwoFactorSetupPage() {
   const accountId = params.accountId as string;
 
   const [showPassword, setShowPassword] = useState(false);
-  const [showBackupPassword, setShowBackupPassword] = useState(false);
   const [copiedSecret, setCopiedSecret] = useState(false);
+  const [qrCode, setQrCode] = useState<string>('');
+  const [secret, setSecret] = useState<string>('');
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
 
-  // Use the SDK 2FA setup hook
-  const {
-    status,
-    qrCode,
-    secret,
-    backupCodes,
-    message,
-    error,
-    isLoading,
-    startSetup,
-    verifySetup,
-    generateCodes,
-    reset,
-  } = use2FASetup({
+  // Use the auth hook for setup and backup codes
+  const { setupTwoFactor, generateBackupCodes } = useAuth();
+
+  // Use the 2FA setup hook only for verification
+  const { status, message, error, isLoading, verifySetup, reset } = use2FASetup({
     accountId,
-    onSetupReady: () => {
-      toast({
-        title: '2FA Setup Ready',
-        description: 'Scan the QR code with your authenticator app.',
-        variant: 'success',
-      });
-    },
     onVerified: (message) => {
       toast({
         title: 'Verification Successful',
         description: message,
-        variant: 'success',
-      });
-    },
-    onBackupCodesGenerated: (codes) => {
-      toast({
-        title: 'Backup Codes Generated',
-        description: `${codes.length} backup codes have been generated.`,
         variant: 'success',
       });
     },
@@ -112,21 +86,62 @@ export default function TwoFactorSetupPage() {
     resolver: zodResolver(verificationSchema),
   });
 
-  const backupForm = useForm<BackupCodeFormData>({
-    resolver: zodResolver(backupCodeSchema),
-  });
-
   // Form handlers
   const onPasswordSubmit = async (data: PasswordFormData) => {
-    await startSetup(data.password);
+    try {
+      const result = await setupTwoFactor(accountId, {
+        password: data.password,
+        enableTwoFactor: true,
+      });
+
+      if (result.qrCode) setQrCode(result.qrCode);
+      if (result.secret) setSecret(result.secret);
+      if (result.backupCodes) setBackupCodes(result.backupCodes);
+
+      toast({
+        title: '2FA Setup Ready',
+        description: 'Scan the QR code with your authenticator app.',
+        variant: 'success',
+      });
+    } catch (error: any) {
+      toast({
+        title: '2FA Setup Failed',
+        description: error.message || 'Failed to start 2FA setup',
+        variant: 'destructive',
+      });
+    }
   };
 
   const onVerificationSubmit = async (data: VerificationFormData) => {
     await verifySetup(data.token);
   };
 
-  const onBackupSubmit = async (data: BackupCodeFormData) => {
-    await generateCodes(data.password);
+  const handleGenerateBackupCodes = async () => {
+    const password = passwordForm.getValues('password');
+    if (!password) {
+      toast({
+        title: 'Password Required',
+        description: 'Please enter your password to generate backup codes.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const codes = await generateBackupCodes(accountId, password);
+      setBackupCodes(codes);
+      toast({
+        title: 'Backup Codes Generated',
+        description: `${codes.length} backup codes have been generated.`,
+        variant: 'success',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Failed to Generate Codes',
+        description: error.message || 'Failed to generate backup codes',
+        variant: 'destructive',
+      });
+    }
   };
 
   const copySecret = async () => {
@@ -321,7 +336,7 @@ export default function TwoFactorSetupPage() {
     </div>
   );
 
-  const renderBackupCodesStep = () => (
+  const renderSuccessStep = () => (
     <div className="space-y-6">
       <Card>
         <CardHeader>
@@ -340,61 +355,25 @@ export default function TwoFactorSetupPage() {
         </CardContent>
       </Card>
 
-      {!backupCodes && (
+      {/* Optional Backup Codes Generation */}
+      {!backupCodes.length ? (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Shield className="h-5 w-5" />
-              <span>Generate Backup Codes</span>
+              <span>Generate Backup Codes (Optional)</span>
             </CardTitle>
             <CardDescription>
               Create backup codes for account recovery in case you lose access to your authenticator
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <form onSubmit={backupForm.handleSubmit(onBackupSubmit)} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="backup-password">Confirm Password</Label>
-                <div className="relative">
-                  <Input
-                    id="backup-password"
-                    type={showBackupPassword ? 'text' : 'password'}
-                    placeholder="Enter your password"
-                    error={!!backupForm.formState.errors.password}
-                    disabled={isLoading}
-                    {...backupForm.register('password')}
-                    autoComplete="current-password"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                    onClick={() => setShowBackupPassword(!showBackupPassword)}
-                    disabled={isLoading}
-                  >
-                    {showBackupPassword ? (
-                      <EyeOff className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <Eye className="h-4 w-4 text-muted-foreground" />
-                    )}
-                  </Button>
-                </div>
-                {backupForm.formState.errors.password && (
-                  <p className="text-sm text-destructive">{backupForm.formState.errors.password.message}</p>
-                )}
-                {error && <p className="text-sm text-destructive">{error}</p>}
-              </div>
-
-              <Button type="submit" disabled={isLoading} loading={isLoading}>
-                Generate Backup Codes
-              </Button>
-            </form>
+          <CardContent className="space-y-4">
+            <Button onClick={handleGenerateBackupCodes} variant="outline">
+              Generate Backup Codes
+            </Button>
           </CardContent>
         </Card>
-      )}
-
-      {backupCodes && (
+      ) : (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
@@ -431,43 +410,50 @@ export default function TwoFactorSetupPage() {
                 <Download className="w-4 h-4 mr-2" />
                 Download Codes
               </Button>
-              <Button onClick={handleBackToSettings}>Back to Settings</Button>
             </div>
           </CardContent>
         </Card>
       )}
+
+      {/* Always show back to settings button */}
+      <div className="flex justify-center">
+        <Button onClick={handleBackToSettings}>Back to Settings</Button>
+      </div>
     </div>
   );
 
   const renderContent = () => {
-    switch (status) {
-      case TwoFactorSetupStatus.IDLE:
-      case TwoFactorSetupStatus.ERROR:
-        return renderPasswordStep();
-
-      case TwoFactorSetupStatus.SETUP_READY:
-        return renderQRCodeStep();
-
-      case TwoFactorSetupStatus.COMPLETE:
-        return renderBackupCodesStep();
-
-      case TwoFactorSetupStatus.REQUESTING_SETUP:
-      case TwoFactorSetupStatus.VERIFYING_TOKEN:
-      case TwoFactorSetupStatus.GENERATING_BACKUP_CODES:
-      default:
-        return (
-          <Card>
-            <CardContent className="flex items-center justify-center py-8">
-              <LoadingSpinner reason={message || 'Setting up 2FA...'} />
-            </CardContent>
-          </Card>
-        );
+    // If we have QR code but haven't verified yet, show QR step
+    if (qrCode && status !== TwoFactorSetupStatus.COMPLETE) {
+      return renderQRCodeStep();
     }
+
+    // If verification is complete, show success
+    if (status === TwoFactorSetupStatus.COMPLETE) {
+      return renderSuccessStep();
+    }
+
+    // If loading verification, show loading
+    if (status === TwoFactorSetupStatus.VERIFYING_TOKEN) {
+      return (
+        <Card>
+          <CardContent className="flex items-center justify-center py-8">
+            <LoadingSpinner reason="Verifying 2FA code..." />
+          </CardContent>
+        </Card>
+      );
+    }
+
+    // Default: show password step
+    return renderPasswordStep();
   };
 
   return (
     <AuthGuard
-      requireAccount
+      allowGuests={false}
+      requireAccount={true}
+      redirectToLogin="/login"
+      redirectToAccountSelection="/accounts"
       loadingComponent={LoadingSpinner}
       redirectingComponent={RedirectingDisplay}
       errorComponent={ErrorDisplay}

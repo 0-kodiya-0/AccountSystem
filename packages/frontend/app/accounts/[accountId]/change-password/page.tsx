@@ -160,7 +160,10 @@ export default function ChangePasswordPage() {
 
   return (
     <AuthGuard
-      requireAccount
+      allowGuests={false}
+      requireAccount={true}
+      redirectToLogin="/login"
+      redirectToAccountSelection="/accounts"
       loadingComponent={LoadingSpinner}
       redirectingComponent={RedirectingDisplay}
       errorComponent={ErrorDisplay}

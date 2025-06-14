@@ -14,6 +14,7 @@ export const AuthProvider = ({ children, httpClient }: AuthProviderProps): JSX.E
   const { _setServices, initializeSession } = useAppStore();
 
   useEffect(() => {
+    console.log('AuthProvider effect running');
     const authService = new AuthService(httpClient);
     const accountService = new AccountService(httpClient);
     const notificationService = new NotificationService(httpClient);

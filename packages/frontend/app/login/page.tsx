@@ -14,8 +14,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { AuthLayout } from '@/components/layout/auth-layout';
-import { LoadingState, OAuthProviders, useAuth } from '../../../sdk/auth-react-sdk/src';
+import { AuthGuard, LoadingState, OAuthProviders, useAuth } from '../../../sdk/auth-react-sdk/src';
 import { getEnvironmentConfig } from '@/lib/utils';
+import { ErrorDisplay } from '@/components/auth/error-display';
+import { LoadingSpinner } from '@/components/auth/loading-spinner';
+import { RedirectingDisplay } from '@/components/auth/redirecting-display';
 
 // Base form data type that includes all possible fields
 type LoginFormData = {
@@ -68,7 +71,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [useEmail, setUseEmail] = useState(true);
 
-  const { login, startOAuthSignin, session, clearError } = useAuth();
+  const { login, startOAuthSignin, loadingState, clearError } = useAuth();
   const config = getEnvironmentConfig();
 
   const {
@@ -198,170 +201,178 @@ export default function LoginPage() {
   };
 
   return (
-    <AuthLayout
-      title="Welcome back"
-      description="Sign in to your account to continue"
-      showBackToHome={!!config.homeUrl}
+    <AuthGuard
+      allowGuests={true}
+      requireAccount={false}
+      loadingComponent={LoadingSpinner}
+      redirectingComponent={RedirectingDisplay}
+      errorComponent={ErrorDisplay}
     >
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        {/* Hidden field for login type */}
-        <input type="hidden" {...register('loginType')} />
+      <AuthLayout
+        title="Welcome back"
+        description="Sign in to your account to continue"
+        showBackToHome={!!config.homeUrl}
+      >
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          {/* Hidden field for login type */}
+          <input type="hidden" {...register('loginType')} />
 
-        {/* OAuth Buttons */}
-        {config.enableOAuth && (
-          <div className="space-y-3">
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              onClick={() => handleOAuthLogin(OAuthProviders.Google)}
-              disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
-            >
-              <Chrome className="mr-2 h-4 w-4" />
-              Continue with Google
-            </Button>
-
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-background px-2 text-muted-foreground">Or</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Login Type Toggle */}
-        {config.enableLocalAuth && (
-          <div className="flex items-center justify-center space-x-2">
-            <Button
-              type="button"
-              variant={useEmail ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => handleInputTypeChange(true)}
-              className="text-xs"
-            >
-              Email
-            </Button>
-            <Button
-              type="button"
-              variant={!useEmail ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => handleInputTypeChange(false)}
-              className="text-xs"
-            >
-              Username
-            </Button>
-          </div>
-        )}
-
-        {/* Email/Username Field */}
-        {config.enableLocalAuth && (
-          <div className="space-y-2">
-            <Label htmlFor={useEmail ? 'email' : 'username'}>{useEmail ? 'Email address' : 'Username'}</Label>
-            {useEmail ? (
-              <Input
-                id="email"
-                type="email"
-                placeholder="Enter your email"
-                error={!!errors.email}
-                disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
-                {...register('email')}
-                autoComplete="email"
-              />
-            ) : (
-              <Input
-                id="username"
-                type="text"
-                placeholder="Enter your username"
-                error={!!errors.username}
-                disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
-                {...register('username')}
-                autoComplete="username"
-              />
-            )}
-            {useEmail && errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
-            {!useEmail && errors.username && <p className="text-sm text-destructive">{errors.username.message}</p>}
-          </div>
-        )}
-
-        {/* Password Field */}
-        {config.enableLocalAuth && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="password">Password</Label>
-              <Link href="/forgot-password" className="text-sm text-primary hover:underline">
-                Forgot password?
-              </Link>
-            </div>
-            <div className="relative">
-              <Input
-                id="password"
-                type={showPassword ? 'text' : 'password'}
-                placeholder="Enter your password"
-                error={!!errors.password}
-                disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
-                {...register('password')}
-                autoComplete="current-password"
-              />
+          {/* OAuth Buttons */}
+          {config.enableOAuth && (
+            <div className="space-y-3">
               <Button
                 type="button"
-                variant="ghost"
-                size="icon"
-                className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                onClick={() => setShowPassword(!showPassword)}
-                disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
+                variant="outline"
+                className="w-full"
+                onClick={() => handleOAuthLogin(OAuthProviders.Google)}
+                disabled={isSubmitting || loadingState === LoadingState.LOADING}
               >
-                {showPassword ? (
-                  <EyeOff className="h-4 w-4 text-muted-foreground" />
-                ) : (
-                  <Eye className="h-4 w-4 text-muted-foreground" />
-                )}
-                <span className="sr-only">{showPassword ? 'Hide password' : 'Show password'}</span>
+                <Chrome className="mr-2 h-4 w-4" />
+                Continue with Google
+              </Button>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">Or</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Login Type Toggle */}
+          {config.enableLocalAuth && (
+            <div className="flex items-center justify-center space-x-2">
+              <Button
+                type="button"
+                variant={useEmail ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => handleInputTypeChange(true)}
+                className="text-xs"
+              >
+                Email
+              </Button>
+              <Button
+                type="button"
+                variant={!useEmail ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => handleInputTypeChange(false)}
+                className="text-xs"
+              >
+                Username
               </Button>
             </div>
-            {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
-          </div>
-        )}
+          )}
 
-        {/* Remember Me */}
-        {config.enableLocalAuth && (
-          <div className="flex items-center space-x-2">
-            <input
-              id="rememberMe"
-              type="checkbox"
-              className="rounded border-gray-300 text-primary focus:ring-primary"
-              disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
-              {...register('rememberMe')}
-            />
-            <Label htmlFor="rememberMe" className="text-sm">
-              Remember me for 30 days
-            </Label>
-          </div>
-        )}
+          {/* Email/Username Field */}
+          {config.enableLocalAuth && (
+            <div className="space-y-2">
+              <Label htmlFor={useEmail ? 'email' : 'username'}>{useEmail ? 'Email address' : 'Username'}</Label>
+              {useEmail ? (
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="Enter your email"
+                  error={!!errors.email}
+                  disabled={isSubmitting || loadingState === LoadingState.LOADING}
+                  {...register('email')}
+                  autoComplete="email"
+                />
+              ) : (
+                <Input
+                  id="username"
+                  type="text"
+                  placeholder="Enter your username"
+                  error={!!errors.username}
+                  disabled={isSubmitting || loadingState === LoadingState.LOADING}
+                  {...register('username')}
+                  autoComplete="username"
+                />
+              )}
+              {useEmail && errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
+              {!useEmail && errors.username && <p className="text-sm text-destructive">{errors.username.message}</p>}
+            </div>
+          )}
 
-        {/* Submit Button */}
-        {config.enableLocalAuth && (
-          <Button
-            type="submit"
-            className="w-full"
-            loading={isSubmitting || session.loadingState === LoadingState.LOADING}
-            disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
-            onClick={() => console.log('Sign in button clicked, form valid:', Object.keys(errors).length === 0)}
-          >
-            Sign in
-          </Button>
-        )}
-      </form>
+          {/* Password Field */}
+          {config.enableLocalAuth && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Password</Label>
+                <Link href="/forgot-password" className="text-sm text-primary hover:underline">
+                  Forgot password?
+                </Link>
+              </div>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Enter your password"
+                  error={!!errors.password}
+                  disabled={isSubmitting || loadingState === LoadingState.LOADING}
+                  {...register('password')}
+                  autoComplete="current-password"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                  disabled={isSubmitting || loadingState === LoadingState.LOADING}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <span className="sr-only">{showPassword ? 'Hide password' : 'Show password'}</span>
+                </Button>
+              </div>
+              {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
+            </div>
+          )}
 
-      {/* Sign Up Link */}
-      <div className="text-center text-sm">
-        <span className="text-muted-foreground">Don&apos;t have an account? </span>
-        <Link href="/signup" className="text-primary hover:underline font-medium">
-          Sign up
-        </Link>
-      </div>
-    </AuthLayout>
+          {/* Remember Me */}
+          {config.enableLocalAuth && (
+            <div className="flex items-center space-x-2">
+              <input
+                id="rememberMe"
+                type="checkbox"
+                className="rounded border-gray-300 text-primary focus:ring-primary"
+                disabled={isSubmitting || loadingState === LoadingState.LOADING}
+                {...register('rememberMe')}
+              />
+              <Label htmlFor="rememberMe" className="text-sm">
+                Remember me for 30 days
+              </Label>
+            </div>
+          )}
+
+          {/* Submit Button */}
+          {config.enableLocalAuth && (
+            <Button
+              type="submit"
+              className="w-full"
+              loading={isSubmitting || loadingState === LoadingState.LOADING}
+              disabled={isSubmitting || loadingState === LoadingState.LOADING}
+              onClick={() => console.log('Sign in button clicked, form valid:', Object.keys(errors).length === 0)}
+            >
+              Sign in
+            </Button>
+          )}
+        </form>
+
+        {/* Sign Up Link */}
+        <div className="text-center text-sm">
+          <span className="text-muted-foreground">Don&apos;t have an account? </span>
+          <Link href="/signup" className="text-primary hover:underline font-medium">
+            Sign up
+          </Link>
+        </div>
+      </AuthLayout>
+    </AuthGuard>
   );
 }

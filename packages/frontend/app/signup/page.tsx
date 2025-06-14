@@ -15,8 +15,11 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { AuthLayout } from '@/components/layout/auth-layout';
 import { PasswordStrengthIndicator } from '@/components/auth/password-strength-indicator';
-import { LoadingState, OAuthProviders, useAuth } from '../../../sdk/auth-react-sdk/src';
+import { AuthGuard, LoadingState, OAuthProviders, useAuth } from '../../../sdk/auth-react-sdk/src';
 import { getEnvironmentConfig, validatePasswordStrength } from '@/lib/utils';
+import { LoadingSpinner } from '@/components/auth/loading-spinner';
+import { ErrorDisplay } from '@/components/auth/error-display';
+import { RedirectingDisplay } from '@/components/auth/redirecting-display';
 
 const signupSchema = z
   .object({
@@ -97,220 +100,228 @@ export default function SignupPage() {
   };
 
   return (
-    <AuthLayout
-      title="Create your account"
-      description="Get started with your secure account"
-      showBackToHome={!!config.homeUrl}
+    <AuthGuard
+      allowGuests={true}
+      requireAccount={false}
+      loadingComponent={LoadingSpinner}
+      redirectingComponent={RedirectingDisplay}
+      errorComponent={ErrorDisplay}
     >
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        {/* OAuth Buttons */}
-        {config.enableOAuth && (
-          <div className="space-y-3">
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              onClick={() => handleOAuthSignup(OAuthProviders.Google)}
-              disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
-            >
-              <Chrome className="mr-2 h-4 w-4" />
-              Continue with Google
-            </Button>
-
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-background px-2 text-muted-foreground">Or</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {config.enableLocalAuth && (
-          <>
-            {/* Name Fields */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="firstName">First name</Label>
-                <Input
-                  id="firstName"
-                  placeholder="John"
-                  error={!!errors.firstName}
-                  disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
-                  {...register('firstName')}
-                />
-                {errors.firstName && <p className="text-sm text-destructive">{errors.firstName.message}</p>}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="lastName">Last name</Label>
-                <Input
-                  id="lastName"
-                  placeholder="Doe"
-                  error={!!errors.lastName}
-                  disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
-                  {...register('lastName')}
-                />
-                {errors.lastName && <p className="text-sm text-destructive">{errors.lastName.message}</p>}
-              </div>
-            </div>
-
-            {/* Email Field */}
-            <div className="space-y-2">
-              <Label htmlFor="email">Email address</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="john@example.com"
-                error={!!errors.email}
+      <AuthLayout
+        title="Create your account"
+        description="Get started with your secure account"
+        showBackToHome={!!config.homeUrl}
+      >
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          {/* OAuth Buttons */}
+          {config.enableOAuth && (
+            <div className="space-y-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => handleOAuthSignup(OAuthProviders.Google)}
                 disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
-                {...register('email')}
-              />
-              {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
-            </div>
+              >
+                <Chrome className="mr-2 h-4 w-4" />
+                Continue with Google
+              </Button>
 
-            {/* Username Field (Optional) */}
-            <div className="space-y-2">
-              <Label htmlFor="username">Username (optional)</Label>
-              <Input
-                id="username"
-                placeholder="johndoe"
-                error={!!errors.username}
-                disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
-                {...register('username')}
-              />
-              {errors.username && <p className="text-sm text-destructive">{errors.username.message}</p>}
-              <p className="text-xs text-muted-foreground">You can use this to sign in instead of your email</p>
-            </div>
-
-            {/* Password Field */}
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
               <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">Or</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {config.enableLocalAuth && (
+            <>
+              {/* Name Fields */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="firstName">First name</Label>
+                  <Input
+                    id="firstName"
+                    placeholder="John"
+                    error={!!errors.firstName}
+                    disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
+                    {...register('firstName')}
+                  />
+                  {errors.firstName && <p className="text-sm text-destructive">{errors.firstName.message}</p>}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="lastName">Last name</Label>
+                  <Input
+                    id="lastName"
+                    placeholder="Doe"
+                    error={!!errors.lastName}
+                    disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
+                    {...register('lastName')}
+                  />
+                  {errors.lastName && <p className="text-sm text-destructive">{errors.lastName.message}</p>}
+                </div>
+              </div>
+
+              {/* Email Field */}
+              <div className="space-y-2">
+                <Label htmlFor="email">Email address</Label>
                 <Input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="Create a strong password"
-                  error={!!errors.password}
+                  id="email"
+                  type="email"
+                  placeholder="john@example.com"
+                  error={!!errors.email}
                   disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
-                  {...register('password')}
+                  {...register('email')}
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                  onClick={() => setShowPassword(!showPassword)}
-                  disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </Button>
+                {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
               </div>
-              {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
-              {watchedPassword && <PasswordStrengthIndicator password={watchedPassword} />}
-            </div>
 
-            {/* Confirm Password Field */}
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm password</Label>
-              <div className="relative">
+              {/* Username Field (Optional) */}
+              <div className="space-y-2">
+                <Label htmlFor="username">Username (optional)</Label>
                 <Input
-                  id="confirmPassword"
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  placeholder="Confirm your password"
-                  error={!!errors.confirmPassword}
+                  id="username"
+                  placeholder="johndoe"
+                  error={!!errors.username}
                   disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
-                  {...register('confirmPassword')}
+                  {...register('username')}
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
-                >
-                  {showConfirmPassword ? (
-                    <EyeOff className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </Button>
+                {errors.username && <p className="text-sm text-destructive">{errors.username.message}</p>}
+                <p className="text-xs text-muted-foreground">You can use this to sign in instead of your email</p>
               </div>
-              {errors.confirmPassword && <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>}
-            </div>
 
-            {/* Birthdate Field (Optional) */}
-            <div className="space-y-2">
-              <Label htmlFor="birthdate">Date of birth (optional)</Label>
-              <Input
-                id="birthdate"
-                type="date"
-                error={!!errors.birthdate}
-                disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
-                {...register('birthdate')}
-              />
-              {errors.birthdate && <p className="text-sm text-destructive">{errors.birthdate.message}</p>}
-            </div>
+              {/* Password Field */}
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Create a strong password"
+                    error={!!errors.password}
+                    disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
+                    {...register('password')}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowPassword(!showPassword)}
+                    disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <Eye className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </Button>
+                </div>
+                {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
+                {watchedPassword && <PasswordStrengthIndicator password={watchedPassword} />}
+              </div>
 
-            {/* Terms Agreement */}
-            <div className="space-y-2">
-              <div className="flex items-start space-x-2">
-                <input
-                  id="agreeToTerms"
-                  type="checkbox"
-                  className="mt-0.5 rounded border-gray-300 text-primary focus:ring-primary"
+              {/* Confirm Password Field */}
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirm password</Label>
+                <div className="relative">
+                  <Input
+                    id="confirmPassword"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    placeholder="Confirm your password"
+                    error={!!errors.confirmPassword}
+                    disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
+                    {...register('confirmPassword')}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <Eye className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </Button>
+                </div>
+                {errors.confirmPassword && <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>}
+              </div>
+
+              {/* Birthdate Field (Optional) */}
+              <div className="space-y-2">
+                <Label htmlFor="birthdate">Date of birth (optional)</Label>
+                <Input
+                  id="birthdate"
+                  type="date"
+                  error={!!errors.birthdate}
                   disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
-                  {...register('agreeToTerms')}
+                  {...register('birthdate')}
                 />
-                <Label htmlFor="agreeToTerms" className="text-sm leading-5">
-                  I agree to the{' '}
-                  {config.termsUrl ? (
-                    <Link href={config.termsUrl} className="text-primary hover:underline" target="_blank">
-                      Terms of Service
-                    </Link>
-                  ) : (
-                    <span className="text-primary">Terms of Service</span>
-                  )}{' '}
-                  and{' '}
-                  {config.privacyUrl ? (
-                    <Link href={config.privacyUrl} className="text-primary hover:underline" target="_blank">
-                      Privacy Policy
-                    </Link>
-                  ) : (
-                    <span className="text-primary">Privacy Policy</span>
-                  )}
-                </Label>
+                {errors.birthdate && <p className="text-sm text-destructive">{errors.birthdate.message}</p>}
               </div>
-              {errors.agreeToTerms && <p className="text-sm text-destructive">{errors.agreeToTerms.message}</p>}
-            </div>
 
-            {/* Submit Button */}
-            <Button
-              type="submit"
-              className="w-full"
-              loading={isSubmitting || session.loadingState === LoadingState.LOADING}
-              disabled={isSubmitting || session.loadingState === LoadingState.LOADING || !passwordStrength?.isValid}
-            >
-              Create account
-            </Button>
-          </>
-        )}
-      </form>
+              {/* Terms Agreement */}
+              <div className="space-y-2">
+                <div className="flex items-start space-x-2">
+                  <input
+                    id="agreeToTerms"
+                    type="checkbox"
+                    className="mt-0.5 rounded border-gray-300 text-primary focus:ring-primary"
+                    disabled={isSubmitting || session.loadingState === LoadingState.LOADING}
+                    {...register('agreeToTerms')}
+                  />
+                  <Label htmlFor="agreeToTerms" className="text-sm leading-5">
+                    I agree to the{' '}
+                    {config.termsUrl ? (
+                      <Link href={config.termsUrl} className="text-primary hover:underline" target="_blank">
+                        Terms of Service
+                      </Link>
+                    ) : (
+                      <span className="text-primary">Terms of Service</span>
+                    )}{' '}
+                    and{' '}
+                    {config.privacyUrl ? (
+                      <Link href={config.privacyUrl} className="text-primary hover:underline" target="_blank">
+                        Privacy Policy
+                      </Link>
+                    ) : (
+                      <span className="text-primary">Privacy Policy</span>
+                    )}
+                  </Label>
+                </div>
+                {errors.agreeToTerms && <p className="text-sm text-destructive">{errors.agreeToTerms.message}</p>}
+              </div>
 
-      {/* Sign In Link */}
-      <div className="text-center text-sm">
-        <span className="text-muted-foreground">Already have an account? </span>
-        <Link href="/login" className="text-primary hover:underline font-medium">
-          Sign in
-        </Link>
-      </div>
-    </AuthLayout>
+              {/* Submit Button */}
+              <Button
+                type="submit"
+                className="w-full"
+                loading={isSubmitting || session.loadingState === LoadingState.LOADING}
+                disabled={isSubmitting || session.loadingState === LoadingState.LOADING || !passwordStrength?.isValid}
+              >
+                Create account
+              </Button>
+            </>
+          )}
+        </form>
+
+        {/* Sign In Link */}
+        <div className="text-center text-sm">
+          <span className="text-muted-foreground">Already have an account? </span>
+          <Link href="/login" className="text-primary hover:underline font-medium">
+            Sign in
+          </Link>
+        </div>
+      </AuthLayout>
+    </AuthGuard>
   );
 }

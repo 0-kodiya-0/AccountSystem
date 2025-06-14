@@ -1,15 +1,14 @@
 import React, { JSX } from 'react';
-import { useAuth } from '../hooks/useAuth';
+import { useAppStore } from '../store/useAppStore';
 import { LoadingState } from '../types';
+import DefaultLoadingSpinner from './DefaultLoadingSpinner';
+import DefaultGlobalErrorDisplay from './DefaultGlobalErrorDisplay';
+import DefaultErrorDisplay from './DefaultErrorDisplay';
 
 // Base props that are always available
 interface BaseAuthGuardProps {
-  requireAccount?: boolean;
+  children?: React.ReactNode;
   redirectDelay?: number;
-  customRedirects?: {
-    loginUrl?: string;
-    accountsUrl?: string;
-  };
 
   // Customizable UI components
   loadingComponent?: React.ComponentType<{
@@ -26,42 +25,100 @@ interface BaseAuthGuardProps {
     loadingState?: LoadingState;
     retry?: () => void;
   }>;
+  globalErrorComponent?: React.ComponentType<{
+    error: string;
+    clearError?: () => void;
+    retry?: () => void;
+  }>;
 }
 
-// When allowGuests is true, children are required
-interface AuthGuardPropsWithGuests extends BaseAuthGuardProps {
-  children: React.ReactNode;
+// Rule 1: allowGuests: true, requireAccount: false
+// Only redirectOnAuthenticated is allowed (disabled if children present)
+interface GuestNoAccountProps extends BaseAuthGuardProps {
   allowGuests: true;
-  redirectOnSuccess?: never; // Cannot redirect when allowing guests
+  requireAccount: false;
+  redirectOnAuthenticated?: string;
+  // Explicitly forbid these props
+  redirectToLogin?: never;
+  redirectToAccountSelection?: never;
 }
 
-// When redirectOnSuccess is provided, children are not needed
-interface AuthGuardPropsWithRedirect extends BaseAuthGuardProps {
-  children?: never;
-  allowGuests?: false; // Cannot allow guests when redirecting
-  redirectOnSuccess: string;
+// Rule 2: allowGuests: true, requireAccount: true
+// All redirect props are allowed
+interface GuestWithAccountProps extends BaseAuthGuardProps {
+  allowGuests: true;
+  requireAccount: true;
+  redirectOnAuthenticated?: string;
+  redirectToLogin?: string;
+  redirectToAccountSelection?: string;
 }
 
-interface AuthGuardPropsWithNoRedirect extends BaseAuthGuardProps {
-  children: React.ReactNode;
-  allowGuests?: false;
-  redirectOnSuccess?: never;
+// Rule 3: allowGuests: false, requireAccount: true
+// All props allowed except redirectOnAuthenticated is disabled if children present
+interface ProtectedWithAccountProps extends BaseAuthGuardProps {
+  allowGuests: false;
+  requireAccount: true;
+  redirectOnAuthenticated?: string;
+  redirectToLogin?: string;
+  redirectToAccountSelection?: string;
 }
 
-type AuthGuardProps = AuthGuardPropsWithGuests | AuthGuardPropsWithRedirect | AuthGuardPropsWithNoRedirect;
+// Rule 4: allowGuests: false, requireAccount: false
+// This combination should cause a compilation error
+interface InvalidCombinationProps extends BaseAuthGuardProps {
+  allowGuests: false;
+  requireAccount: false;
+  // Force a compilation error with never types
+  _error: 'Invalid combination: allowGuests: false and requireAccount: false is not allowed. Use allowGuests: true with requireAccount: false instead.';
+}
 
-export function AuthGuard({
-  children,
-  requireAccount = true,
-  redirectDelay,
-  allowGuests = false,
-  redirectOnSuccess,
-  customRedirects = {},
-  loadingComponent: LoadingComponent,
-  redirectingComponent: RedirectingComponent,
-  errorComponent: ErrorComponent,
-}: AuthGuardProps): JSX.Element | null {
-  const { session, isAuthenticated, loadingState } = useAuth();
+// Union type that enforces all the rules
+type AuthGuardProps = GuestNoAccountProps | GuestWithAccountProps | ProtectedWithAccountProps | InvalidCombinationProps;
+
+export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
+  const {
+    children,
+    redirectDelay,
+    loadingComponent: LoadingComponent,
+    redirectingComponent: RedirectingComponent,
+    errorComponent: ErrorComponent,
+    globalErrorComponent: GlobalErrorComponent,
+  } = props;
+
+  // Extract props safely based on the type
+  const allowGuests = 'allowGuests' in props ? props.allowGuests : false;
+  const requireAccount = 'requireAccount' in props ? props.requireAccount : false;
+  const redirectOnAuthenticated = 'redirectOnAuthenticated' in props ? props.redirectOnAuthenticated : undefined;
+  const redirectToLogin = 'redirectToLogin' in props ? props.redirectToLogin : undefined;
+  const redirectToAccountSelection =
+    'redirectToAccountSelection' in props ? props.redirectToAccountSelection : undefined;
+
+  const { session, ui, setGlobalError } = useAppStore();
+
+  // Derive authentication state from session
+  const isAuthenticated = session.hasSession && session.isValid && session.accountIds.length > 0;
+  const loadingState = session.loadingState;
+
+  // Check for global error first - this takes precedence over other states
+  if (ui.globalError) {
+    if (GlobalErrorComponent) {
+      return (
+        <GlobalErrorComponent
+          error={ui.globalError}
+          clearError={() => setGlobalError(null)}
+          retry={() => window.location.reload()}
+        />
+      );
+    }
+
+    return (
+      <DefaultGlobalErrorDisplay
+        error={ui.globalError}
+        clearError={() => setGlobalError(null)}
+        retry={() => window.location.reload()}
+      />
+    );
+  }
 
   // Wait for session to be ready before making auth decisions
   if (loadingState === LoadingState.IDLE) {
@@ -69,36 +126,7 @@ export function AuthGuard({
       return <LoadingComponent reason="Initializing session" loadingState={loadingState} />;
     }
 
-    return (
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          minHeight: '200px',
-          flexDirection: 'column',
-          gap: '16px',
-        }}
-      >
-        <div
-          style={{
-            width: '32px',
-            height: '32px',
-            border: '2px solid #e2e8f0',
-            borderTop: '2px solid #3b82f6',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-          }}
-        />
-        <p style={{ color: '#64748b', fontSize: '14px' }}>Initializing...</p>
-        <style>{`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        `}</style>
-      </div>
-    );
+    return <DefaultLoadingSpinner message="Initializing..." />;
   }
 
   // Show loading state
@@ -107,37 +135,7 @@ export function AuthGuard({
       return <LoadingComponent reason="Loading session" loadingState={loadingState} />;
     }
 
-    // Default loading UI
-    return (
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          minHeight: '200px',
-          flexDirection: 'column',
-          gap: '16px',
-        }}
-      >
-        <div
-          style={{
-            width: '32px',
-            height: '32px',
-            border: '2px solid #e2e8f0',
-            borderTop: '2px solid #3b82f6',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-          }}
-        />
-        <p style={{ color: '#64748b', fontSize: '14px' }}>Loading...</p>
-        <style>{`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        `}</style>
-      </div>
-    );
+    return <DefaultLoadingSpinner message="Loading..." />;
   }
 
   // Show error state if session has error
@@ -152,187 +150,120 @@ export function AuthGuard({
       );
     }
 
-    // Default error UI
     return (
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          minHeight: '200px',
-          flexDirection: 'column',
-          gap: '16px',
-          padding: '32px',
-          textAlign: 'center',
-        }}
-      >
-        <p style={{ color: '#dc2626', fontSize: '16px', margin: '0 0 16px 0' }}>
-          {session.error || 'Authentication error'}
-        </p>
-        <button
-          onClick={() => window.location.reload()}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: '#3b82f6',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '14px',
-          }}
-        >
-          Retry
-        </button>
-      </div>
+      <DefaultErrorDisplay error={session.error || 'Authentication error'} retry={() => window.location.reload()} />
     );
   }
 
-  // Allow guests if specified and no session
-  if (allowGuests && !session.hasSession && loadingState === LoadingState.READY) {
-    return <>{children}</>;
-  }
-
-  // Redirect to login if not authenticated
-  if (!isAuthenticated && loadingState === LoadingState.READY) {
-    const loginUrl = customRedirects.loginUrl || '/login';
-
-    if (RedirectingComponent) {
-      return <RedirectingComponent destination={loginUrl} delay={redirectDelay} reason="User not authenticated" />;
-    }
-
-    // Default redirect or could trigger actual redirect
-    if (typeof window !== 'undefined') {
-      window.location.href = loginUrl;
-    }
-
-    return (
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          minHeight: '200px',
-          flexDirection: 'column',
-          gap: '16px',
-        }}
-      >
-        <div
-          style={{
-            width: '32px',
-            height: '32px',
-            border: '2px solid #e2e8f0',
-            borderTop: '2px solid #3b82f6',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-          }}
-        />
-        <p style={{ color: '#64748b', fontSize: '14px' }}>Redirecting to login...</p>
-        <style>{`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+  // Session is ready - now handle auth logic
+  if (loadingState === LoadingState.READY) {
+    // Handle guest pages (login, signup, forgot password)
+    if (allowGuests) {
+      if (isAuthenticated && !children) {
+        if (redirectOnAuthenticated) {
+          // Authenticated user on guest page - redirect them away (only if no children)
+          if (RedirectingComponent) {
+            return (
+              <RedirectingComponent
+                destination={redirectOnAuthenticated}
+                delay={redirectDelay}
+                reason="User already authenticated"
+              />
+            );
           }
-        `}</style>
-      </div>
-    );
-  }
 
-  // Redirect to accounts if account selection required
-  if (requireAccount && !session.currentAccountId && loadingState === LoadingState.READY) {
-    const accountsUrl = customRedirects.accountsUrl || '/accounts';
-
-    if (RedirectingComponent) {
-      return (
-        <RedirectingComponent destination={accountsUrl} delay={redirectDelay} reason="Account selection required" />
-      );
-    }
-
-    // Default redirect or could trigger actual redirect
-    if (typeof window !== 'undefined') {
-      window.location.href = accountsUrl;
-    }
-
-    return (
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          minHeight: '200px',
-          flexDirection: 'column',
-          gap: '16px',
-        }}
-      >
-        <div
-          style={{
-            width: '32px',
-            height: '32px',
-            border: '2px solid #e2e8f0',
-            borderTop: '2px solid #3b82f6',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-          }}
-        />
-        <p style={{ color: '#64748b', fontSize: '14px' }}>Redirecting to account selection...</p>
-        <style>{`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+          if (typeof window !== 'undefined') {
+            window.location.href = redirectOnAuthenticated;
           }
-        `}</style>
-      </div>
-    );
-  }
 
-  // All checks passed, show content or redirect
-  if (redirectOnSuccess && loadingState === LoadingState.READY) {
-    if (RedirectingComponent) {
-      return (
-        <RedirectingComponent
-          destination={redirectOnSuccess}
-          delay={redirectDelay}
-          reason="Authentication successful"
-        />
-      );
+          return <DefaultLoadingSpinner message="Redirecting..." />;
+        }
+
+        throw new Error('redirectOnAuthenticated url is needed');
+      }
+
+      // Allow guests (authenticated or not) to see the page
+      return <>{children}</>;
     }
 
-    // Redirect to success URL
-    if (typeof window !== 'undefined') {
-      window.location.href = redirectOnSuccess;
-    }
-
-    return (
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          minHeight: '200px',
-          flexDirection: 'column',
-          gap: '16px',
-        }}
-      >
-        <div
-          style={{
-            width: '32px',
-            height: '32px',
-            border: '2px solid #e2e8f0',
-            borderTop: '2px solid #3b82f6',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-          }}
-        />
-        <p style={{ color: '#64748b', fontSize: '14px' }}>Redirecting...</p>
-        <style>{`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+    // Handle protected pages (allowGuests: false)
+    if (!allowGuests) {
+      // User not authenticated
+      if (!isAuthenticated) {
+        if (redirectToLogin) {
+          if (RedirectingComponent) {
+            return (
+              <RedirectingComponent
+                destination={redirectToLogin}
+                delay={redirectDelay}
+                reason="User not authenticated"
+              />
+            );
           }
-        `}</style>
-      </div>
-    );
+
+          if (typeof window !== 'undefined') {
+            window.location.href = redirectToLogin;
+          }
+
+          return <DefaultLoadingSpinner message="Redirecting to login..." />;
+        }
+
+        // No redirect URL provided - just show children or error
+        throw new Error('redirectToLogin url is needed');
+      }
+
+      // User authenticated but account selection required
+      if (requireAccount && !session.currentAccountId) {
+        if (redirectToAccountSelection) {
+          if (RedirectingComponent) {
+            return (
+              <RedirectingComponent
+                destination={redirectToAccountSelection}
+                delay={redirectDelay}
+                reason="Account selection required"
+              />
+            );
+          }
+
+          if (typeof window !== 'undefined') {
+            window.location.href = redirectToAccountSelection;
+          }
+
+          return <DefaultLoadingSpinner message="Redirecting to account selection..." />;
+        }
+
+        throw new Error('redirectToAccountSelection url is needed');
+      }
+
+      // Handle redirect-only pages (no children) - redirect on success
+      if (!children && redirectOnAuthenticated) {
+        if (RedirectingComponent) {
+          return (
+            <RedirectingComponent
+              destination={redirectOnAuthenticated}
+              delay={redirectDelay}
+              reason="Authentication successful"
+            />
+          );
+        }
+
+        if (typeof window !== 'undefined') {
+          window.location.href = redirectOnAuthenticated;
+        }
+
+        return <DefaultLoadingSpinner message="Redirecting..." />;
+      }
+
+      // All checks passed - show protected content
+      return <>{children}</>;
+    }
   }
 
-  // Show content
-  return <>{children}</>;
+  // Fallback - unexpected state, show error
+  return (
+    <DefaultGlobalErrorDisplay
+      error="AuthGuard reached an unexpected state. Please check your configuration."
+      retry={() => window.location.reload()}
+    />
+  );
 }

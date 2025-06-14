@@ -345,7 +345,9 @@ function AccountSelectionContent() {
 export default function AccountSelectionPage() {
   return (
     <AuthGuard
-      requireAccount
+      allowGuests={false}
+      requireAccount={true}
+      redirectToLogin="/login"
       loadingComponent={LoadingSpinner}
       redirectingComponent={RedirectingDisplay}
       errorComponent={ErrorDisplay}
