@@ -1,5 +1,5 @@
-import bcrypt from "bcrypt";
-import crypto from "crypto";
+import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import {
   AccountStatus,
   AccountType,
@@ -9,23 +9,13 @@ import {
   PasswordResetRequest,
   PasswordChangeRequest,
   SetupTwoFactorRequest,
-} from "../account/Account.types";
-import db from "../../config/db";
-import {
-  BadRequestError,
-  NotFoundError,
-  ValidationError,
-  ApiErrorCode,
-  ServerError,
-} from "../../types/response.types";
-import { toSafeAccount } from "../account/Account.utils";
-import {
-  sendPasswordResetEmail,
-  sendVerificationEmail,
-  sendPasswordChangedNotification,
-} from "../email/Email.service";
-import { authenticator } from "otplib";
-import { ValidationUtils } from "../../utils/validation";
+} from '../account/Account.types';
+import db from '../../config/db';
+import { BadRequestError, NotFoundError, ValidationError, ApiErrorCode, ServerError } from '../../types/response.types';
+import { toSafeAccount } from '../account/Account.utils';
+import { sendPasswordResetEmail, sendVerificationEmail, sendPasswordChangedNotification } from '../email/Email.service';
+import { authenticator } from 'otplib';
+import { ValidationUtils } from '../../utils/validation';
 import {
   saveEmailVerificationToken,
   getEmailVerificationToken,
@@ -36,70 +26,46 @@ import {
   getTwoFactorTempToken,
   markTwoFactorTempTokenAsUsed,
   removeTwoFactorTempToken,
-} from "./LocalAuth.cache";
-import { getAppName } from "../../config/env.config";
-import { logger } from "../../utils/logger";
-import { sendCriticalEmail, sendNonCriticalEmail } from "../email/Email.utils";
+  savePasswordResetToken,
+} from './LocalAuth.cache';
+import { getAppName } from '../../config/env.config';
+import { logger } from '../../utils/logger';
+import { sendCriticalEmail, sendNonCriticalEmail } from '../email/Email.utils';
 
 /**
  * Create a new local account - now handles email failures properly
  */
-export async function createLocalAccount(
-  signupData: SignupRequest,
-): Promise<Account> {
+export async function createLocalAccount(signupData: SignupRequest): Promise<Account> {
   const models = await db.getModels();
 
   // Use ValidationUtils for validation
-  ValidationUtils.validateRequiredFields(signupData, [
-    "firstName",
-    "lastName",
-    "email",
-    "password",
-  ]);
+  ValidationUtils.validateRequiredFields(signupData, ['firstName', 'lastName', 'email', 'password']);
   ValidationUtils.validateEmail(signupData.email);
   ValidationUtils.validatePasswordStrength(signupData.password);
-  ValidationUtils.validateStringLength(
-    signupData.firstName,
-    "First name",
-    1,
-    50,
-  );
-  ValidationUtils.validateStringLength(signupData.lastName, "Last name", 1, 50);
+  ValidationUtils.validateStringLength(signupData.firstName, 'First name', 1, 50);
+  ValidationUtils.validateStringLength(signupData.lastName, 'Last name', 1, 50);
 
   if (signupData.username) {
-    ValidationUtils.validateStringLength(
-      signupData.username,
-      "Username",
-      3,
-      30,
-    );
+    ValidationUtils.validateStringLength(signupData.username, 'Username', 3, 30);
   }
 
   // Check if email already exists
   const existingAccount = await models.accounts.Account.findOne({
-    "userDetails.email": signupData.email,
+    'userDetails.email': signupData.email,
   });
 
   if (existingAccount) {
-    throw new BadRequestError(
-      "Email already in use",
-      400,
-      ApiErrorCode.USER_EXISTS,
-    );
+    throw new BadRequestError('Email already in use', 400, ApiErrorCode.USER_EXISTS);
   }
 
   // Check if username exists (if provided)
   if (signupData.username) {
     const usernameExists = await models.accounts.Account.findOne({
-      "userDetails.username": signupData.username,
+      'userDetails.username': signupData.username,
     });
 
     if (usernameExists) {
-      throw new BadRequestError(
-        "Username already in use",
-        400,
-        ApiErrorCode.USER_EXISTS,
-      );
+      throw new BadRequestError('Username already in use', 400, ApiErrorCode.USER_EXISTS);
     }
   }
 
@@ -130,24 +96,17 @@ export async function createLocalAccount(
   });
 
   // Generate verification token and store in cache
-  const verificationToken = saveEmailVerificationToken(
-    newAccount._id.toString(),
-    signupData.email,
-  );
+  const verificationToken = saveEmailVerificationToken(newAccount._id.toString(), signupData.email);
 
   // Send verification email - CRITICAL: Now we handle failures properly
   try {
-    await sendCriticalEmail(
-      sendVerificationEmail,
-      [signupData.email, signupData.firstName, verificationToken],
-      { maxAttempts: 3, delayMs: 2000 },
-    );
+    await sendCriticalEmail(sendVerificationEmail, [signupData.email, signupData.firstName, verificationToken], {
+      maxAttempts: 3,
+      delayMs: 2000,
+    });
     logger.info(`Verification email sent successfully to ${signupData.email}`);
   } catch (emailError) {
-    logger.error(
-      "Failed to send verification email during signup:",
-      emailError,
-    );
+    logger.error('Failed to send verification email during signup:', emailError);
 
     // Clean up: Remove the created account since verification email failed
     await models.accounts.Account.findByIdAndDelete(newAccount._id);
@@ -157,7 +116,7 @@ export async function createLocalAccount(
 
     // Throw a user-friendly error
     throw new ServerError(
-      "Account creation failed: Unable to send verification email. Please try again or contact support if the issue persists.",
+      'Account creation failed: Unable to send verification email. Please try again or contact support if the issue persists.',
       500,
       ApiErrorCode.SERVER_ERROR,
     );
@@ -171,49 +130,40 @@ export async function createLocalAccount(
  */
 export async function authenticateLocalUser(
   authData: LocalAuthRequest,
-): Promise<
-  Account | { requiresTwoFactor: true; tempToken: string; accountId: string }
-> {
+): Promise<Account | { requiresTwoFactor: true; tempToken: string; accountId: string }> {
   const models = await db.getModels();
 
   // Use ValidationUtils for validation
   if (!authData.email && !authData.username) {
-    throw new BadRequestError("Email or username is required");
+    throw new BadRequestError('Email or username is required');
   }
 
-  ValidationUtils.validateRequiredFields(authData, ["password"]);
+  ValidationUtils.validateRequiredFields(authData, ['password']);
 
   if (authData.email) {
     ValidationUtils.validateEmail(authData.email);
   }
 
   if (authData.username) {
-    ValidationUtils.validateStringLength(authData.username, "Username", 3, 30);
+    ValidationUtils.validateStringLength(authData.username, 'Username', 3, 30);
   }
 
   // Find user by email or username
   const query = authData.email
-    ? { "userDetails.email": authData.email, accountType: AccountType.Local }
+    ? { 'userDetails.email': authData.email, accountType: AccountType.Local }
     : {
-        "userDetails.username": authData.username,
+        'userDetails.username': authData.username,
         accountType: AccountType.Local,
       };
 
   const account = await models.accounts.Account.findOne(query);
 
   if (!account) {
-    throw new NotFoundError(
-      "Invalid email/username or password",
-      401,
-      ApiErrorCode.AUTH_FAILED,
-    );
+    throw new NotFoundError('Invalid email/username or password', 401, ApiErrorCode.AUTH_FAILED);
   }
 
   // Check if account is locked
-  if (
-    account.security.lockoutUntil &&
-    account.security.lockoutUntil > new Date()
-  ) {
+  if (account.security.lockoutUntil && account.security.lockoutUntil > new Date()) {
     throw new ValidationError(
       `Account is temporarily locked. Try again later or reset your password.`,
       401,
@@ -224,22 +174,15 @@ export async function authenticateLocalUser(
   // Check if account is suspended
   if (account.status === AccountStatus.Suspended) {
     throw new ValidationError(
-      "This account has been suspended. Please contact support.",
+      'This account has been suspended. Please contact support.',
       401,
       ApiErrorCode.AUTH_FAILED,
     );
   }
 
   // Check if account is unverified
-  if (
-    account.status === AccountStatus.Unverified ||
-    !account.userDetails.emailVerified
-  ) {
-    throw new ValidationError(
-      "Please verify your email address before logging in.",
-      401,
-      ApiErrorCode.AUTH_FAILED,
-    );
+  if (account.status === AccountStatus.Unverified || !account.userDetails.emailVerified) {
+    throw new ValidationError('Please verify your email address before logging in.', 401, ApiErrorCode.AUTH_FAILED);
   }
 
   // Verify password
@@ -247,8 +190,7 @@ export async function authenticateLocalUser(
 
   if (!isPasswordValid) {
     // Increment failed login attempts
-    account.security.failedLoginAttempts =
-      (account.security.failedLoginAttempts || 0) + 1;
+    account.security.failedLoginAttempts = (account.security.failedLoginAttempts || 0) + 1;
 
     // Lock account after 5 failed attempts
     if (account.security.failedLoginAttempts >= 5) {
@@ -257,7 +199,7 @@ export async function authenticateLocalUser(
       await account.save();
 
       throw new ValidationError(
-        "Too many failed login attempts. Account locked for 15 minutes.",
+        'Too many failed login attempts. Account locked for 15 minutes.',
         401,
         ApiErrorCode.AUTH_FAILED,
       );
@@ -265,18 +207,11 @@ export async function authenticateLocalUser(
 
     await account.save();
 
-    throw new NotFoundError(
-      "Invalid email/username or password",
-      401,
-      ApiErrorCode.AUTH_FAILED,
-    );
+    throw new NotFoundError('Invalid email/username or password', 401, ApiErrorCode.AUTH_FAILED);
   }
 
   // Reset failed login attempts on successful login
-  if (
-    !account.security.failedLoginAttempts ||
-    account.security.failedLoginAttempts > 0
-  ) {
+  if (!account.security.failedLoginAttempts || account.security.failedLoginAttempts > 0) {
     account.security.failedLoginAttempts = 0;
     account.security.lockoutUntil = undefined;
     await account.save();
@@ -285,10 +220,7 @@ export async function authenticateLocalUser(
   // Check if 2FA is enabled
   if (account.security.twoFactorEnabled) {
     // Generate temporary token for 2FA verification
-    const tempToken = saveTwoFactorTempToken(
-      account._id.toString(),
-      account.userDetails.email as string,
-    );
+    const tempToken = saveTwoFactorTempToken(account._id.toString(), account.userDetails.email as string);
 
     return {
       requiresTwoFactor: true,
@@ -307,38 +239,26 @@ export async function authenticateLocalUser(
 export async function verifyEmail(token: string): Promise<boolean> {
   const models = await db.getModels();
 
-  ValidationUtils.validateRequiredFields({ token }, ["token"]);
-  ValidationUtils.validateStringLength(token, "Verification token", 10, 200);
+  ValidationUtils.validateRequiredFields({ token }, ['token']);
+  ValidationUtils.validateStringLength(token, 'Verification token', 10, 200);
 
   // Get token from cache
   const tokenData = getEmailVerificationToken(token);
 
   if (!tokenData) {
-    throw new ValidationError(
-      "Invalid or expired verification token",
-      400,
-      ApiErrorCode.TOKEN_INVALID,
-    );
+    throw new ValidationError('Invalid or expired verification token', 400, ApiErrorCode.TOKEN_INVALID);
   }
 
   // Find account by ID
   const account = await models.accounts.Account.findById(tokenData.accountId);
 
   if (!account || account.accountType !== AccountType.Local) {
-    throw new ValidationError(
-      "Account not found",
-      400,
-      ApiErrorCode.USER_NOT_FOUND,
-    );
+    throw new ValidationError('Account not found', 400, ApiErrorCode.USER_NOT_FOUND);
   }
 
   // Verify email matches
   if (account.userDetails.email !== tokenData.email) {
-    throw new ValidationError(
-      "Token email mismatch",
-      400,
-      ApiErrorCode.TOKEN_INVALID,
-    );
+    throw new ValidationError('Token email mismatch', 400, ApiErrorCode.TOKEN_INVALID);
   }
 
   // Mark email as verified
@@ -356,31 +276,27 @@ export async function verifyEmail(token: string): Promise<boolean> {
 /**
  * Request a password reset - now handles email failures properly
  */
-export async function requestPasswordReset(
-  data: PasswordResetRequest,
-): Promise<boolean> {
+export async function requestPasswordReset(data: PasswordResetRequest): Promise<boolean> {
   const models = await db.getModels();
 
-  ValidationUtils.validateRequiredFields(data, ["email"]);
+  ValidationUtils.validateRequiredFields(data, ['email']);
   ValidationUtils.validateEmail(data.email);
 
   // Find account by email
   const account = await models.accounts.Account.findOne({
-    "userDetails.email": data.email,
+    'userDetails.email': data.email,
     accountType: AccountType.Local,
   });
 
   // If no account found, we still return success (security through obscurity)
   // But we don't send an email
   if (!account) {
-    logger.info(
-      `Password reset requested for non-existent email: ${data.email}`,
-    );
+    logger.info(`Password reset requested for non-existent email: ${data.email}`);
     return true;
   }
 
-  // Generate reset token using the model method
-  const resetToken = await account.generatePasswordResetToken!();
+  // Generate reset token using cache
+  const resetToken = savePasswordResetToken(account._id.toString(), account.userDetails.email as string);
 
   // Send password reset email - CRITICAL: Now we handle failures
   try {
@@ -388,7 +304,7 @@ export async function requestPasswordReset(
       sendPasswordResetEmail,
       [
         account.userDetails.email as string,
-        account.userDetails.firstName || account.userDetails.name.split(" ")[0],
+        account.userDetails.firstName || account.userDetails.name.split(' ')[0],
         resetToken,
       ],
       { maxAttempts: 3, delayMs: 2000 },
@@ -396,7 +312,7 @@ export async function requestPasswordReset(
     logger.info(`Password reset email sent successfully to ${data.email}`);
     return true;
   } catch (emailError) {
-    logger.error("Failed to send password reset email:", emailError);
+    logger.error('Failed to send password reset email:', emailError);
 
     // Clean up: Remove the reset token since email failed
     removePasswordResetToken(resetToken);
@@ -404,7 +320,7 @@ export async function requestPasswordReset(
     // For password reset, we might want to fail silently or throw
     // Throwing is better for user feedback
     throw new ServerError(
-      "Unable to send password reset email. Please try again or contact support if the issue persists.",
+      'Unable to send password reset email. Please try again or contact support if the issue persists.',
       500,
       ApiErrorCode.SERVER_ERROR,
     );
@@ -414,82 +330,77 @@ export async function requestPasswordReset(
 /**
  * Reset password with cached token
  */
-export async function resetPassword(
-  token: string,
-  newPassword: string,
-): Promise<boolean> {
+export async function resetPassword(token: string, newPassword: string): Promise<boolean> {
   const models = await db.getModels();
 
-  ValidationUtils.validateRequiredFields({ token, newPassword }, [
-    "token",
-    "newPassword",
-  ]);
-  ValidationUtils.validateStringLength(token, "Reset token", 10, 200);
+  ValidationUtils.validateRequiredFields({ token, newPassword }, ['token', 'newPassword']);
+  ValidationUtils.validateStringLength(token, 'Reset token', 10, 200);
   ValidationUtils.validatePasswordStrength(newPassword);
 
   // Get token from cache
   const tokenData = getPasswordResetToken(token);
 
   if (!tokenData) {
-    throw new ValidationError(
-      "Password reset token is invalid or has expired",
-      400,
-      ApiErrorCode.TOKEN_INVALID,
-    );
+    throw new ValidationError('Password reset token is invalid or has expired', 400, ApiErrorCode.TOKEN_INVALID);
   }
 
   // Find account by ID
   const account = await models.accounts.Account.findById(tokenData.accountId);
 
   if (!account || account.accountType !== AccountType.Local) {
-    throw new ValidationError(
-      "Account not found",
-      400,
-      ApiErrorCode.USER_NOT_FOUND,
-    );
+    throw new ValidationError('Account not found', 400, ApiErrorCode.USER_NOT_FOUND);
   }
 
   // Verify email matches
   if (account.userDetails.email !== tokenData.email) {
-    throw new ValidationError(
-      "Token email mismatch",
-      400,
-      ApiErrorCode.TOKEN_INVALID,
-    );
+    throw new ValidationError('Token email mismatch', 400, ApiErrorCode.TOKEN_INVALID);
   }
 
   // Check if new password matches any of the previous passwords
-  if (
-    account.security.previousPasswords &&
-    account.security.previousPasswords.length > 0
-  ) {
+  if (account.security.previousPasswords && account.security.previousPasswords.length > 0) {
     const isReused = await Promise.all(
-      account.security.previousPasswords.map((oldHash) =>
-        bcrypt.compare(newPassword, oldHash),
-      ),
+      account.security.previousPasswords.map((oldHash) => bcrypt.compare(newPassword, oldHash)),
     ).then((results) => results.some((result) => result === true));
 
     if (isReused) {
       throw new ValidationError(
-        "New password cannot be the same as any of your previous passwords",
+        'New password cannot be the same as any of your previous passwords',
         400,
         ApiErrorCode.VALIDATION_ERROR,
       );
     }
   }
 
-  // Reset the password
-  await account.resetPassword!(newPassword);
+  // FIXED: Store the current password in previous passwords array (limited to last 5)
+  if (account.security.password) {
+    account.security.previousPasswords = account.security.previousPasswords || [];
+
+    // Add current password to history and keep only the last 5
+    account.security.previousPasswords.push(account.security.password);
+    if (account.security.previousPasswords.length > 5) {
+      account.security.previousPasswords.shift();
+    }
+  }
+
+  // FIXED: Set the new password directly - the pre-save middleware will hash it
+  account.security.password = newPassword;
+
+  // Update last password change timestamp
+  account.security.lastPasswordChange = new Date();
+
+  // Reset failed login attempts
+  account.security.failedLoginAttempts = 0;
+  account.security.lockoutUntil = undefined;
+
+  // Save the account - pre-save middleware will hash the password
+  await account.save();
 
   // Remove token from cache
   removePasswordResetToken(token);
 
   await sendNonCriticalEmail(
     sendPasswordChangedNotification,
-    [
-      account.userDetails.email as string,
-      account.userDetails.firstName || account.userDetails.name.split(" ")[0],
-    ],
+    [account.userDetails.email as string, account.userDetails.firstName || account.userDetails.name.split(' ')[0]],
     { maxAttempts: 2, delayMs: 1000 },
   );
 
@@ -499,69 +410,65 @@ export async function resetPassword(
 /**
  * Change password - now handles notification email failures properly
  */
-export async function changePassword(
-  accountId: string,
-  data: PasswordChangeRequest,
-): Promise<boolean> {
+export async function changePassword(accountId: string, data: PasswordChangeRequest): Promise<boolean> {
   const models = await db.getModels();
 
-  ValidationUtils.validateObjectId(accountId, "Account ID");
-  ValidationUtils.validateRequiredFields(data, ["oldPassword", "newPassword"]);
+  ValidationUtils.validateObjectId(accountId, 'Account ID');
+  ValidationUtils.validateRequiredFields(data, ['oldPassword', 'newPassword']);
   ValidationUtils.validatePasswordStrength(data.newPassword);
 
   // Find account by ID
   const account = await models.accounts.Account.findById(accountId);
 
   if (!account || account.accountType !== AccountType.Local) {
-    throw new NotFoundError(
-      "Account not found",
-      404,
-      ApiErrorCode.USER_NOT_FOUND,
-    );
+    throw new NotFoundError('Account not found', 404, ApiErrorCode.USER_NOT_FOUND);
   }
 
   // Verify current password
-  const isCurrentPasswordValid = await account.comparePassword!(
-    data.oldPassword,
-  );
+  const isCurrentPasswordValid = await account.comparePassword!(data.oldPassword);
 
   if (!isCurrentPasswordValid) {
-    throw new ValidationError(
-      "Current password is incorrect",
-      401,
-      ApiErrorCode.AUTH_FAILED,
-    );
+    throw new ValidationError('Current password is incorrect', 401, ApiErrorCode.AUTH_FAILED);
   }
 
   // Check if new password matches any of the previous passwords
-  if (
-    account.security.previousPasswords &&
-    account.security.previousPasswords.length > 0
-  ) {
+  if (account.security.previousPasswords && account.security.previousPasswords.length > 0) {
     const isReused = await Promise.all(
-      account.security.previousPasswords.map((oldHash) =>
-        bcrypt.compare(data.newPassword, oldHash),
-      ),
+      account.security.previousPasswords.map((oldHash) => bcrypt.compare(data.newPassword, oldHash)),
     ).then((results) => results.some((result) => result === true));
 
     if (isReused) {
       throw new ValidationError(
-        "New password cannot be the same as any of your previous 5 passwords",
+        'New password cannot be the same as any of your previous 5 passwords',
         400,
         ApiErrorCode.VALIDATION_ERROR,
       );
     }
   }
 
-  // Change the password
-  await account.resetPassword!(data.newPassword);
+  // FIXED: Store the current password in previous passwords array (limited to last 5)
+  if (account.security.password) {
+    account.security.previousPasswords = account.security.previousPasswords || [];
+
+    // Add current password to history and keep only the last 5
+    account.security.previousPasswords.push(account.security.password);
+    if (account.security.previousPasswords.length > 5) {
+      account.security.previousPasswords.shift();
+    }
+  }
+
+  // FIXED: Set the new password directly - the pre-save middleware will hash it
+  account.security.password = data.newPassword;
+
+  // Update last password change timestamp
+  account.security.lastPasswordChange = new Date();
+
+  // Save the account - pre-save middleware will hash the password
+  await account.save();
 
   sendNonCriticalEmail(
     sendPasswordChangedNotification,
-    [
-      account.userDetails.email as string,
-      account.userDetails.firstName || account.userDetails.name.split(" ")[0],
-    ],
+    [account.userDetails.email as string, account.userDetails.firstName || account.userDetails.name.split(' ')[0]],
     { maxAttempts: 2, delayMs: 1000 },
   );
 
@@ -577,29 +484,21 @@ export async function setupTwoFactor(
 ): Promise<{ secret?: string; qrCodeUrl?: string }> {
   const models = await db.getModels();
 
-  ValidationUtils.validateObjectId(accountId, "Account ID");
-  ValidationUtils.validateRequiredFields(data, ["password", "enableTwoFactor"]);
+  ValidationUtils.validateObjectId(accountId, 'Account ID');
+  ValidationUtils.validateRequiredFields(data, ['password', 'enableTwoFactor']);
 
   // Find account by ID
   const account = await models.accounts.Account.findById(accountId);
 
   if (!account || account.accountType !== AccountType.Local) {
-    throw new NotFoundError(
-      "Account not found",
-      404,
-      ApiErrorCode.USER_NOT_FOUND,
-    );
+    throw new NotFoundError('Account not found', 404, ApiErrorCode.USER_NOT_FOUND);
   }
 
   // Verify password before enabling/disabling 2FA
   const isPasswordValid = await account.comparePassword!(data.password);
 
   if (!isPasswordValid) {
-    throw new ValidationError(
-      "Password is incorrect",
-      401,
-      ApiErrorCode.AUTH_FAILED,
-    );
+    throw new ValidationError('Password is incorrect', 401, ApiErrorCode.AUTH_FAILED);
   }
 
   // Enable or disable 2FA
@@ -612,7 +511,7 @@ export async function setupTwoFactor(
       // Generate backup codes (10 codes, 8 chars each)
       const backupCodes = Array(10)
         .fill(0)
-        .map(() => crypto.randomBytes(4).toString("hex"));
+        .map(() => crypto.randomBytes(4).toString('hex'));
 
       // Hash the backup codes before storing
       account.security.twoFactorBackupCodes = await Promise.all(
@@ -624,13 +523,8 @@ export async function setupTwoFactor(
 
       await account.save();
 
-      const accountName =
-        account.userDetails.email || account.userDetails.username || accountId;
-      const qrCodeUrl = authenticator.keyuri(
-        accountName.toString(),
-        getAppName(),
-        secret,
-      );
+      const accountName = account.userDetails.email || account.userDetails.username || accountId;
+      const qrCodeUrl = authenticator.keyuri(accountName.toString(), getAppName(), secret);
 
       return {
         secret,
@@ -638,13 +532,8 @@ export async function setupTwoFactor(
       };
     } else {
       // Secret already exists
-      const accountName =
-        account.userDetails.email || account.userDetails.username || accountId;
-      const qrCodeUrl = authenticator.keyuri(
-        accountName.toString(),
-        getAppName(),
-        account.security.twoFactorSecret,
-      );
+      const accountName = account.userDetails.email || account.userDetails.username || accountId;
+      const qrCodeUrl = authenticator.keyuri(accountName.toString(), getAppName(), account.security.twoFactorSecret);
 
       return {
         secret: account.security.twoFactorSecret,
@@ -666,29 +555,18 @@ export async function setupTwoFactor(
 /**
  * Verify and activate two-factor authentication
  */
-export async function verifyAndEnableTwoFactor(
-  accountId: string,
-  token: string,
-): Promise<boolean> {
+export async function verifyAndEnableTwoFactor(accountId: string, token: string): Promise<boolean> {
   const models = await db.getModels();
 
-  ValidationUtils.validateObjectId(accountId, "Account ID");
-  ValidationUtils.validateRequiredFields({ token }, ["token"]);
-  ValidationUtils.validateStringLength(token, "2FA token", 6, 6);
+  ValidationUtils.validateObjectId(accountId, 'Account ID');
+  ValidationUtils.validateRequiredFields({ token }, ['token']);
+  ValidationUtils.validateStringLength(token, '2FA token', 6, 6);
 
   // Find account by ID
   const account = await models.accounts.Account.findById(accountId);
 
-  if (
-    !account ||
-    account.accountType !== AccountType.Local ||
-    !account.security.twoFactorSecret
-  ) {
-    throw new NotFoundError(
-      "Account not found or 2FA not set up",
-      404,
-      ApiErrorCode.USER_NOT_FOUND,
-    );
+  if (!account || account.accountType !== AccountType.Local || !account.security.twoFactorSecret) {
+    throw new NotFoundError('Account not found or 2FA not set up', 404, ApiErrorCode.USER_NOT_FOUND);
   }
 
   // Verify token
@@ -698,11 +576,7 @@ export async function verifyAndEnableTwoFactor(
   });
 
   if (!isValid) {
-    throw new ValidationError(
-      "Invalid two-factor code",
-      401,
-      ApiErrorCode.AUTH_FAILED,
-    );
+    throw new ValidationError('Invalid two-factor code', 401, ApiErrorCode.AUTH_FAILED);
   }
 
   // Enable 2FA
@@ -715,27 +589,17 @@ export async function verifyAndEnableTwoFactor(
 /**
  * Verify two-factor code during login
  */
-export async function verifyTwoFactorLogin(
-  tempToken: string,
-  twoFactorCode: string,
-): Promise<Account> {
+export async function verifyTwoFactorLogin(tempToken: string, twoFactorCode: string): Promise<Account> {
   const models = await db.getModels();
 
-  ValidationUtils.validateRequiredFields({ tempToken, twoFactorCode }, [
-    "tempToken",
-    "twoFactorCode",
-  ]);
-  ValidationUtils.validateStringLength(twoFactorCode, "2FA token", 6, 8);
+  ValidationUtils.validateRequiredFields({ tempToken, twoFactorCode }, ['tempToken', 'twoFactorCode']);
+  ValidationUtils.validateStringLength(twoFactorCode, '2FA token', 6, 8);
 
   // Get temporary token from cache
   const tokenData = getTwoFactorTempToken(tempToken);
 
   if (!tokenData) {
-    throw new ValidationError(
-      "Invalid or expired temporary token",
-      401,
-      ApiErrorCode.TOKEN_INVALID,
-    );
+    throw new ValidationError('Invalid or expired temporary token', 401, ApiErrorCode.TOKEN_INVALID);
   }
 
   // Find account by ID
@@ -747,27 +611,16 @@ export async function verifyTwoFactorLogin(
     !account.security.twoFactorEnabled ||
     !account.security.twoFactorSecret
   ) {
-    throw new NotFoundError(
-      "Account not found or 2FA not enabled",
-      404,
-      ApiErrorCode.USER_NOT_FOUND,
-    );
+    throw new NotFoundError('Account not found or 2FA not enabled', 404, ApiErrorCode.USER_NOT_FOUND);
   }
 
   // Verify email matches (additional security check)
   if (account.userDetails.email !== tokenData.email) {
-    throw new ValidationError(
-      "Token account mismatch",
-      401,
-      ApiErrorCode.AUTH_FAILED,
-    );
+    throw new ValidationError('Token account mismatch', 401, ApiErrorCode.AUTH_FAILED);
   }
 
   // Check if token is a backup code
-  if (
-    account.security.twoFactorBackupCodes &&
-    account.security.twoFactorBackupCodes.length > 0
-  ) {
+  if (account.security.twoFactorBackupCodes && account.security.twoFactorBackupCodes.length > 0) {
     const backupCodeIndex = await Promise.all(
       account.security.twoFactorBackupCodes.map(async (hashedCode, index) => {
         const isMatch = await bcrypt.compare(twoFactorCode, hashedCode);
@@ -795,11 +648,7 @@ export async function verifyTwoFactorLogin(
   });
 
   if (!isValid) {
-    throw new ValidationError(
-      "Invalid two-factor code",
-      401,
-      ApiErrorCode.AUTH_FAILED,
-    );
+    throw new ValidationError('Invalid two-factor code', 401, ApiErrorCode.AUTH_FAILED);
   }
 
   // Mark temp token as used and remove it
@@ -812,41 +661,30 @@ export async function verifyTwoFactorLogin(
 /**
  * Generate new backup codes for two-factor authentication
  */
-export async function generateNewBackupCodes(
-  accountId: string,
-  password: string,
-): Promise<string[]> {
+export async function generateNewBackupCodes(accountId: string, password: string): Promise<string[]> {
   const models = await db.getModels();
 
-  ValidationUtils.validateObjectId(accountId, "Account ID");
-  ValidationUtils.validateRequiredFields({ password }, ["password"]);
+  ValidationUtils.validateObjectId(accountId, 'Account ID');
+  ValidationUtils.validateRequiredFields({ password }, ['password']);
 
   // Find account by ID
   const account = await models.accounts.Account.findById(accountId);
 
   if (!account || account.accountType !== AccountType.Local) {
-    throw new NotFoundError(
-      "Account not found or 2FA not enabled",
-      404,
-      ApiErrorCode.USER_NOT_FOUND,
-    );
+    throw new NotFoundError('Account not found or 2FA not enabled', 404, ApiErrorCode.USER_NOT_FOUND);
   }
 
   // Verify password
   const isPasswordValid = await account.comparePassword!(password);
 
   if (!isPasswordValid) {
-    throw new ValidationError(
-      "Password is incorrect",
-      401,
-      ApiErrorCode.AUTH_FAILED,
-    );
+    throw new ValidationError('Password is incorrect', 401, ApiErrorCode.AUTH_FAILED);
   }
 
   // Generate new backup codes (10 codes, 8 chars each)
   const backupCodes = Array(10)
     .fill(0)
-    .map(() => crypto.randomBytes(4).toString("hex"));
+    .map(() => crypto.randomBytes(4).toString('hex'));
 
   // Hash the backup codes before storing
   account.security.twoFactorBackupCodes = await Promise.all(
