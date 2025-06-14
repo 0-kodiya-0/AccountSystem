@@ -29,7 +29,7 @@ import {
   verifyOAuthJwtToken,
   verifyOAuthRefreshToken,
 } from './OAuth.jwt';
-import { getBaseUrl } from '../../config/env.config';
+import { getBaseUrl, getProxyUrl } from '../../config/env.config';
 import {
   buildGoogleSignupUrl,
   buildGoogleSigninUrl,
@@ -129,13 +129,13 @@ export const handleOAuthCallback = oauthCallbackHandler(
       throw new BadRequestError(`Provider ${provider} is not implemented yet`, 400, ApiErrorCode.INVALID_PROVIDER);
     }
 
-    const { code, state } = req.body;
+    const { code, state } = req.query;
 
-    ValidationUtils.validateRequiredFields(req.body, ['code', 'state']);
+    ValidationUtils.validateRequiredFields({ code, state }, ['code', 'state']);
 
     // Validate the state parameter and get OAuth state details
     const stateDetails = (await validateState(
-      state,
+      state as string,
       (state) => validateOAuthState(state, provider), // Fix: Don't use stateDetails.provider before it's defined
       res,
     )) as OAuthState;
@@ -146,12 +146,10 @@ export const handleOAuthCallback = oauthCallbackHandler(
 
     switch (stateDetails.provider) {
       case OAuthProviders.Google: {
-        // Fix: Pass the correct redirect URI based on auth type
-        const redirectUri =
-          stateDetails.authType === AuthType.SIGN_UP
-            ? `${getBaseUrl()}/oauth/callback/signup`
-            : `${getBaseUrl()}/oauth/callback/signin`;
-        ({ tokens, userInfo } = await exchangeGoogleCode(code, redirectUri));
+        ({ tokens, userInfo } = await exchangeGoogleCode(
+          code as string,
+          `${getProxyUrl()}${getBaseUrl()}/oauth/callback/google`,
+        ));
         break;
       }
 
@@ -253,13 +251,13 @@ export const handlePermissionCallback = oauthCallbackHandler(
   getCallbackUrl(),
   CallbackCode.PERMISSION_ERROR,
   async (req, res, next) => {
-    const { code, state } = req.body;
+    const { code, state } = req.query;
 
-    ValidationUtils.validateRequiredFields(req.body, ['code', 'state']);
+    ValidationUtils.validateRequiredFields({ code, state }, ['code', 'state']);
 
     // Validate the state parameter
     const permissionDetails = (await validateState(
-      state,
+      state as string,
       (state) => validatePermissionState(state, OAuthProviders.Google),
       res,
     )) as PermissionState;
@@ -267,8 +265,8 @@ export const handlePermissionCallback = oauthCallbackHandler(
     const { accountId, service, scopeLevel } = permissionDetails;
 
     // Use existing Google code exchange function
-    const redirectUri = `${getBaseUrl()}/oauth/callback/permission`;
-    const { tokens } = await exchangeGoogleCode(code, redirectUri); // Fix: Remove unused userInfo
+    const redirectUri = `${getProxyUrl()}${getBaseUrl()}/oauth/permission/callback/google`;
+    const { tokens } = await exchangeGoogleCode(code as string, redirectUri); // Fix: Remove unused userInfo
 
     // Verify user account exists
     const exists = await AuthService.checkUserExists(accountId);

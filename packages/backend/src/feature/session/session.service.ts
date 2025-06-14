@@ -102,12 +102,14 @@ export async function getAccountSession(req: Request): Promise<GetAccountSession
  */
 export async function getSessionAccountsData(
   req: Request,
-  accountIds?: string[],
+  accountIds?: string[] | string,
 ): Promise<GetAccountSessionDataResponse> {
   const session = getAccountSessionFromCookies(req);
 
-  if (accountIds && accountIds.length > 0) {
+  if (accountIds && accountIds.length > 0 && Array.isArray(accountIds)) {
     accountIds = accountIds.filter((id) => session.accountIds.includes(id));
+  } else if (accountIds && !Array.isArray(accountIds)) {
+    accountIds = [accountIds];
   } else {
     accountIds = session.accountIds;
   }

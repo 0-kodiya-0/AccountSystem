@@ -18,7 +18,7 @@ export const getAccountSession = asyncHandler(async (req, res, next) => {
  */
 export const getSessionAccountsData = asyncHandler(async (req, res, next) => {
   const { accountIds } = req.query;
-  const accountsData = await SessionService.getSessionAccountsData(req, accountIds as string[]);
+  const accountsData = await SessionService.getSessionAccountsData(req, accountIds as string[] | string);
 
   next(new JsonSuccess(accountsData, 200));
 });

@@ -14,8 +14,8 @@ oauthPublicRouter.get('/permission/:provider', OAuthController.generatePermissio
 oauthPublicRouter.get('/reauthorize/:provider', OAuthController.generateReauthorizeUrl);
 
 // OAuth Callback Routes - Handle code exchange from OAuth providers
-oauthPublicRouter.post('/callback/:provider', OAuthController.handleOAuthCallback);
-oauthPublicRouter.post('/permission/callback/:provider', OAuthController.handlePermissionCallback);
+oauthPublicRouter.get('/callback/:provider', OAuthController.handleOAuthCallback);
+oauthPublicRouter.get('/permission/callback/:provider', OAuthController.handlePermissionCallback);
 
 // ============================================================================
 // Authenticated OAuth Routes (Require Authentication)

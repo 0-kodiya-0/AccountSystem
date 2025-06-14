@@ -10,7 +10,7 @@
  * 5. Simpler maintenance - no need to keep updating scope definitions
  */
 
-import { getBaseUrl, getGoogleClientId } from '../../../config/env.config';
+import { getBaseUrl, getGoogleClientId, getProxyUrl } from '../../../config/env.config';
 
 /**
  * Google OAuth scope URL builder
@@ -162,7 +162,7 @@ export function buildGoogleOAuthUrl(options: GoogleOAuthUrlOptions): string {
     client_id: getGoogleClientId(),
     response_type: responseType,
     state: state,
-    redirect_uri: `${getBaseUrl()}${redirectPath}`,
+    redirect_uri: `${getProxyUrl()}${getBaseUrl()}${redirectPath}`,
   };
 
   // Add optional parameters only if they have values
@@ -205,7 +205,7 @@ export function buildGoogleSignupUrl(state: string): string {
   return buildGoogleOAuthUrl({
     scopes: ['profile', 'email'],
     state,
-    redirectPath: '/oauth/callback/signup',
+    redirectPath: '/oauth/callback/google',
     accessType: 'offline',
     prompt: 'consent',
     includeGrantedScopes: true,
@@ -219,7 +219,7 @@ export function buildGoogleSigninUrl(state: string): string {
   return buildGoogleOAuthUrl({
     scopes: ['profile', 'email'],
     state,
-    redirectPath: '/oauth/callback/signin',
+    redirectPath: '/oauth/callback/google',
     accessType: 'offline',
     prompt: 'consent',
     includeGrantedScopes: true,
@@ -233,7 +233,7 @@ export function buildGooglePermissionUrl(state: string, scopes: string[], userEm
   return buildGoogleOAuthUrl({
     scopes,
     state,
-    redirectPath: '/oauth/callback/permission',
+    redirectPath: 'oauth/permission/callback/google',
     loginHint: userEmail,
     accessType: 'offline',
     prompt: 'consent',
@@ -248,7 +248,7 @@ export function buildGoogleReauthorizeUrl(state: string, scopes: string[], userE
   return buildGoogleOAuthUrl({
     scopes,
     state,
-    redirectPath: '/oauth/callback/permission',
+    redirectPath: 'oauth/permission/callback/google',
     loginHint: userEmail,
     accessType: 'offline',
     prompt: 'consent',
