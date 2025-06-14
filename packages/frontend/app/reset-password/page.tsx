@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -57,7 +57,9 @@ export default function ResetPasswordPage() {
   });
 
   const watchedPassword = watch('password');
-  const passwordStrength = watchedPassword ? validatePasswordStrength(watchedPassword) : null;
+  const passwordStrength = useMemo(() => {
+    return watchedPassword ? validatePasswordStrength(watchedPassword) : null;
+  }, [watchedPassword]);
 
   const onSubmit = async (data: ResetPasswordFormData) => {
     if (!token) {

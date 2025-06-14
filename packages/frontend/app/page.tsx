@@ -9,7 +9,7 @@ export default function RootPage() {
   // This will redirect to our auth redirect handler
   return (
     <AuthGuard
-      allowGuests={true}
+      allowGuests={false}
       requireAccount={true}
       redirectDelay={0}
       redirectOnAuthenticated="/dashboard"

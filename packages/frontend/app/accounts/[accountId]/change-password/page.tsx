@@ -1,6 +1,6 @@
 'use client';
 
-import * as React from 'react';
+import React, { useMemo } from 'react';
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -66,7 +66,9 @@ export default function ChangePasswordPage() {
   });
 
   const watchedNewPassword = watch('newPassword');
-  const passwordStrength = watchedNewPassword ? validatePasswordStrength(watchedNewPassword) : null;
+  const passwordStrength = useMemo(() => {
+    return watchedNewPassword ? validatePasswordStrength(watchedNewPassword) : null;
+  }, [watchedNewPassword]);
 
   // Show loading state
   if (isLoading) {

@@ -1,4 +1,4 @@
-import * as React from 'react';
+import React, { useMemo } from 'react';
 import { Check, X } from 'lucide-react';
 import { validatePasswordStrength } from '@/lib/utils';
 import { cn } from '@/lib/utils';
@@ -9,7 +9,9 @@ interface PasswordStrengthIndicatorProps {
 }
 
 export function PasswordStrengthIndicator({ password, showRequirements = true }: PasswordStrengthIndicatorProps) {
-  const strength = validatePasswordStrength(password);
+  const strength = useMemo(() => {
+    return validatePasswordStrength(password);
+  }, [password]);
 
   const getStrengthColor = (strength: string) => {
     switch (strength) {
@@ -37,30 +39,35 @@ export function PasswordStrengthIndicator({ password, showRequirements = true }:
     }
   };
 
-  const requirements = [
-    {
-      text: 'At least 8 characters',
-      met: password.length >= 8,
-    },
-    {
-      text: 'One uppercase letter',
-      met: /[A-Z]/.test(password),
-    },
-    {
-      text: 'One lowercase letter',
-      met: /[a-z]/.test(password),
-    },
-    {
-      text: 'One number',
-      met: /[0-9]/.test(password),
-    },
-    {
-      text: 'One special character',
-      met: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password),
-    },
-  ];
+  const requirements = useMemo(
+    () => [
+      {
+        text: 'At least 8 characters',
+        met: password.length >= 8,
+      },
+      {
+        text: 'One uppercase letter',
+        met: /[A-Z]/.test(password),
+      },
+      {
+        text: 'One lowercase letter',
+        met: /[a-z]/.test(password),
+      },
+      {
+        text: 'One number',
+        met: /[0-9]/.test(password),
+      },
+      {
+        text: 'One special character',
+        met: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password),
+      },
+    ],
+    [password],
+  );
 
-  const progress = (requirements.filter((req) => req.met).length / requirements.length) * 100;
+  const progress = useMemo(() => {
+    return (requirements.filter((req) => req.met).length / requirements.length) * 100;
+  }, [requirements]);
 
   return (
     <div className="space-y-3">

@@ -1,6 +1,6 @@
 'use client';
 
-import * as React from 'react';
+import React, { useMemo } from 'react';
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -61,7 +61,9 @@ export default function SignupPage() {
   });
 
   const watchedPassword = watch('password');
-  const passwordStrength = watchedPassword ? validatePasswordStrength(watchedPassword) : null;
+  const passwordStrength = useMemo(() => {
+    return watchedPassword ? validatePasswordStrength(watchedPassword) : null;
+  }, [watchedPassword]);
 
   const onSubmit = async (data: SignupFormData) => {
     try {
