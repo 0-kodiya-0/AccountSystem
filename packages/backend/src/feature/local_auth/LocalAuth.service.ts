@@ -1,93 +1,201 @@
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
-import {
-  AccountStatus,
-  AccountType,
-  Account,
-  SignupRequest,
-  LocalAuthRequest,
-  PasswordResetRequest,
-  PasswordChangeRequest,
-  SetupTwoFactorRequest,
-} from '../account/Account.types';
+import { AccountStatus, AccountType, Account } from '../account/Account.types';
 import db from '../../config/db';
 import { BadRequestError, NotFoundError, ValidationError, ApiErrorCode, ServerError } from '../../types/response.types';
 import { toSafeAccount } from '../account/Account.utils';
-import { sendPasswordResetEmail, sendVerificationEmail, sendPasswordChangedNotification } from '../email/Email.service';
+import {
+  sendPasswordResetEmail,
+  sendPasswordChangedNotification,
+  sendSignupEmailVerification,
+} from '../email/Email.service';
 import { authenticator } from 'otplib';
 import { ValidationUtils } from '../../utils/validation';
 import {
-  saveEmailVerificationToken,
-  getEmailVerificationToken,
-  removeEmailVerificationToken,
   getPasswordResetToken,
   removePasswordResetToken,
   saveTwoFactorTempToken,
   getTwoFactorTempToken,
-  markTwoFactorTempTokenAsUsed,
   removeTwoFactorTempToken,
   savePasswordResetToken,
+  removeProfileCompletionData,
+  cleanupSignupData,
+  getProfileCompletionData,
+  markEmailVerifiedAndCreateProfileStep,
+  getEmailVerificationDataByToken,
+  removeEmailVerificationData,
+  saveEmailForVerification,
+  getEmailVerificationData,
 } from './LocalAuth.cache';
 import { getAppName } from '../../config/env.config';
 import { logger } from '../../utils/logger';
 import { sendCriticalEmail, sendNonCriticalEmail } from '../email/Email.utils';
+import {
+  CompleteProfileRequest,
+  LocalAuthRequest,
+  PasswordChangeRequest,
+  PasswordResetRequest,
+  SetupTwoFactorRequest,
+} from './LocalAuth.types';
 
-/**
- * Create a new local account - now handles email failures properly
- */
-export async function createLocalAccount(signupData: SignupRequest): Promise<Account> {
+export async function requestEmailVerification(email: string): Promise<{ token: string }> {
+  ValidationUtils.validateEmail(email);
+
+  // Check if email already exists in database
   const models = await db.getModels();
-
-  // Use ValidationUtils for validation
-  ValidationUtils.validateRequiredFields(signupData, ['firstName', 'lastName', 'email', 'password']);
-  ValidationUtils.validateEmail(signupData.email);
-  ValidationUtils.validatePasswordStrength(signupData.password);
-  ValidationUtils.validateStringLength(signupData.firstName, 'First name', 1, 50);
-  ValidationUtils.validateStringLength(signupData.lastName, 'Last name', 1, 50);
-
-  if (signupData.username) {
-    ValidationUtils.validateStringLength(signupData.username, 'Username', 3, 30);
-  }
-
-  // Check if email already exists
   const existingAccount = await models.accounts.Account.findOne({
-    'userDetails.email': signupData.email,
+    'userDetails.email': email,
   });
 
   if (existingAccount) {
-    throw new BadRequestError('Email already in use', 400, ApiErrorCode.USER_EXISTS);
+    throw new BadRequestError(
+      'Email already registered. Please use a different email or try logging in.',
+      400,
+      ApiErrorCode.USER_EXISTS,
+    );
   }
 
-  // Check if username exists (if provided)
-  if (signupData.username) {
-    const usernameExists = await models.accounts.Account.findOne({
-      'userDetails.username': signupData.username,
+  // Check if email is already in verification process
+  const existingVerification = getEmailVerificationData(email);
+  if (existingVerification) {
+    // Resend verification email with existing token
+    try {
+      await sendCriticalEmail(
+        sendSignupEmailVerification, // Use new email function
+        [email, existingVerification.verificationToken],
+        { maxAttempts: 3, delayMs: 2000 },
+      );
+      logger.info(`Verification email resent to ${email}`);
+    } catch (emailError) {
+      logger.error('Failed to resend verification email:', emailError);
+      throw new ServerError('Failed to send verification email. Please try again.', 500, ApiErrorCode.SERVER_ERROR);
+    }
+
+    return { token: existingVerification.verificationToken };
+  }
+
+  // Save email for verification and get token
+  const verificationToken = saveEmailForVerification(email);
+
+  // Send verification email
+  try {
+    await sendCriticalEmail(
+      sendSignupEmailVerification, // Use new email function
+      [email, verificationToken],
+      { maxAttempts: 3, delayMs: 2000 },
+    );
+    logger.info(`Verification email sent to ${email}`);
+  } catch (emailError) {
+    logger.error('Failed to send verification email:', emailError);
+
+    // Clean up cache entry
+    removeEmailVerificationData(email);
+
+    throw new ServerError('Failed to send verification email. Please try again.', 500, ApiErrorCode.SERVER_ERROR);
+  }
+
+  return { token: verificationToken };
+}
+
+/**
+ * Step 2: Verify email and move to profile completion
+ */
+export async function verifyEmailAndProceedToProfile(token: string): Promise<{ profileToken: string; email: string }> {
+  ValidationUtils.validateRequiredFields({ token }, ['token']);
+  ValidationUtils.validateStringLength(token, 'Verification token', 10, 200);
+
+  // Get email verification data by token
+  const emailData = getEmailVerificationDataByToken(token);
+  if (!emailData) {
+    throw new ValidationError('Invalid or expired verification token', 400, ApiErrorCode.TOKEN_INVALID);
+  }
+
+  // Mark email as verified and create profile completion step
+  const profileToken = markEmailVerifiedAndCreateProfileStep(emailData.email);
+
+  logger.info(`Email verified for ${emailData.email}, proceeding to profile completion`);
+
+  return {
+    profileToken,
+    email: emailData.email,
+  };
+}
+
+/**
+ * Step 3: Complete profile and create account
+ */
+export async function completeProfileAndCreateAccount(
+  profileToken: string,
+  profileData: CompleteProfileRequest,
+): Promise<Account> {
+  const models = await db.getModels();
+
+  ValidationUtils.validateRequiredFields(profileData, ['firstName', 'lastName', 'password', 'confirmPassword']);
+
+  // Get profile completion data
+  const completionData = getProfileCompletionData(profileToken);
+  if (!completionData) {
+    throw new ValidationError('Invalid or expired profile token', 400, ApiErrorCode.TOKEN_INVALID);
+  }
+
+  if (!completionData.emailVerified) {
+    throw new ValidationError('Email must be verified before completing profile', 400, ApiErrorCode.AUTH_FAILED);
+  }
+
+  // Validate profile data
+  ValidationUtils.validatePasswordStrength(profileData.password);
+  ValidationUtils.validateStringLength(profileData.firstName, 'First name', 1, 50);
+  ValidationUtils.validateStringLength(profileData.lastName, 'Last name', 1, 50);
+
+  if (profileData.password !== profileData.confirmPassword) {
+    throw new ValidationError('Passwords do not match', 400, ApiErrorCode.VALIDATION_ERROR);
+  }
+
+  if (!profileData.agreeToTerms) {
+    throw new ValidationError('You must agree to the terms and conditions', 400, ApiErrorCode.VALIDATION_ERROR);
+  }
+
+  if (profileData.username) {
+    ValidationUtils.validateStringLength(profileData.username, 'Username', 3, 30);
+
+    // Check if username exists
+    const existingUsername = await models.accounts.Account.findOne({
+      'userDetails.username': profileData.username,
     });
 
-    if (usernameExists) {
+    if (existingUsername) {
       throw new BadRequestError('Username already in use', 400, ApiErrorCode.USER_EXISTS);
     }
   }
 
-  // Create account with validated fields
+  // Double-check email doesn't exist (safety check)
+  const existingAccount = await models.accounts.Account.findOne({
+    'userDetails.email': completionData.email,
+  });
+
+  if (existingAccount) {
+    throw new BadRequestError('Email already registered', 400, ApiErrorCode.USER_EXISTS);
+  }
+
+  // Create account with verified email
   const timestamp = new Date().toISOString();
 
   const newAccount = await models.accounts.Account.create({
     created: timestamp,
     updated: timestamp,
     accountType: AccountType.Local,
-    status: AccountStatus.Unverified, // Start as unverified
+    status: AccountStatus.Active, // Already verified!
     userDetails: {
-      firstName: signupData.firstName,
-      lastName: signupData.lastName,
-      name: `${signupData.firstName} ${signupData.lastName}`,
-      email: signupData.email,
-      username: signupData.username,
-      birthdate: signupData.birthdate,
-      emailVerified: false,
+      firstName: profileData.firstName,
+      lastName: profileData.lastName,
+      name: `${profileData.firstName} ${profileData.lastName}`,
+      email: completionData.email,
+      username: profileData.username,
+      birthdate: profileData.birthdate,
+      emailVerified: true, // Already verified in step 2
     },
     security: {
-      password: signupData.password, // Will be hashed by the model's pre-save hook
+      password: profileData.password, // Will be hashed by pre-save hook
       twoFactorEnabled: false,
       sessionTimeout: 3600,
       autoLock: false,
@@ -95,34 +203,25 @@ export async function createLocalAccount(signupData: SignupRequest): Promise<Acc
     },
   });
 
-  // Generate verification token and store in cache
-  const verificationToken = saveEmailVerificationToken(newAccount._id.toString(), signupData.email);
+  // Clean up cache data
+  removeProfileCompletionData(profileToken);
 
-  // Send verification email - CRITICAL: Now we handle failures properly
-  try {
-    await sendCriticalEmail(sendVerificationEmail, [signupData.email, signupData.firstName, verificationToken], {
-      maxAttempts: 3,
-      delayMs: 2000,
-    });
-    logger.info(`Verification email sent successfully to ${signupData.email}`);
-  } catch (emailError) {
-    logger.error('Failed to send verification email during signup:', emailError);
-
-    // Clean up: Remove the created account since verification email failed
-    await models.accounts.Account.findByIdAndDelete(newAccount._id);
-
-    // Remove the verification token from cache
-    removeEmailVerificationToken(verificationToken);
-
-    // Throw a user-friendly error
-    throw new ServerError(
-      'Account creation failed: Unable to send verification email. Please try again or contact support if the issue persists.',
-      500,
-      ApiErrorCode.SERVER_ERROR,
-    );
-  }
+  logger.info(`Account created successfully for ${completionData.email}`);
 
   return toSafeAccount(newAccount) as Account;
+}
+
+/**
+ * Delete email verification data (cancel signup)
+ */
+export async function cancelEmailVerification(email: string): Promise<boolean> {
+  ValidationUtils.validateEmail(email);
+
+  // Clean up all signup data for this email
+  cleanupSignupData(email);
+
+  logger.info(`Email verification cancelled for ${email}`);
+  return true;
 }
 
 /**
@@ -231,46 +330,6 @@ export async function authenticateLocalUser(
 
   // Return account
   return toSafeAccount(account) as Account;
-}
-
-/**
- * Verify a user's email address using cached token
- */
-export async function verifyEmail(token: string): Promise<boolean> {
-  const models = await db.getModels();
-
-  ValidationUtils.validateRequiredFields({ token }, ['token']);
-  ValidationUtils.validateStringLength(token, 'Verification token', 10, 200);
-
-  // Get token from cache
-  const tokenData = getEmailVerificationToken(token);
-
-  if (!tokenData) {
-    throw new ValidationError('Invalid or expired verification token', 400, ApiErrorCode.TOKEN_INVALID);
-  }
-
-  // Find account by ID
-  const account = await models.accounts.Account.findById(tokenData.accountId);
-
-  if (!account || account.accountType !== AccountType.Local) {
-    throw new ValidationError('Account not found', 400, ApiErrorCode.USER_NOT_FOUND);
-  }
-
-  // Verify email matches
-  if (account.userDetails.email !== tokenData.email) {
-    throw new ValidationError('Token email mismatch', 400, ApiErrorCode.TOKEN_INVALID);
-  }
-
-  // Mark email as verified
-  account.userDetails.emailVerified = true;
-  account.status = AccountStatus.Active;
-
-  await account.save();
-
-  // Remove token from cache
-  removeEmailVerificationToken(token);
-
-  return true;
 }
 
 /**
@@ -633,8 +692,6 @@ export async function verifyTwoFactorLogin(tempToken: string, twoFactorCode: str
       account.security.twoFactorBackupCodes?.splice(backupCodeIndex, 1);
       await account.save();
 
-      // Mark temp token as used and remove it
-      markTwoFactorTempTokenAsUsed(tempToken);
       removeTwoFactorTempToken(tempToken);
 
       return toSafeAccount(account) as Account;
@@ -651,8 +708,6 @@ export async function verifyTwoFactorLogin(tempToken: string, twoFactorCode: str
     throw new ValidationError('Invalid two-factor code', 401, ApiErrorCode.AUTH_FAILED);
   }
 
-  // Mark temp token as used and remove it
-  markTwoFactorTempTokenAsUsed(tempToken);
   removeTwoFactorTempToken(tempToken);
 
   return toSafeAccount(account) as Account;

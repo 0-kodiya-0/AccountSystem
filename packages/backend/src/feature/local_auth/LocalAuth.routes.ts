@@ -10,11 +10,39 @@ export const authRequiredRouter = express.Router({ mergeParams: true });
  */
 
 /**
- * @route POST /signup
- * @desc Register a new user account
+ * @route POST /auth/signup/request-email
+ * @desc Step 1: Request email verification
  * @access Public
  */
-authNotRequiredRouter.post('/signup', LocalAuthController.signup);
+authNotRequiredRouter.post('/signup/request-email', LocalAuthController.requestEmailVerification);
+
+/**
+ * @route GET /auth/signup/verify-email
+ * @desc Step 2: Verify email and get profile token
+ * @access Public
+ */
+authNotRequiredRouter.get('/signup/verify-email', LocalAuthController.verifyEmailForSignup);
+
+/**
+ * @route POST /auth/signup/complete-profile
+ * @desc Step 3: Complete profile and create account
+ * @access Public
+ */
+authNotRequiredRouter.post('/signup/complete-profile', LocalAuthController.completeProfile);
+
+/**
+ * @route DELETE /auth/signup/cancel
+ * @desc Cancel signup process
+ * @access Public
+ */
+authNotRequiredRouter.delete('/signup/cancel', LocalAuthController.cancelEmailVerification);
+
+/**
+ * @route GET /auth/signup/status
+ * @desc Get current signup step status
+ * @access Public
+ */
+authNotRequiredRouter.get('/signup/status', LocalAuthController.getSignupStatus);
 
 /**
  * @route POST /login
@@ -29,13 +57,6 @@ authNotRequiredRouter.post('/login', LocalAuthController.login);
  * @access Public (but requires temp token)
  */
 authNotRequiredRouter.post('/verify-two-factor', LocalAuthController.verifyTwoFactor);
-
-/**
- * @route GET /verify-email
- * @desc Verify email address with token
- * @access Public
- */
-authNotRequiredRouter.get('/verify-email', LocalAuthController.verifyEmail);
 
 /**
  * @route POST /reset-password-request

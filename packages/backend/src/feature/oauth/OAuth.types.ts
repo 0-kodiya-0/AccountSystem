@@ -53,3 +53,11 @@ export interface ProviderResponse {
   tokenDetails: TokenDetails;
   permissionState?: PermissionState | null;
 }
+
+export interface OAuthTwoFactorTokens {
+  accountId: string; // Include account ID directly
+  accessToken: string;
+  refreshToken: string;
+  userInfo: ProviderResponse;
+  expiresAt: string;
+}

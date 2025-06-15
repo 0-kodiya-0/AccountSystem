@@ -8,22 +8,15 @@ import {
   Redirect,
 } from '../../types/response.types';
 import * as LocalAuthService from './LocalAuth.service';
-import {
-  validateSignupRequest,
-  validateLoginRequest,
-  validatePasswordChangeRequest,
-} from '../account/Account.validation';
+import { validateLoginRequest, validatePasswordChangeRequest } from './LocalAuth.validation';
 import {
   LocalAuthRequest,
-  SignupRequest,
   PasswordResetRequest,
   PasswordChangeRequest,
   SetupTwoFactorRequest,
   VerifyTwoFactorRequest,
-  VerifyEmailRequest,
-  Account,
-  AccountType,
-} from '../account/Account.types';
+  CompleteProfileRequest,
+} from './LocalAuth.types';
 import { extractAccessToken, extractRefreshToken, setupCompleteAccountSession } from '../session/session.utils';
 import { sendTwoFactorEnabledNotification } from '../email/Email.service';
 import QRCode from 'qrcode';
@@ -34,35 +27,141 @@ import {
   verifyLocalJwtToken,
   verifyLocalRefreshToken,
 } from './LocalAuth.jwt';
-import { AccountDocument, findUserById } from '../account';
+import { Account, AccountDocument, AccountType, findUserById } from '../account';
 import { logger } from '../../utils/logger';
 import { sendNonCriticalEmail } from '../email/Email.utils';
 import { refreshLocalAccessToken } from '../session/session.service';
+import { getEmailVerificationData, getProfileCompletionData } from './LocalAuth.cache';
 
 /**
- * Sign up (register) with email and password
+ * Step 1: Request email verification
  */
-export const signup = asyncHandler(async (req, res, next) => {
-  const signupData = req.body as SignupRequest;
+export const requestEmailVerification = asyncHandler(async (req, res, next) => {
+  const { email } = req.body;
 
-  // Validate signup request
-  const validationError = validateSignupRequest(signupData);
-  if (validationError) {
-    throw new ValidationError(validationError, 400, ApiErrorCode.VALIDATION_ERROR);
+  if (!email) {
+    throw new BadRequestError('Email is required', 400, ApiErrorCode.MISSING_DATA);
   }
 
-  // Create account
-  const account = await LocalAuthService.createLocalAccount(signupData);
+  const result = await LocalAuthService.requestEmailVerification(email);
 
-  // Return success response
+  next(
+    new JsonSuccess({
+      message: 'Verification email sent. Please check your email to continue.',
+      token: result.token,
+      email: email,
+    }),
+  );
+});
+
+/**
+ * Step 2: Verify email and get profile completion token
+ */
+export const verifyEmailForSignup = asyncHandler(async (req, res, next) => {
+  const { token } = req.query;
+
+  if (!token) {
+    throw new BadRequestError('Verification token is required', 400, ApiErrorCode.TOKEN_INVALID);
+  }
+
+  const result = await LocalAuthService.verifyEmailAndProceedToProfile(token as string);
+
+  next(
+    new JsonSuccess({
+      message: 'Email verified successfully. Please complete your profile.',
+      profileToken: result.profileToken,
+      email: result.email,
+    }),
+  );
+});
+
+/**
+ * Step 3: Complete profile and create account
+ */
+export const completeProfile = asyncHandler(async (req, res, next) => {
+  const { token } = req.query;
+  const profileData = req.body as CompleteProfileRequest;
+
+  if (!token) {
+    throw new BadRequestError('Profile token is required', 400, ApiErrorCode.TOKEN_INVALID);
+  }
+
+  const account = await LocalAuthService.completeProfileAndCreateAccount(token as string, profileData);
+
   next(
     new JsonSuccess(
       {
-        message: 'Account created successfully. Please check your email to verify your account.',
+        message: 'Account created successfully. You can now log in.',
         accountId: account.id,
+        name: account.userDetails.name,
       },
       201,
     ),
+  );
+});
+
+/**
+ * Cancel email verification (delete cache)
+ */
+export const cancelEmailVerification = asyncHandler(async (req, res, next) => {
+  const { email } = req.body;
+
+  if (!email) {
+    throw new BadRequestError('Email is required', 400, ApiErrorCode.MISSING_DATA);
+  }
+
+  await LocalAuthService.cancelEmailVerification(email);
+
+  next(
+    new JsonSuccess({
+      message: 'Email verification cancelled successfully.',
+    }),
+  );
+});
+
+/**
+ * Get signup status (check current step)
+ */
+export const getSignupStatus = asyncHandler(async (req, res, next) => {
+  const { email, token } = req.query;
+
+  if (email) {
+    // Check email verification step
+    const emailData = getEmailVerificationData(email as string);
+    if (emailData) {
+      next(
+        new JsonSuccess({
+          step: 'email_verification',
+          email: emailData.email,
+          token: emailData.verificationToken,
+          expiresAt: emailData.expiresAt,
+        }),
+      );
+      return;
+    }
+  }
+
+  if (token) {
+    // Check profile completion step
+    const profileData = getProfileCompletionData(token as string);
+    if (profileData) {
+      next(
+        new JsonSuccess({
+          step: 'profile_completion',
+          email: profileData.email,
+          emailVerified: profileData.emailVerified,
+          expiresAt: profileData.expiresAt,
+        }),
+      );
+      return;
+    }
+  }
+
+  next(
+    new JsonSuccess({
+      step: 'not_found',
+      message: 'No active signup process found.',
+    }),
   );
 });
 
@@ -171,23 +270,6 @@ export const verifyTwoFactor = asyncHandler(async (req, res, next) => {
   } catch {
     throw new AuthError('Temporary token expired or invalid', 401, ApiErrorCode.AUTH_FAILED);
   }
-});
-
-/**
- * Verify email address - now uses cache
- */
-export const verifyEmail = asyncHandler(async (req, res, next) => {
-  const { token } = req.query as unknown as VerifyEmailRequest;
-
-  if (!token) {
-    throw new BadRequestError('Verification token is required', 400, ApiErrorCode.MISSING_DATA);
-  }
-
-  // Verify email using cached token
-  await LocalAuthService.verifyEmail(token);
-
-  // Redirect to login page with success message
-  next(new JsonSuccess({ message: 'Email verified successfully. You can now log in.' }));
 });
 
 /**

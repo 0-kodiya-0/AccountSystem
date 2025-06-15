@@ -1,4 +1,31 @@
-import { AccountType } from "../account";
+import { AccountType } from '../account';
+
+// Auth request interfaces
+export interface LocalAuthRequest {
+  email?: string;
+  username?: string;
+  password: string;
+  rememberMe?: boolean;
+}
+
+export interface PasswordResetRequest {
+  email: string;
+}
+
+export interface PasswordChangeRequest {
+  oldPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+export interface SetupTwoFactorRequest {
+  password: string;
+  enableTwoFactor: boolean;
+}
+
+export interface VerifyTwoFactorRequest {
+  token: string;
+}
 
 // Password reset token interface
 export interface PasswordResetToken {
@@ -22,7 +49,6 @@ export interface TwoFactorTempToken {
   accountId: string;
   email: string;
   expiresAt: string;
-  isUsed: boolean; // Prevent token reuse
 }
 
 /**
@@ -34,4 +60,29 @@ export interface LocalAuthTokenPayload {
   iat: number;
   exp?: number;
   isRefreshToken?: boolean;
+}
+
+export interface EmailVerificationData {
+  email: string;
+  verificationToken: string;
+  step: 'email_verification' | 'profile_completion';
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface ProfileCompletionData {
+  email: string;
+  emailVerified: boolean;
+  verificationToken: string;
+  expiresAt: string;
+}
+
+export interface CompleteProfileRequest {
+  firstName: string;
+  lastName: string;
+  username?: string;
+  password: string;
+  confirmPassword: string;
+  birthdate?: string;
+  agreeToTerms: boolean;
 }

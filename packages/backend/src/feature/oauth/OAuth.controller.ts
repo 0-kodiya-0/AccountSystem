@@ -1,5 +1,6 @@
 import {
   ApiErrorCode,
+  AuthError,
   BadRequestError,
   CallbackCode,
   CallbackData,
@@ -9,7 +10,7 @@ import {
 } from '../../types/response.types';
 import * as AuthService from './OAuth.service';
 import { AuthType, OAuthState, PermissionState } from './OAuth.types';
-import { AccountType, OAuthProviders } from '../account/Account.types';
+import { Account, AccountType, OAuthProviders } from '../account/Account.types';
 import { validateOAuthState, validatePermissionState, validateState } from './OAuth.validation';
 import { generateOAuthState, generatePermissionState } from './OAuth.utils';
 import {
@@ -36,8 +37,11 @@ import {
   buildGooglePermissionUrl,
   buildGoogleReauthorizeUrl,
 } from '../google/config';
-import { AccountDocument } from '../account';
+import QRCode from 'qrcode';
+import { AccountDocument, findUserById } from '../account';
 import { refreshOAuthAccessToken, revokeAuthTokens } from '../session/session.service';
+import { sendNonCriticalEmail } from '../email/Email.utils';
+import { sendTwoFactorEnabledNotification } from '../email/Email.service';
 
 /**
  * Generate OAuth signup URL
@@ -671,4 +675,166 @@ export const revokeOAuthToken = asyncHandler(async (req, res, next) => {
   const result = await revokeAuthTokens(accountId, account.accountType, accessToken, refreshToken, res);
 
   next(new JsonSuccess(result, undefined, 'OAuth tokens revoked successfully'));
+});
+
+/**
+ * Set up two-factor authentication for OAuth account
+ * Route: POST /:accountId/oauth/setup-two-factor
+ */
+export const setupOAuthTwoFactor = asyncHandler(async (req, res, next) => {
+  const accountId = req.params.accountId;
+  const data = req.body as { enableTwoFactor: boolean };
+
+  // Extract OAuth access token from middleware
+  const accessToken = req.oauthAccessToken;
+  if (!accessToken) {
+    throw new BadRequestError('OAuth access token not available', 400, ApiErrorCode.TOKEN_INVALID);
+  }
+
+  if (typeof data.enableTwoFactor !== 'boolean') {
+    throw new BadRequestError('enableTwoFactor field is required and must be boolean', 400, ApiErrorCode.MISSING_DATA);
+  }
+
+  // Set up 2FA for OAuth account using token verification
+  const result = await AuthService.setupOAuthTwoFactor(accountId, accessToken, data);
+
+  // If enabling 2FA, generate QR code
+  if (data.enableTwoFactor && result.secret && result.qrCodeUrl) {
+    try {
+      const qrCodeDataUrl = await QRCode.toDataURL(result.qrCodeUrl);
+
+      // Generate backup codes
+      const backupCodes = await AuthService.generateOAuthBackupCodes(accountId, accessToken);
+
+      // Send notification email (async - don't wait)
+      const account = (await findUserById(accountId)) as Account;
+      if (account.userDetails.email) {
+        sendNonCriticalEmail(
+          sendTwoFactorEnabledNotification,
+          [account.userDetails.email, account.userDetails.firstName || account.userDetails.name.split(' ')[0]],
+          { maxAttempts: 2, delayMs: 1000 },
+        );
+      }
+
+      next(
+        new JsonSuccess({
+          message: '2FA setup successful. Please scan the QR code with your authenticator app.',
+          qrCode: qrCodeDataUrl,
+          secret: result.secret,
+          backupCodes,
+        }),
+      );
+    } catch (error) {
+      logger.error('Failed to generate QR code:', error);
+      throw new BadRequestError('Failed to generate QR code', 500, ApiErrorCode.SERVER_ERROR);
+    }
+  } else {
+    // If disabling 2FA
+    next(
+      new JsonSuccess({
+        message: '2FA has been disabled for your account.',
+      }),
+    );
+  }
+});
+
+/**
+ * Verify and enable 2FA for OAuth account
+ * Route: POST /:accountId/oauth/verify-two-factor-setup
+ */
+export const verifyAndEnableOAuthTwoFactor = asyncHandler(async (req, res, next) => {
+  const accountId = req.params.accountId;
+  const { token } = req.body;
+
+  if (!token) {
+    throw new BadRequestError('Verification token is required', 400, ApiErrorCode.MISSING_DATA);
+  }
+
+  // Verify and enable 2FA
+  const success = await AuthService.verifyAndEnableOAuthTwoFactor(accountId, token);
+
+  if (success) {
+    next(
+      new JsonSuccess({
+        message: 'Two-factor authentication has been successfully enabled for your account.',
+      }),
+    );
+  } else {
+    throw new AuthError('Failed to verify token', 400, ApiErrorCode.AUTH_FAILED);
+  }
+});
+
+/**
+ * Generate new backup codes for OAuth account
+ * Route: POST /:accountId/oauth/generate-backup-codes
+ */
+export const generateOAuthBackupCodes = asyncHandler(async (req, res, next) => {
+  const accountId = req.params.accountId;
+
+  // Extract OAuth access token from middleware
+  const accessToken = req.oauthAccessToken;
+  if (!accessToken) {
+    throw new BadRequestError('OAuth access token not available', 400, ApiErrorCode.TOKEN_INVALID);
+  }
+
+  // Generate new backup codes using OAuth token verification
+  const backupCodes = await AuthService.generateOAuthBackupCodes(accountId, accessToken);
+
+  next(
+    new JsonSuccess({
+      message: 'New backup codes generated successfully. Please save these codes in a secure location.',
+      backupCodes,
+    }),
+  );
+});
+
+/**
+ * Verify OAuth two-factor authentication during signin
+ * Route: POST /oauth/verify-two-factor
+ * @access Public (uses temp token from OAuth signin)
+ */
+export const verifyOAuthTwoFactor = asyncHandler(async (req, res, next) => {
+  const { token, tempToken } = req.body as {
+    token: string;
+    tempToken: string;
+  };
+
+  if (!token || !tempToken) {
+    throw new BadRequestError('Verification token and temporary token are required', 400, ApiErrorCode.MISSING_DATA);
+  }
+
+  try {
+    // Complete OAuth signin after 2FA verification
+    const signinResult = await AuthService.completeOAuthSigninAfterTwoFactor(tempToken, token);
+
+    // Set up complete account session (auth cookies + account session)
+    if (signinResult.accessTokenInfo && signinResult.accessTokenInfo.expires_in) {
+      setupCompleteAccountSession(
+        req,
+        res,
+        signinResult.userId,
+        AccountType.OAuth,
+        signinResult.accessToken,
+        signinResult.accessTokenInfo.expires_in * 1000,
+        signinResult.refreshToken,
+        true, // set as current account
+      );
+    }
+
+    logger.info(`OAuth 2FA verification successful for account: ${signinResult.userId}`);
+
+    // Return success response
+    next(
+      new JsonSuccess({
+        accountId: signinResult.userId,
+        name: signinResult.userName,
+        message: 'Two-factor authentication successful',
+        needsAdditionalScopes: signinResult.needsAdditionalScopes,
+        missingScopes: signinResult.missingScopes,
+      }),
+    );
+  } catch (error) {
+    logger.error('OAuth 2FA verification failed:', error);
+    throw new AuthError('Two-factor authentication failed', 401, ApiErrorCode.AUTH_FAILED);
+  }
 });
