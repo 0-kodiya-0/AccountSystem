@@ -9,9 +9,7 @@ export class HttpClient {
   constructor(config: SDKConfig) {
     this.proxyPath = config.proxyPath || '';
 
-    this.baseURL = config.proxyPath
-      ? `${config.backendUrl}${config.proxyPath}`
-      : config.backendUrl;
+    this.baseURL = config.proxyPath ? `${config.backendUrl}${config.proxyPath}` : config.backendUrl;
     this.timeout = config.timeout || 30000;
     this.withCredentials = config.withCredentials !== false;
   }
@@ -43,10 +41,7 @@ export class HttpClient {
     const result = await response.json();
 
     if (!result.success) {
-      throw new AuthSDKError(
-        result.error?.message || 'API error',
-        result.error?.code || ErrorCode.SERVER_ERROR,
-      );
+      throw new AuthSDKError(result.error?.message || 'API error', result.error?.code || ErrorCode.SERVER_ERROR);
     }
 
     return result.data;
@@ -64,8 +59,8 @@ export class HttpClient {
     return this.request<T>('PATCH', endpoint, data);
   }
 
-  async delete<T>(endpoint: string): Promise<T> {
-    return this.request<T>('DELETE', endpoint);
+  async delete<T>(endpoint: string, data?: any): Promise<T> {
+    return this.request<T>('DELETE', endpoint, data);
   }
 
   /**

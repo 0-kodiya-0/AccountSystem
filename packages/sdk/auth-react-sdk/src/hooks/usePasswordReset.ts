@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useAuth } from './useAuth';
+import { ServiceManager } from '../services/ServiceManager';
+
+const serviceManager = ServiceManager.getInstance();
 
 export enum PasswordResetStatus {
   IDLE = 'idle',
@@ -19,7 +21,6 @@ export interface UsePasswordResetOptions {
 
 export const usePasswordReset = (options: UsePasswordResetOptions = {}) => {
   const { onSuccess, onError, autoReset = false } = options;
-  const { resetPassword } = useAuth();
 
   const [status, setStatus] = useState<PasswordResetStatus>(PasswordResetStatus.IDLE);
   const [message, setMessage] = useState<string | null>(null);
@@ -29,10 +30,14 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}) => {
   const performReset = useCallback(
     async (resetToken: string, password: string, confirmPassword: string) => {
       try {
+        serviceManager.ensureInitialized();
+
         setStatus(PasswordResetStatus.RESETTING);
         setError(null);
+        setToken(resetToken);
 
-        await resetPassword(resetToken, { password, confirmPassword });
+        // Call the service directly
+        await serviceManager.authService.resetPassword(resetToken, { password, confirmPassword });
 
         const successMessage = 'Password reset successful! You can now sign in with your new password.';
         setStatus(PasswordResetStatus.SUCCESS);
@@ -67,7 +72,7 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}) => {
         onError?.(errorMessage);
       }
     },
-    [resetPassword, onSuccess, onError],
+    [serviceManager, onSuccess, onError],
   );
 
   const manualReset = useCallback(
@@ -78,7 +83,7 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}) => {
     [performReset],
   );
 
-  // Extract token from URL if autoReset is enabled
+  // Auto-extract token from URL if autoReset is enabled
   useEffect(() => {
     if (!autoReset) return;
 
@@ -94,7 +99,7 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}) => {
 
     setToken(urlToken);
     setStatus(PasswordResetStatus.IDLE); // Ready to reset with token
-  }, []);
+  }, [autoReset]);
 
   const retry = useCallback(
     (password: string, confirmPassword: string) => {
@@ -105,27 +110,36 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}) => {
     [token, performReset],
   );
 
-  const clearState = useCallback(() => {
+  const reset = useCallback(() => {
     setStatus(PasswordResetStatus.IDLE);
     setMessage(null);
     setError(null);
+    setToken(null);
   }, []);
 
   return {
+    // Current state
     status,
     message,
     error,
     token,
+
+    // Status checks
     isLoading: status === PasswordResetStatus.RESETTING,
     isSuccess: status === PasswordResetStatus.SUCCESS,
     isError: [PasswordResetStatus.ERROR, PasswordResetStatus.INVALID_TOKEN, PasswordResetStatus.EXPIRED_TOKEN].includes(
       status,
     ),
     hasToken: !!token,
+
+    // Actions
     performReset: token
       ? (password: string, confirmPassword: string) => performReset(token, password, confirmPassword)
       : manualReset,
     retry,
-    clearState,
+    reset,
+
+    // Direct reset function (for advanced usage)
+    resetPassword: performReset,
   };
 };

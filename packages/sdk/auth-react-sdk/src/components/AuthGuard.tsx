@@ -93,32 +93,11 @@ export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
   const redirectToAccountSelection =
     'redirectToAccountSelection' in props ? props.redirectToAccountSelection : undefined;
 
-  const { session, ui, setGlobalError } = useAppStore();
+  const session = useAppStore((state) => state.session);
 
   // Derive authentication state from session
   const isAuthenticated = session.hasSession && session.isValid && session.accountIds.length > 0;
   const loadingState = session.loadingState;
-
-  // Check for global error first - this takes precedence over other states
-  if (ui.globalError) {
-    if (GlobalErrorComponent) {
-      return (
-        <GlobalErrorComponent
-          error={ui.globalError}
-          clearError={() => setGlobalError(null)}
-          retry={() => window.location.reload()}
-        />
-      );
-    }
-
-    return (
-      <DefaultGlobalErrorDisplay
-        error={ui.globalError}
-        clearError={() => setGlobalError(null)}
-        retry={() => window.location.reload()}
-      />
-    );
-  }
 
   // Wait for session to be ready before making auth decisions
   if (loadingState === LoadingState.IDLE) {

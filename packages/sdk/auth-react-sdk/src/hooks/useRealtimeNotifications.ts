@@ -1,12 +1,13 @@
 import { useEffect, useCallback, useState, useRef } from 'react';
-import { useSocket } from './useSocket';
 import { useNotifications } from './useNotifications';
 import { useAppStore } from '../store/useAppStore';
-import { SocketConfig, NotificationSocketEvents, RealtimeNotificationUpdate, type Notification } from '../types';
+import { ServiceManager } from '../services/ServiceManager';
+import { SocketConfig, RealtimeNotificationUpdate, SocketConnectionState } from '../types';
 
 interface UseRealtimeNotificationsOptions {
   socketConfig: SocketConfig;
   accountId?: string;
+  autoConnect?: boolean;
   autoSubscribe?: boolean;
   enableSound?: boolean;
   enableBrowserNotifications?: boolean;
@@ -17,6 +18,7 @@ export const useRealtimeNotifications = (options: UseRealtimeNotificationsOption
   const {
     socketConfig,
     accountId,
+    autoConnect = true,
     autoSubscribe = true,
     enableSound = true,
     enableBrowserNotifications = true,
@@ -26,22 +28,11 @@ export const useRealtimeNotifications = (options: UseRealtimeNotificationsOption
   const { session } = useAppStore();
   const targetAccountId = accountId || session.currentAccountId;
 
-  const {
-    connectionInfo,
-    isConnected,
-    subscribe: socketSubscribe,
-    unsubscribe: socketUnsubscribe,
-    subscriptions,
-    on,
-    off,
-  } = useSocket(socketConfig, {
-    autoConnect: true,
-    autoSubscribe: autoSubscribe && !!targetAccountId,
-    accountId: targetAccountId ? targetAccountId : undefined,
+  const [connectionInfo, setConnectionInfo] = useState({
+    state: SocketConnectionState.DISCONNECTED,
+    reconnectAttempts: 0,
   });
-
-  const { loadNotifications } = useNotifications(targetAccountId ? targetAccountId : undefined);
-
+  const [subscriptions, setSubscriptions] = useState<string[]>([]);
   const [recentUpdates, setRecentUpdates] = useState<RealtimeNotificationUpdate[]>([]);
   const [lastUpdate, setLastUpdate] = useState<RealtimeNotificationUpdate | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(enableSound);
@@ -49,6 +40,20 @@ export const useRealtimeNotifications = (options: UseRealtimeNotificationsOption
   const [updateCount, setUpdateCount] = useState(0);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Get socket client from ServiceManager
+  const getSocketClient = () => {
+    const serviceManager = ServiceManager.getInstance();
+    if (!serviceManager.isInitialized()) {
+      throw new Error('ServiceManager not initialized');
+    }
+
+    if (!serviceManager.hasSocketClient()) {
+      serviceManager.initializeSocket(socketConfig);
+    }
+
+    return serviceManager.socketClient;
+  };
 
   const requestBrowserPermission = useCallback(async (): Promise<boolean> => {
     if (!('Notification' in window)) {
@@ -76,29 +81,10 @@ export const useRealtimeNotifications = (options: UseRealtimeNotificationsOption
     }
   }, []);
 
-  const subscribe = useCallback(
-    async (accountId: string) => {
-      await socketSubscribe(accountId);
-    },
-    [socketSubscribe],
-  );
-
-  const unsubscribe = useCallback(
-    async (accountId: string) => {
-      await socketUnsubscribe(accountId);
-    },
-    [socketUnsubscribe],
-  );
-
   const clearUpdates = useCallback(() => {
     setRecentUpdates([]);
     setLastUpdate(null);
     setUpdateCount(0);
-  }, []);
-
-  const setSoundEnabledWithPersistence = useCallback((enabled: boolean) => {
-    setSoundEnabled(enabled);
-    // Note: localStorage removed as per requirements - settings not persisted
   }, []);
 
   // Initialize browser notifications permission
@@ -145,113 +131,60 @@ export const useRealtimeNotifications = (options: UseRealtimeNotificationsOption
     };
   }, [soundEnabled]);
 
-  // Handle realtime notification events
+  // Monitor connection state and subscriptions
   useEffect(() => {
-    const addUpdate = (update: RealtimeNotificationUpdate) => {
-      setRecentUpdates((prev) => [update, ...prev].slice(0, maxRetainedUpdates));
-      setLastUpdate(update);
-      setUpdateCount((prev) => prev + 1);
-    };
+    const pollConnectionState = () => {
+      try {
+        const socketClient = getSocketClient();
+        const newInfo = socketClient.getConnectionInfo();
+        const newSubscriptions = socketClient.getSubscriptions();
 
-    const handleNewNotification = (notification: Notification) => {
-      const update: RealtimeNotificationUpdate = {
-        type: 'new',
-        notification,
-        accountId: notification.accountId,
-        timestamp: Date.now(),
-      };
-
-      addUpdate(update);
-
-      if (soundEnabled && audioRef.current) {
-        try {
-          audioRef.current.play();
-        } catch (error) {
-          console.warn('Failed to play notification sound:', error);
-        }
-      }
-
-      if (browserNotificationsEnabled && Notification.permission === 'granted') {
-        const browserNotif = new Notification(notification.title, {
-          body: notification.message,
-          icon: '/notification-icon.png',
-          tag: notification.id,
-          badge: '/notification-badge.png',
+        setConnectionInfo(newInfo);
+        setSubscriptions(newSubscriptions);
+      } catch (error) {
+        setConnectionInfo({
+          state: SocketConnectionState.DISCONNECTED,
+          reconnectAttempts: 0,
         });
-
-        browserNotif.onclick = () => {
-          window.focus();
-          browserNotif.close();
-        };
-
-        setTimeout(() => browserNotif.close(), 5000);
-      }
-
-      // Refresh notifications in store
-      if (loadNotifications) {
-        loadNotifications().catch(console.warn);
+        setSubscriptions([]);
       }
     };
 
-    const handleUpdatedNotification = (notification: Notification) => {
-      addUpdate({
-        type: 'updated',
-        notification,
-        accountId: notification.accountId,
-        timestamp: Date.now(),
-      });
+    const interval = setInterval(pollConnectionState, 1000);
+    pollConnectionState(); // Initial poll
 
-      if (loadNotifications) {
-        loadNotifications().catch(console.warn);
-      }
-    };
+    return () => clearInterval(interval);
+  }, []);
 
-    const handleDeletedNotification = (notificationId: string) => {
-      addUpdate({
-        type: 'deleted',
-        notificationId,
-        accountId: targetAccountId!,
-        timestamp: Date.now(),
-      });
-
-      if (loadNotifications) {
-        loadNotifications().catch(console.warn);
-      }
-    };
-
-    const handleAllRead = (data: { accountId: string }) => {
-      addUpdate({
-        type: 'all_read',
-        accountId: data.accountId,
-        timestamp: Date.now(),
-      });
-
-      if (loadNotifications) {
-        loadNotifications().catch(console.warn);
-      }
-    };
-
-    on(NotificationSocketEvents.NEW_NOTIFICATION, handleNewNotification);
-    on(NotificationSocketEvents.UPDATED_NOTIFICATION, handleUpdatedNotification);
-    on(NotificationSocketEvents.DELETED_NOTIFICATION, handleDeletedNotification);
-    on(NotificationSocketEvents.ALL_READ, handleAllRead);
-
-    return () => {
-      off(NotificationSocketEvents.NEW_NOTIFICATION, handleNewNotification);
-      off(NotificationSocketEvents.UPDATED_NOTIFICATION, handleUpdatedNotification);
-      off(NotificationSocketEvents.DELETED_NOTIFICATION, handleDeletedNotification);
-      off(NotificationSocketEvents.ALL_READ, handleAllRead);
-    };
-  }, [soundEnabled, browserNotificationsEnabled, maxRetainedUpdates, targetAccountId]);
-
-  // Auto-subscribe when account changes
+  // Auto-connect on mount
   useEffect(() => {
-    if (autoSubscribe && targetAccountId && isConnected) {
-      subscribe(targetAccountId).catch((error) => {
-        console.warn(`Auto-subscription failed for ${targetAccountId}:`, error);
-      });
+    if (autoConnect) {
+      try {
+        const socketClient = getSocketClient();
+        socketClient.connect().catch((error) => {
+          console.error('Failed to auto-connect:', error);
+        });
+      } catch (error) {
+        console.error('Failed to get socket client for auto-connect:', error);
+      }
     }
-  }, [autoSubscribe, targetAccountId, isConnected]);
+  }, [autoConnect]);
+
+  // Auto-subscribe when connected and account is available
+  useEffect(() => {
+    if (autoSubscribe && targetAccountId && connectionInfo.state === SocketConnectionState.CONNECTED) {
+      try {
+        const socketClient = getSocketClient();
+        socketClient.subscribe(targetAccountId).catch((error) => {
+          console.warn(`Auto-subscription failed for ${targetAccountId}:`, error);
+        });
+      } catch (error) {
+        console.error('Failed to get socket client for auto-subscribe:', error);
+      }
+    }
+  }, [autoSubscribe, targetAccountId, connectionInfo.state]);
+
+  const isConnected = connectionInfo.state === SocketConnectionState.CONNECTED;
 
   return {
     isConnected,
@@ -260,12 +193,9 @@ export const useRealtimeNotifications = (options: UseRealtimeNotificationsOption
     lastUpdate,
     browserNotificationsEnabled,
     requestBrowserPermission,
-    subscribe,
-    unsubscribe,
     clearUpdates,
     soundEnabled,
-    setSoundEnabled: setSoundEnabledWithPersistence,
     updateCount,
-    subscriptions: subscriptions || [],
+    subscriptions,
   };
 };

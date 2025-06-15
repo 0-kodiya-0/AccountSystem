@@ -1,4 +1,7 @@
-// Core Data Types
+// ============================================================================
+// Core Enums
+// ============================================================================
+
 export enum AccountStatus {
   Active = 'active',
   Inactive = 'inactive',
@@ -16,6 +19,17 @@ export enum OAuthProviders {
   Microsoft = 'microsoft',
   Facebook = 'facebook',
 }
+
+export enum LoadingState {
+  IDLE = 'idle',
+  LOADING = 'loading',
+  READY = 'ready',
+  ERROR = 'error',
+}
+
+// ============================================================================
+// Core Data Models
+// ============================================================================
 
 export interface UserDetails {
   firstName?: string;
@@ -45,27 +59,98 @@ export interface Account {
   provider?: OAuthProviders;
 }
 
-// API Response Types
-export interface ApiResponse<T = unknown> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
+export interface SessionAccount {
+  id: string;
+  accountType: AccountType;
+  status: AccountStatus;
+  userDetails: {
+    name: string;
+    email?: string;
+    username?: string;
+    imageUrl?: string;
   };
+  provider?: OAuthProviders;
 }
 
-// Local Auth Types
-export interface LocalSignupRequest {
+// ============================================================================
+// Session Management
+// ============================================================================
+
+export interface AccountSessionInfo {
+  hasSession: boolean;
+  accountIds: string[];
+  currentAccountId: string | null;
+  isValid: boolean;
+}
+
+export interface GetAccountSessionResponse {
+  session: AccountSessionInfo;
+}
+
+export type GetAccountSessionDataResponse = SessionAccount[];
+
+export interface SessionUpdateResponse {
+  message: string;
+  currentAccountId?: string | null;
+  accountId?: string;
+}
+
+// ============================================================================
+// Two-Step Signup Flow
+// ============================================================================
+
+export interface RequestEmailVerificationRequest {
+  email: string;
+}
+
+export interface RequestEmailVerificationResponse {
+  message: string;
+  token: string;
+  email: string;
+}
+
+export interface VerifyEmailSignupResponse {
+  message: string;
+  profileToken: string;
+  email: string;
+}
+
+export interface CompleteProfileRequest {
   firstName: string;
   lastName: string;
-  email: string;
   username?: string;
   password: string;
   confirmPassword: string;
   birthdate?: string;
   agreeToTerms: boolean;
 }
+
+export interface CompleteProfileResponse {
+  message: string;
+  accountId: string;
+  name: string;
+}
+
+export interface SignupStatusResponse {
+  step: 'email_verification' | 'profile_completion' | 'not_found';
+  email?: string;
+  token?: string;
+  emailVerified?: boolean;
+  expiresAt?: string;
+  message?: string;
+}
+
+export interface CancelSignupRequest {
+  email: string;
+}
+
+export interface CancelSignupResponse {
+  message: string;
+}
+
+// ============================================================================
+// Local Authentication
+// ============================================================================
 
 export interface LocalLoginRequest {
   email?: string;
@@ -102,33 +187,6 @@ export interface PasswordChangeRequest {
   confirmPassword: string;
 }
 
-export interface PasswordResetRequestResponse {
-  message: string;
-}
-
-export interface ResetPasswordResponse {
-  message: string;
-}
-
-export interface PasswordChangeResponse {
-  message: string;
-}
-
-export interface TwoFactorSetupVerificationResponse {
-  message: string;
-}
-
-export interface BackupCodesResponse {
-  message: string;
-  backupCodes: string[];
-}
-
-export interface SessionUpdateResponse {
-  message: string;
-  currentAccountId?: string | null;
-  accountId?: string;
-}
-
 export interface TwoFactorSetupRequest {
   password: string;
   enableTwoFactor: boolean;
@@ -141,7 +199,10 @@ export interface TwoFactorSetupResponse {
   message?: string;
 }
 
-// OAuth URL Generation Response Types
+// ============================================================================
+// OAuth Authentication
+// ============================================================================
+
 export interface OAuthUrlResponse {
   authorizationUrl: string;
   state: string;
@@ -166,7 +227,38 @@ export interface ReauthorizeUrlResponse {
   message?: string;
 }
 
-// Token Info Response Types
+// ============================================================================
+// OAuth Two-Factor Authentication
+// ============================================================================
+
+export interface OAuthTwoFactorSetupRequest {
+  enableTwoFactor: boolean;
+}
+
+export interface OAuthTwoFactorSetupResponse {
+  message: string;
+  qrCode?: string;
+  secret?: string;
+  backupCodes?: string[];
+}
+
+export interface OAuthTwoFactorVerifyRequest {
+  token: string;
+  tempToken: string;
+}
+
+export interface OAuthTwoFactorVerifyResponse {
+  accountId: string;
+  name: string;
+  message: string;
+  needsAdditionalScopes?: boolean;
+  missingScopes?: string[];
+}
+
+// ============================================================================
+// Token Management
+// ============================================================================
+
 export interface LocalTokenInfoResponse {
   isExpired: boolean;
   type: string;
@@ -174,6 +266,18 @@ export interface LocalTokenInfoResponse {
   timeRemaining?: number;
   accountId?: string;
   error?: string;
+}
+
+export interface GoogleTokenInfo {
+  accessToken?: string;
+  scope?: string;
+  audience?: string;
+  expires_in?: number;
+  issued_to?: string;
+  user_id?: string;
+  email?: string;
+  verified_email?: boolean;
+  access_type?: string;
 }
 
 export interface OAuthSystemTokenInfo {
@@ -202,13 +306,42 @@ export interface OAuthRefreshTokenInfoResponse {
   };
 }
 
-// Token Revocation Response
 export interface TokenRevocationResponse {
   accessTokenRevoked: boolean;
   refreshTokenRevoked: boolean;
 }
 
-// Logout Response Types
+// ============================================================================
+// Standard Response Types
+// ============================================================================
+
+export interface PasswordResetRequestResponse {
+  message: string;
+}
+
+export interface ResetPasswordResponse {
+  message: string;
+}
+
+export interface PasswordChangeResponse {
+  message: string;
+}
+
+export interface TwoFactorSetupVerificationResponse {
+  message: string;
+}
+
+export interface BackupCodesResponse {
+  message: string;
+  backupCodes: string[];
+}
+
+export interface EmailVerificationResponse {
+  message: string;
+  profileToken?: string;
+  email?: string;
+}
+
 export interface LogoutResponse {
   message: string;
   accountId: string;
@@ -219,51 +352,10 @@ export interface LogoutAllResponse {
   message?: string;
 }
 
-// Email Verification Response
-export interface EmailVerificationResponse {
-  message: string;
-}
+// ============================================================================
+// Notifications
+// ============================================================================
 
-// Local Signup Response
-export interface LocalSignupResponse {
-  accountId: string;
-  message: string;
-}
-
-// Google Permission Types
-export type ServiceType = 'gmail' | 'calendar' | 'drive' | 'docs' | 'sheets' | 'people' | 'meet';
-export type ScopeLevel = 'readonly' | 'full' | 'send' | 'compose' | 'events' | 'file' | 'create' | 'edit';
-
-export interface GoogleTokenInfo {
-  accessToken?: string;
-  scope?: string;
-  audience?: string;
-  expires_in?: number;
-  issued_to?: string;
-  user_id?: string;
-  email?: string;
-  verified_email?: boolean;
-  access_type?: string;
-}
-
-export interface ScopeCheckResult {
-  hasAccess: boolean;
-  scopeName: string;
-  scopeUrl: string;
-}
-
-export interface TokenCheckResponse {
-  summary: {
-    totalRequested: number;
-    totalGranted: number;
-    allGranted: boolean;
-  };
-  requestedScopeNames: string[];
-  requestedScopeUrls: string[];
-  results: Record<string, ScopeCheckResult>;
-}
-
-// Notification Types
 export type NotificationType = 'info' | 'success' | 'warning' | 'error';
 
 export interface Notification {
@@ -294,53 +386,10 @@ export interface NotificationListResponse {
   unreadCount: number;
 }
 
-// SDK Configuration
-export interface SDKConfig {
-  backendUrl: string;
-  timeout?: number;
-  withCredentials?: boolean;
-  proxyPath?: string;
-}
+// ============================================================================
+// Socket/Real-time Types
+// ============================================================================
 
-// Error Types
-export class AuthSDKError extends Error {
-  constructor(
-    message: string,
-    public code: string,
-    public statusCode?: number,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    public data?: Record<string, any>,
-  ) {
-    super(message);
-    this.name = 'AuthSDKError';
-  }
-}
-
-export enum ErrorCode {
-  NETWORK_ERROR = 'NETWORK_ERROR',
-  AUTH_FAILED = 'AUTH_FAILED',
-  TOKEN_EXPIRED = 'TOKEN_EXPIRED',
-  INSUFFICIENT_SCOPE = 'INSUFFICIENT_SCOPE',
-  VALIDATION_ERROR = 'VALIDATION_ERROR',
-  USER_NOT_FOUND = 'USER_NOT_FOUND',
-  SERVER_ERROR = 'SERVER_ERROR',
-}
-
-// OAuth Types
-export interface OAuthAuthUrls {
-  google: string;
-  microsoft: string;
-  facebook: string;
-}
-
-export interface OAuthCallbackParams {
-  state?: string;
-  code?: string;
-  error?: string;
-  redirectUrl?: string;
-}
-
-// Socket connection states
 export enum SocketConnectionState {
   DISCONNECTED = 'disconnected',
   CONNECTING = 'connecting',
@@ -349,7 +398,6 @@ export enum SocketConnectionState {
   ERROR = 'error',
 }
 
-// Socket configuration
 export interface SocketConfig {
   url: string;
   path?: string;
@@ -361,13 +409,11 @@ export interface SocketConfig {
   transports?: ('websocket' | 'polling')[];
 }
 
-// Socket events for notifications
 export enum NotificationSocketEvents {
   // Client to server
   SUBSCRIBE = 'notification:subscribe',
   UNSUBSCRIBE = 'notification:unsubscribe',
   PING = 'ping',
-
   // Server to client
   NEW_NOTIFICATION = 'notification:new',
   UPDATED_NOTIFICATION = 'notification:updated',
@@ -379,15 +425,13 @@ export enum NotificationSocketEvents {
   ERROR = 'error',
 }
 
-// Socket event payloads
 export interface SocketEventPayloads {
   [NotificationSocketEvents.SUBSCRIBE]: { accountId: string };
   [NotificationSocketEvents.UNSUBSCRIBE]: { accountId: string };
   [NotificationSocketEvents.PING]: undefined;
-
   [NotificationSocketEvents.NEW_NOTIFICATION]: Notification;
   [NotificationSocketEvents.UPDATED_NOTIFICATION]: Notification;
-  [NotificationSocketEvents.DELETED_NOTIFICATION]: string; // notification ID
+  [NotificationSocketEvents.DELETED_NOTIFICATION]: string;
   [NotificationSocketEvents.ALL_READ]: { accountId: string };
   [NotificationSocketEvents.SUBSCRIBED]: { accountId: string };
   [NotificationSocketEvents.UNSUBSCRIBED]: { accountId: string };
@@ -395,7 +439,6 @@ export interface SocketEventPayloads {
   [NotificationSocketEvents.ERROR]: { message: string; code?: string };
 }
 
-// Connection info
 export interface SocketConnectionInfo {
   state: SocketConnectionState;
   connectedAt?: Date;
@@ -404,36 +447,8 @@ export interface SocketConnectionInfo {
   latency?: number;
 }
 
-// Socket event listener
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type SocketEventListener<T = any> = (data: T) => void;
 
-// Socket event emitter interface
-export interface SocketEventEmitter {
-  on<K extends keyof SocketEventPayloads>(event: K, listener: SocketEventListener<SocketEventPayloads[K]>): void;
-
-  off<K extends keyof SocketEventPayloads>(event: K, listener?: SocketEventListener<SocketEventPayloads[K]>): void;
-
-  emit<K extends keyof SocketEventPayloads>(event: K, data: SocketEventPayloads[K]): void;
-}
-
-// Real-time notification update
-export interface RealtimeNotificationUpdate {
-  type: 'new' | 'updated' | 'deleted' | 'all_read';
-  notification?: Notification;
-  notificationId?: string;
-  accountId: string;
-  timestamp: number;
-}
-
-// Socket hook state
-export interface SocketState {
-  connection: SocketConnectionInfo;
-  subscriptions: Set<string>; // account IDs
-  isSupported: boolean;
-}
-
-// Socket manager interface
 export interface SocketManager {
   connect(): Promise<void>;
   disconnect(): void;
@@ -444,40 +459,79 @@ export interface SocketManager {
   isConnected(): boolean;
 }
 
-/**
- * Minimal account data returned in session responses
- * Only contains essential information needed for session management
- */
-export interface SessionAccount {
-  id: string;
-  accountType: AccountType;
-  status: AccountStatus;
-  userDetails: {
-    name: string;
-    email?: string;
-    username?: string;
-    imageUrl?: string;
+export interface RealtimeNotificationUpdate {
+  type: 'new' | 'updated' | 'deleted' | 'all_read';
+  notification?: Notification;
+  notificationId?: string;
+  accountId: string;
+  timestamp: number;
+}
+
+// ============================================================================
+// SDK Configuration & Error Handling
+// ============================================================================
+
+export interface SDKConfig {
+  backendUrl: string;
+  timeout?: number;
+  withCredentials?: boolean;
+  proxyPath?: string;
+}
+
+export interface ApiResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
   };
-  provider?: OAuthProviders;
 }
 
-export interface AccountSessionInfo {
-  hasSession: boolean;
-  accountIds: string[];
-  currentAccountId: string | null;
-  isValid: boolean;
+export enum ErrorCode {
+  NETWORK_ERROR = 'NETWORK_ERROR',
+  AUTH_FAILED = 'AUTH_FAILED',
+  TOKEN_EXPIRED = 'TOKEN_EXPIRED',
+  TOKEN_INVALID = 'TOKEN_INVALID',
+  INSUFFICIENT_SCOPE = 'INSUFFICIENT_SCOPE',
+  VALIDATION_ERROR = 'VALIDATION_ERROR',
+  USER_NOT_FOUND = 'USER_NOT_FOUND',
+  USER_EXISTS = 'USER_EXISTS',
+  SERVER_ERROR = 'SERVER_ERROR',
+  MISSING_DATA = 'MISSING_DATA',
 }
 
-export interface GetAccountSessionResponse {
-  session: AccountSessionInfo;
+export class AuthSDKError extends Error {
+  constructor(
+    message: string,
+    public code: string,
+    public statusCode?: number,
+    public data?: Record<string, any>,
+  ) {
+    super(message);
+    this.name = 'AuthSDKError';
+  }
 }
 
-export type GetAccountSessionDataResponse = SessionAccount[];
+// ============================================================================
+// Google Specific Types (for scope checking)
+// ============================================================================
 
-// Enhanced loading states enum
-export enum LoadingState {
-  IDLE = 'idle',
-  LOADING = 'loading',
-  READY = 'ready',
-  ERROR = 'error',
+export type ServiceType = 'gmail' | 'calendar' | 'drive' | 'docs' | 'sheets' | 'people' | 'meet';
+export type ScopeLevel = 'readonly' | 'full' | 'send' | 'compose' | 'events' | 'file' | 'create' | 'edit';
+
+export interface ScopeCheckResult {
+  hasAccess: boolean;
+  scopeName: string;
+  scopeUrl: string;
+}
+
+export interface TokenCheckResponse {
+  summary: {
+    totalRequested: number;
+    totalGranted: number;
+    allGranted: boolean;
+  };
+  requestedScopeNames: string[];
+  requestedScopeUrls: string[];
+  results: Record<string, ScopeCheckResult>;
 }

@@ -1,5 +1,10 @@
 'use client';
 
+export { ServiceManager } from './services/ServiceManager';
+export { AccountService } from './services/AccountService';
+export { AuthService } from './services/AuthService';
+export { NotificationService } from './services/NotificationService';
+
 // Main exports
 export { HttpClient } from './client/HttpClient';
 export { SocketClient } from './client/CustomSocketClient';
@@ -26,7 +31,6 @@ export * as useAppStore from './store/useAppStore';
 // Data Management Hooks
 export { useNotifications } from './hooks/useNotifications';
 export { useRealtimeNotifications } from './hooks/useRealtimeNotifications';
-export { useSocket } from './hooks/useSocket';
 
 export { useAccount } from './hooks/useAccount';
 export { useSession } from './hooks/useSession';
@@ -34,9 +38,6 @@ export { useGoogle } from './hooks/useGoogle';
 
 // Type exports (with new workflow types)
 export * from './types';
-
-// Utility exports
-export * from './utils';
 
 // Version export
 export const version = '1.0.0';

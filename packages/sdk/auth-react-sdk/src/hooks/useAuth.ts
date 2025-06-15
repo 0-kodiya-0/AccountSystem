@@ -1,181 +1,171 @@
-import { useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import {
-  type LocalLoginRequest,
-  type LocalSignupRequest,
-  type TwoFactorVerifyRequest,
-  type PasswordResetRequest,
-  type ResetPasswordRequest,
-  type PasswordChangeRequest,
-  type TwoFactorSetupRequest,
-  type OAuthProviders,
-  LoadingState,
-} from '../types';
+import { ServiceManager } from '../services/ServiceManager';
+import { LocalLoginRequest, OAuthProviders, PasswordChangeRequest, CompleteProfileRequest } from '../types';
+
+// Get ServiceManager instance at module level
+const serviceManager = ServiceManager.getInstance();
 
 export const useAuth = () => {
-  const store = useAppStore();
+  // Get session data from store
+  const session = useAppStore((state) => state.session);
+  const accounts = useAppStore((state) => state.accounts);
+  const tempToken = useAppStore((state) => state.tempToken);
 
-  const isAuthenticated = store.session.hasSession && store.session.isValid && store.session.accountIds.length > 0;
-  const currentAccount = store.session.currentAccountId
-    ? store.accounts.data.get(store.session.currentAccountId)
-    : null;
+  // Get session actions
+  const setCurrentAccount = useAppStore((state) => state.setCurrentAccount);
+  const clearSession = useAppStore((state) => state.clearSession);
+  const refreshSession = useAppStore((state) => state.initializeSession);
 
-  const login = useCallback(
-    async (data: LocalLoginRequest) => {
-      return store.localLogin(data);
-    },
-    [store.localLogin],
-  );
+  // Derived authentication state
+  const isAuthenticated = session.hasSession && session.isValid && session.accountIds.length > 0;
+  const currentAccount = session.currentAccountId ? accounts.get(session.currentAccountId) : null;
 
-  const signup = useCallback(
-    async (data: LocalSignupRequest) => {
-      return store.localSignup(data);
-    },
-    [store.localSignup],
-  );
+  // ============================================================================
+  // Core Authentication
+  // ============================================================================
 
-  const verifyTwoFactor = useCallback(
-    async (data: TwoFactorVerifyRequest) => {
-      return store.verifyTwoFactor(data);
-    },
-    [store.verifyTwoFactor],
-  );
+  const login = async (data: LocalLoginRequest) => {
+    serviceManager.ensureInitialized();
+    const result = await serviceManager.authService.localLogin(data);
 
-  const requestPasswordReset = useCallback(
-    async (email: string) => {
-      return store.requestPasswordReset(email);
-    },
-    [store.requestPasswordReset],
-  );
+    if (!result.requiresTwoFactor) {
+      // Refresh session on successful login
+      await refreshSession();
+    }
 
-  const resetPassword = useCallback(
-    async (token: string, data: ResetPasswordRequest) => {
-      return store.resetPassword(token, data);
-    },
-    [store.resetPassword],
-  );
+    return result;
+  };
 
-  const changePassword = useCallback(
-    async (accountId: string, data: PasswordChangeRequest) => {
-      return store.changePassword(accountId, data);
-    },
-    [store.changePassword],
-  );
+  const logout = async (accountId?: string) => {
+    const targetAccountId = accountId || session.currentAccountId;
+    if (!targetAccountId) throw new Error('No account ID to logout');
 
-  const setupTwoFactor = useCallback(
-    async (accountId: string, data: TwoFactorSetupRequest) => {
-      return store.setupTwoFactor(accountId, data);
-    },
-    [store.setupTwoFactor],
-  );
+    serviceManager.ensureInitialized();
+    await serviceManager.authService.logout(targetAccountId);
+    await refreshSession();
+  };
 
-  const verifyTwoFactorSetup = useCallback(
-    async (accountId: string, token: string) => {
-      return store.verifyTwoFactorSetup(accountId, token);
-    },
-    [store.verifyTwoFactorSetup],
-  );
+  const logoutAll = async () => {
+    if (session.accountIds.length === 0) return;
 
-  const generateBackupCodes = useCallback(
-    async (accountId: string, password: string) => {
-      return store.generateBackupCodes(accountId, password);
-    },
-    [store.generateBackupCodes],
-  );
+    serviceManager.ensureInitialized();
+    await serviceManager.authService.logoutAll(session.accountIds);
+    clearSession();
+  };
 
-  const verifyEmail = useCallback(
-    async (token: string) => {
-      return store.verifyEmail(token);
-    },
-    [store.verifyEmail],
-  );
+  // ============================================================================
+  // Signup Flow
+  // ============================================================================
 
-  const startOAuthSignup = useCallback(
-    (provider: OAuthProviders) => {
-      store.startOAuthSignup(provider);
-    },
-    [store.startOAuthSignup],
-  );
+  const requestEmailVerification = async (email: string) => {
+    serviceManager.ensureInitialized();
+    return serviceManager.authService.requestEmailVerification({ email });
+  };
 
-  const startOAuthSignin = useCallback(
-    (provider: OAuthProviders) => {
-      store.startOAuthSignin(provider);
-    },
-    [store.startOAuthSignin],
-  );
+  const completeProfile = async (token: string, data: CompleteProfileRequest) => {
+    serviceManager.ensureInitialized();
+    return serviceManager.authService.completeProfile(token, data);
+  };
 
-  const switchAccount = useCallback(
-    async (accountId: string) => {
-      return store.setCurrentAccount(accountId);
-    },
-    [store.setCurrentAccount],
-  );
+  const getSignupStatus = async (email?: string, token?: string) => {
+    serviceManager.ensureInitialized();
+    return serviceManager.authService.getSignupStatus(email, token);
+  };
 
-  const requestPermission = useCallback(
-    (scopeNames: string[]) => {
-      if (!currentAccount?.id) throw new Error('No account ID');
-      store.requestGooglePermission(currentAccount?.id, scopeNames);
-    },
-    [store.requestGooglePermission, currentAccount?.id],
-  );
+  const cancelSignup = async (email: string) => {
+    serviceManager.ensureInitialized();
+    return serviceManager.authService.cancelSignup({ email });
+  };
 
-  const reauthorizePermissions = useCallback(() => {
-    if (!currentAccount?.id) throw new Error('No account ID');
-    store.reauthorizePermissions(currentAccount?.id);
-  }, [store.reauthorizePermissions, currentAccount?.id]);
+  // ============================================================================
+  // Password Management
+  // ============================================================================
 
-  const logout = useCallback(
-    async (accountId?: string) => {
-      return store.logout(accountId);
-    },
-    [store.logout],
-  );
+  const requestPasswordReset = async (email: string) => {
+    serviceManager.ensureInitialized();
+    return serviceManager.authService.requestPasswordReset({ email });
+  };
 
-  const logoutAll = useCallback(async () => {
-    return store.logoutAll();
-  }, [store.logoutAll]);
+  const changePassword = async (accountId: string, data: PasswordChangeRequest) => {
+    serviceManager.ensureInitialized();
+    return serviceManager.authService.changePassword(accountId, data);
+  };
+
+  // ============================================================================
+  // OAuth Authentication
+  // ============================================================================
+
+  const startOAuthSignup = (provider: OAuthProviders) => {
+    serviceManager.ensureInitialized();
+    serviceManager.authService.redirectToOAuthSignup(provider);
+  };
+
+  const startOAuthSignin = (provider: OAuthProviders) => {
+    serviceManager.ensureInitialized();
+    serviceManager.authService.redirectToOAuthSignin(provider);
+  };
+
+  // ============================================================================
+  // Account Management
+  // ============================================================================
+
+  const switchAccount = async (accountId: string) => {
+    return setCurrentAccount(accountId);
+  };
+
+  // ============================================================================
+  // Google Permissions
+  // ============================================================================
+
+  const requestGooglePermission = (scopeNames: string[]) => {
+    if (!currentAccount?.id) throw new Error('No current account ID');
+    serviceManager.ensureInitialized();
+    serviceManager.authService.requestGooglePermission(currentAccount.id, scopeNames);
+  };
+
+  const reauthorizePermissions = () => {
+    if (!currentAccount?.id) throw new Error('No current account ID');
+    serviceManager.ensureInitialized();
+    serviceManager.authService.reauthorizePermissions(currentAccount.id);
+  };
 
   return {
-    session: store.session,
-    accounts: Array.from(store.accounts.data.values()),
-    currentAccount,
+    // Authentication state
+    session,
     isAuthenticated,
-    tempToken: store.tempToken,
+    currentAccount,
+    accounts: Array.from(accounts.values()),
+    tempToken,
 
-    // Enhanced loading states
-    loadingState: store.session.loadingState,
-    isLoading: store.session.loadingState === LoadingState.LOADING,
-    isReady: store.session.loadingState === LoadingState.READY,
-    isIdle: store.session.loadingState === LoadingState.IDLE,
-    isError: store.session.loadingState === LoadingState.ERROR,
-
-    // Legacy compatibility
-    error: store.session.error || store.ui.globalError,
-
+    // Core authentication
     login,
-    signup,
-    verifyTwoFactor,
-    verifyEmail,
-    requestPasswordReset,
-    resetPassword,
-    changePassword,
-    setupTwoFactor,
-    verifyTwoFactorSetup,
-    generateBackupCodes,
-    startOAuthSignup,
-    startOAuthSignin,
-    switchAccount,
-    requestPermission,
-    reauthorizePermissions,
     logout,
     logoutAll,
 
-    setCurrentAccount: store.setCurrentAccount,
-    refreshSession: store.refreshSession,
-    clearSession: store.clearSession,
-    clearError: store.clearError,
-    setTempToken: store.setTempToken,
-    clearTempToken: store.clearTempToken,
-    resetSessionState: store.resetSessionState,
+    // Signup flow
+    requestEmailVerification,
+    completeProfile,
+    getSignupStatus,
+    cancelSignup,
+
+    // Password management
+    requestPasswordReset,
+    changePassword,
+
+    // OAuth authentication
+    startOAuthSignup,
+    startOAuthSignin,
+
+    // Account management
+    switchAccount,
+    setCurrentAccount,
+
+    // Google permissions
+    requestGooglePermission,
+    reauthorizePermissions,
+
+    // Session management
+    refreshSession,
+    clearSession,
   };
 };

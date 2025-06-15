@@ -1,5 +1,9 @@
 import { useState, useCallback } from 'react';
-import { useAuth } from './useAuth';
+import { useAppStore } from '../store/useAppStore';
+import { ServiceManager } from '../services/ServiceManager';
+
+// Get ServiceManager instance at module level
+const serviceManager = ServiceManager.getInstance();
 
 export enum TwoFactorVerificationStatus {
   IDLE = 'idle',
@@ -13,7 +17,7 @@ export enum TwoFactorVerificationStatus {
 
 export interface Use2FAVerificationOptions {
   tempToken?: string;
-  maxAttempts?: number;
+  maxAttempts?: number; // Default 5
   onSuccess?: (accountId: string, name?: string) => void;
   onError?: (error: string, attemptsRemaining?: number) => void;
   onLockout?: (lockoutDuration: number) => void;
@@ -22,8 +26,12 @@ export interface Use2FAVerificationOptions {
 export const use2FAVerification = (options: Use2FAVerificationOptions = {}) => {
   const { tempToken, maxAttempts = 5, onSuccess, onError, onLockout } = options;
 
-  const { verifyTwoFactor, tempToken: savedTempToken } = useAuth();
-  const activeTempToken = tempToken || savedTempToken;
+  // Get temp token from store if not provided
+  const storedTempToken = useAppStore((state) => state.tempToken);
+  const activeTempToken = tempToken || storedTempToken;
+
+  // Get store actions
+  const refreshSession = useAppStore((state) => state.initializeSession);
 
   const [status, setStatus] = useState<TwoFactorVerificationStatus>(
     activeTempToken ? TwoFactorVerificationStatus.IDLE : TwoFactorVerificationStatus.EXPIRED_SESSION,
@@ -45,10 +53,11 @@ export const use2FAVerification = (options: Use2FAVerificationOptions = {}) => {
       }
 
       try {
+        serviceManager.ensureInitialized();
         setStatus(TwoFactorVerificationStatus.VERIFYING);
         setError(null);
 
-        const result = await verifyTwoFactor({
+        const result = await serviceManager.authService.verifyTwoFactor({
           token,
           tempToken: activeTempToken,
         });
@@ -57,6 +66,9 @@ export const use2FAVerification = (options: Use2FAVerificationOptions = {}) => {
           setStatus(TwoFactorVerificationStatus.SUCCESS);
           setMessage('Welcome back! Authentication successful.');
           setAttemptsRemaining(null);
+
+          // Refresh session to get updated state
+          await refreshSession();
 
           onSuccess?.(result.accountId, result.name);
         } else {
@@ -103,7 +115,7 @@ export const use2FAVerification = (options: Use2FAVerificationOptions = {}) => {
         onError?.(errorMessage, newAttemptsRemaining);
       }
     },
-    [activeTempToken, status, attemptsRemaining, maxAttempts, verifyTwoFactor, onSuccess, onError, onLockout],
+    [activeTempToken, status, attemptsRemaining, maxAttempts, refreshSession, onSuccess, onError, onLockout],
   );
 
   const useBackupCode = useCallback(
@@ -125,15 +137,21 @@ export const use2FAVerification = (options: Use2FAVerificationOptions = {}) => {
   }, [activeTempToken, maxAttempts]);
 
   return {
+    // State
     status,
     message,
     error,
     attemptsRemaining,
+    tempToken: activeTempToken,
+
+    // Status checks
     isLoading: status === TwoFactorVerificationStatus.VERIFYING,
     canRetry:
       status !== TwoFactorVerificationStatus.LOCKED_OUT &&
       status !== TwoFactorVerificationStatus.EXPIRED_SESSION &&
       (attemptsRemaining === null || attemptsRemaining > 0),
+
+    // Actions
     verify,
     useBackupCode,
     clearError,

@@ -1,68 +1,108 @@
-import { useCallback, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { LoadingState, type Account } from '../types';
+import { ServiceManager } from '../services/ServiceManager';
+import { Account } from '../types';
 
-export const useAccount = (accountId?: string) => {
-  const store = useAppStore();
+// Get ServiceManager instance at module level
+const serviceManager = ServiceManager.getInstance();
 
-  const targetAccountId = accountId || store.session.currentAccountId;
-  const account = targetAccountId ? store.accounts.data.get(targetAccountId) : null;
-  const loadingState = targetAccountId
-    ? store.accounts.loadingStates.get(targetAccountId) || LoadingState.IDLE
-    : LoadingState.IDLE;
-  const error = targetAccountId ? store.accounts.errors.get(targetAccountId) : null;
+export interface UseAccountOptions {
+  accountId?: string;
+  autoLoad?: boolean; // Default true - auto-load account data
+}
 
-  const loadAccount = useCallback(
-    async (id: string) => {
-      return store.loadAccount(id);
-    },
-    [store.loadAccount],
-  );
+export const useAccount = (options: UseAccountOptions = {}) => {
+  const { accountId, autoLoad = true } = options;
 
-  const updateAccount = useCallback(
-    (id: string, updates: Partial<Account>) => {
-      store.updateAccount(id, updates);
-    },
-    [store.updateAccount],
-  );
+  // Get current account ID from store if not provided
+  const currentAccountId = useAppStore((state) => state.session.currentAccountId);
+  const targetAccountId = accountId || currentAccountId;
 
-  const removeAccount = useCallback(
-    (id: string) => {
-      store.removeAccount(id);
-    },
-    [store.removeAccount],
-  );
+  // Get account data from store
+  const account = useAppStore((state) => (targetAccountId ? state.accounts.get(targetAccountId) : null));
 
-  const clearError = useCallback(() => {
-    if (targetAccountId) {
-      store.clearError(targetAccountId);
-    }
-  }, [store.clearError, targetAccountId]);
+  // Get store actions directly
+  const loadAccount = useAppStore((state) => state.loadAccount);
+  const updateAccount = useAppStore((state) => state.updateAccount);
+  const removeAccount = useAppStore((state) => state.removeAccount);
 
-  const resetState = useCallback(() => {
-    if (targetAccountId) {
-      store.resetAccountState(targetAccountId);
-    }
-  }, [store.resetAccountState, targetAccountId]);
+  // Convenience methods
+  async function reload() {
+    if (!targetAccountId) throw new Error('No account ID available');
+    return loadAccount(targetAccountId);
+  }
 
+  function update(updates: Partial<Account>) {
+    if (!targetAccountId) throw new Error('No account ID available');
+    updateAccount(targetAccountId, updates);
+  }
+
+  function remove() {
+    if (!targetAccountId) throw new Error('No account ID available');
+    removeAccount(targetAccountId);
+  }
+
+  // Account-specific service methods
+  async function updateSecurity(securityUpdates: Partial<Account['security']>) {
+    if (!targetAccountId) throw new Error('No account ID available');
+
+    serviceManager.ensureInitialized();
+    const updatedAccount = await serviceManager.accountService.updateAccountSecurity(targetAccountId, securityUpdates);
+
+    // Update local cache
+    updateAccount(targetAccountId, updatedAccount);
+    return updatedAccount;
+  }
+
+  async function getEmail() {
+    if (!targetAccountId) throw new Error('No account ID available');
+
+    serviceManager.ensureInitialized();
+    return serviceManager.accountService.getAccountEmail(targetAccountId);
+  }
+
+  // Auto-load account if enabled and we have an account ID
   useEffect(() => {
-    if (targetAccountId && !account && loadingState === LoadingState.IDLE && !error) {
-      loadAccount(targetAccountId);
+    if (!autoLoad || !targetAccountId) return;
+
+    // Only load if we don't have account data already
+    if (!account) {
+      loadAccount(targetAccountId).catch((error) => {
+        console.warn('Failed to auto-load account:', error);
+      });
     }
-  }, [targetAccountId, loadingState, error]);
+  }, [autoLoad, targetAccountId, account]);
+
+  // Derived account data
+  const isLoaded = !!account;
+  const isLocal = account?.accountType === 'local';
+  const isOAuth = account?.accountType === 'oauth';
+  const has2FA = account?.security?.twoFactorEnabled || false;
+  const displayName = account?.userDetails?.name || 'Unknown User';
+  const email = account?.userDetails?.email;
+  const imageUrl = account?.userDetails?.imageUrl;
 
   return {
+    // Account data
     account,
-    loadingState,
-    isLoading: loadingState === LoadingState.LOADING,
-    isReady: loadingState === LoadingState.READY,
-    isIdle: loadingState === LoadingState.IDLE,
-    isError: loadingState === LoadingState.ERROR,
-    error,
+    accountId: targetAccountId,
+    isLoaded,
+    isLocal,
+    isOAuth,
+    has2FA,
+    displayName,
+    email,
+    imageUrl,
+
+    // Direct store actions
     loadAccount,
     updateAccount,
     removeAccount,
-    clearError,
-    resetState,
+
+    reload,
+    update,
+    remove,
+    updateSecurity,
+    getEmail,
   };
 };

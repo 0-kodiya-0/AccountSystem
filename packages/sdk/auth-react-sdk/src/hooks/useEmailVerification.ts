@@ -1,5 +1,8 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useAuth } from './useAuth';
+import { useAppStore } from '../store/useAppStore';
+import { ServiceManager } from '../services/ServiceManager';
+
+const serviceManager = ServiceManager.getInstance();
 
 export enum EmailVerificationStatus {
   LOADING = 'loading',
@@ -8,35 +11,41 @@ export enum EmailVerificationStatus {
   INVALID_TOKEN = 'invalid_token',
   EXPIRED_TOKEN = 'expired_token',
   NO_TOKEN = 'no_token',
+  IDLE = 'idle',
 }
 
 export interface UseEmailVerificationOptions {
-  onSuccess?: (message?: string) => void;
+  onSuccess?: (profileToken: string, email: string) => void;
   onError?: (error: string) => void;
-  autoVerify?: boolean; // Default true
+  autoVerify?: boolean; // Default true - auto-verify from URL
 }
 
 export const useEmailVerification = (options: UseEmailVerificationOptions = {}) => {
   const { onSuccess, onError, autoVerify = true } = options;
-  const { verifyEmail: authVerifyEmail } = useAuth();
 
-  const [status, setStatus] = useState<EmailVerificationStatus>(EmailVerificationStatus.LOADING);
+  const [status, setStatus] = useState<EmailVerificationStatus>(EmailVerificationStatus.IDLE);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [profileToken, setProfileToken] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
 
   const verifyEmail = useCallback(
     async (verificationToken: string) => {
       try {
         setStatus(EmailVerificationStatus.LOADING);
         setError(null);
+        setToken(verificationToken);
 
-        await authVerifyEmail(verificationToken);
+        // Call the store function directly
+        const result = await serviceManager.authService.verifyEmailForSignup(verificationToken);
 
-        const successMessage = 'Email verified successfully! Your account is now active.';
         setStatus(EmailVerificationStatus.SUCCESS);
-        setMessage(successMessage);
-        onSuccess?.(successMessage);
+        setMessage(result.message);
+        setProfileToken(result.profileToken);
+        setEmail(result.email);
+
+        onSuccess?.(result.profileToken, result.email);
       } catch (err: any) {
         let errorStatus = EmailVerificationStatus.ERROR;
         let errorMessage = 'Email verification failed';
@@ -64,7 +73,7 @@ export const useEmailVerification = (options: UseEmailVerificationOptions = {}) 
         onError?.(errorMessage);
       }
     },
-    [authVerifyEmail, onSuccess, onError],
+    [onSuccess, onError],
   );
 
   const manualVerify = useCallback(
@@ -75,7 +84,7 @@ export const useEmailVerification = (options: UseEmailVerificationOptions = {}) 
     [verifyEmail],
   );
 
-  // Extract token from URL and auto-verify
+  // Auto-verify from URL if enabled
   useEffect(() => {
     if (!autoVerify) return;
 
@@ -89,9 +98,9 @@ export const useEmailVerification = (options: UseEmailVerificationOptions = {}) 
       return;
     }
 
-    setToken(urlToken);
+    // Auto-verify with the token from URL
     verifyEmail(urlToken);
-  }, []);
+  }, [autoVerify]);
 
   const retry = useCallback(() => {
     if (token) {
@@ -99,11 +108,25 @@ export const useEmailVerification = (options: UseEmailVerificationOptions = {}) 
     }
   }, [token, verifyEmail]);
 
+  const reset = useCallback(() => {
+    setStatus(EmailVerificationStatus.IDLE);
+    setMessage(null);
+    setError(null);
+    setToken(null);
+    setProfileToken(null);
+    setEmail(null);
+  }, []);
+
   return {
+    // Current state
     status,
     message,
     error,
     token,
+    profileToken,
+    email,
+
+    // Status checks
     isLoading: status === EmailVerificationStatus.LOADING,
     isSuccess: status === EmailVerificationStatus.SUCCESS,
     isError: [
@@ -111,7 +134,15 @@ export const useEmailVerification = (options: UseEmailVerificationOptions = {}) 
       EmailVerificationStatus.INVALID_TOKEN,
       EmailVerificationStatus.EXPIRED_TOKEN,
     ].includes(status),
+    hasToken: !!token,
+    hasProfileToken: !!profileToken,
+
+    // Actions
     verify: manualVerify,
     retry,
+    reset,
+
+    // Direct verification function (for advanced usage)
+    verifyEmail,
   };
 };
