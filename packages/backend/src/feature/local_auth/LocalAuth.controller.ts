@@ -1,5 +1,13 @@
 import { asyncHandler } from '../../utils/response';
-import { JsonSuccess, ValidationError, ApiErrorCode, BadRequestError } from '../../types/response.types';
+import {
+  JsonSuccess,
+  ValidationError,
+  ApiErrorCode,
+  BadRequestError,
+  CallbackData,
+  CallbackCode,
+  Redirect,
+} from '../../types/response.types';
 import * as LocalAuthService from './LocalAuth.service';
 import { validateLoginRequest, validatePasswordChangeRequest } from './LocalAuth.validation';
 import {
@@ -13,6 +21,7 @@ import { ValidationUtils } from '../../utils/validation';
 import { createLocalAccessToken, createLocalRefreshToken } from '../tokens';
 import { Account } from '../account';
 import { getEmailVerificationData, getProfileCompletionData } from './LocalAuth.cache';
+import { getCallbackUrl } from '../../utils/redirect';
 
 /**
  * Step 1: Request email verification
@@ -163,14 +172,15 @@ export const login = asyncHandler(async (req, res, next) => {
 
   // Check if 2FA is required
   if ('requiresTwoFactor' in result && result.requiresTwoFactor) {
-    next(
-      new JsonSuccess({
-        requiresTwoFactor: true,
-        tempToken: result.tempToken,
-        accountId: result.accountId,
-        message: 'Please enter your two-factor authentication code',
-      }),
-    );
+    const callbackData: CallbackData = {
+      code: CallbackCode.LOCAL_SIGNIN_REQUIRES_2FA,
+      requiresTwoFactor: true,
+      accountId: result.accountId,
+      tempToken: result.tempToken,
+      message: 'Please complete two-factor authentication to continue.',
+    };
+
+    next(new Redirect(callbackData, getCallbackUrl()));
     return;
   }
 

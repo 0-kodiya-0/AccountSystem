@@ -214,6 +214,7 @@ export const handleOAuthCallback = oauthCallbackHandler(
           accountId: signinResult.accountId,
           tempToken: signinResult.tempToken,
           provider: stateDetails.provider,
+          requiresTwoFactor: true,
           message: 'Please complete two-factor authentication to continue.',
         };
 
