@@ -7,6 +7,7 @@ import {
   GoogleScopeResult,
   GoogleScopeState,
   GoogleTokenState,
+  OAuthProviders,
   TokenStatusResponse,
 } from '../types';
 import { ApiErrorCode, AuthSDKError } from '../types';
@@ -210,19 +211,22 @@ export const useGoogle = (accountId?: string) => {
   );
 
   const requestPermission = useCallback(
-    (scopeNames: string[]) => {
+    (provider: OAuthProviders, scopeNames: string[]) => {
       if (!validateOAuthAccount()) return;
 
-      authService.requestGooglePermission(targetAccountId!, scopeNames);
+      authService.requestPermission(provider, targetAccountId!, scopeNames);
     },
     [validateOAuthAccount, authService, targetAccountId],
   );
 
-  const reauthorizePermissions = useCallback(() => {
-    if (!validateOAuthAccount()) return;
+  const reauthorizePermissions = useCallback(
+    (provider: OAuthProviders) => {
+      if (!validateOAuthAccount()) return;
 
-    authService.reauthorizePermissions(targetAccountId!);
-  }, [validateOAuthAccount, authService, targetAccountId]);
+      authService.reauthorizePermissions(provider, targetAccountId!);
+    },
+    [validateOAuthAccount, authService, targetAccountId],
+  );
 
   const hasScope = useCallback(
     async (scopeName: string): Promise<boolean> => {

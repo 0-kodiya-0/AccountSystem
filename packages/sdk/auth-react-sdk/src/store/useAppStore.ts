@@ -6,10 +6,6 @@ import { enableMapSet } from 'immer';
 
 enableMapSet();
 
-// ============================================================================
-// Three-State Loading Pattern Types
-// ============================================================================
-
 type AsyncState<T> = {
   data: T | null;
   loading: boolean;
@@ -21,10 +17,6 @@ type AsyncOperation = {
   loading: boolean;
   error: string | null;
 };
-
-// ============================================================================
-// App State with Three-State Pattern (No Notifications)
-// ============================================================================
 
 interface AppState {
   // Session state with three-state pattern
@@ -40,10 +32,6 @@ interface AppState {
   tempToken: string | null;
 }
 
-// ============================================================================
-// Helper Functions for Three-State Pattern
-// ============================================================================
-
 const createAsyncState = <T>(initialData: T | null = null): AsyncState<T> => ({
   data: initialData,
   loading: false,
@@ -56,14 +44,7 @@ const createAsyncOperation = (): AsyncOperation => ({
   error: null,
 });
 
-// ============================================================================
-// Store Actions with Three-State Pattern
-// ============================================================================
-
 interface AppActions {
-  // ============================================================================
-  // Session Actions
-  // ============================================================================
   setSessionLoading: (loading: boolean) => void;
   setSessionData: (data: AccountSessionInfo) => void;
   setSessionError: (error: string | null) => void;
@@ -72,9 +53,6 @@ interface AppActions {
   setSwitchingAccount: (loading: boolean, error?: string | null) => void;
   setLoadingAccounts: (loading: boolean, error?: string | null) => void;
 
-  // ============================================================================
-  // Account Actions
-  // ============================================================================
   setAccountLoading: (accountId: string, loading: boolean) => void;
   setAccountData: (accountId: string, data: Account) => void;
   setAccountError: (accountId: string, error: string | null) => void;
@@ -82,30 +60,17 @@ interface AppActions {
   updateAccountData: (accountId: string, updates: Partial<Account>) => void;
   removeAccount: (accountId: string) => void;
 
-  // ============================================================================
-  // Temp Token
-  // ============================================================================
   setTempToken: (token: string) => void;
   clearTempToken: () => void;
 
-  // ============================================================================
-  // Computed Getters
-  // ============================================================================
   getSessionState: () => AsyncState<AccountSessionInfo>;
   getAccountState: (accountId: string) => AsyncState<Account>;
   shouldLoadAccount: (accountId: string, maxAge?: number) => boolean;
 }
 
-// ============================================================================
-// Store Implementation
-// ============================================================================
-
 export const useAppStore = create<AppState & AppActions>()(
   subscribeWithSelector(
     immer((set, get) => ({
-      // ============================================================================
-      // Initial State
-      // ============================================================================
       session: {
         ...createAsyncState<AccountSessionInfo>(),
         switchingAccount: createAsyncOperation(),
@@ -115,9 +80,6 @@ export const useAppStore = create<AppState & AppActions>()(
       accounts: new Map(),
       tempToken: null,
 
-      // ============================================================================
-      // Session Actions
-      // ============================================================================
       setSessionLoading: (loading: boolean) => {
         set((state) => {
           state.session.loading = loading;
@@ -169,9 +131,6 @@ export const useAppStore = create<AppState & AppActions>()(
         });
       },
 
-      // ============================================================================
-      // Account Actions
-      // ============================================================================
       setAccountLoading: (accountId: string, loading: boolean) => {
         set((state) => {
           if (!state.accounts.has(accountId)) {
@@ -247,9 +206,6 @@ export const useAppStore = create<AppState & AppActions>()(
         });
       },
 
-      // ============================================================================
-      // Temp Token
-      // ============================================================================
       setTempToken: (token: string) => {
         set((state) => {
           state.tempToken = token;
@@ -262,9 +218,6 @@ export const useAppStore = create<AppState & AppActions>()(
         });
       },
 
-      // ============================================================================
-      // Computed Getters
-      // ============================================================================
       getSessionState: () => {
         const { switchingAccount, loadingAccounts, ...sessionState } = get().session;
         return sessionState;

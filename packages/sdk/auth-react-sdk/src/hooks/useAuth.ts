@@ -164,20 +164,20 @@ export const useAuth = () => {
     authService.redirectToOAuthSignin(provider);
   };
 
-  const requestGooglePermission = (scopeNames: string[]) => {
+  const requestPermission = (provider: OAuthProviders, scopeNames: string[]) => {
     if (!currentAccountId) {
       console.error('No current account ID');
       return;
     }
-    authService.requestGooglePermission(currentAccountId, scopeNames);
+    authService.requestPermission(provider, currentAccountId, scopeNames);
   };
 
-  const reauthorizePermissions = () => {
+  const reauthorizePermissions = (provider: OAuthProviders) => {
     if (!currentAccountId) {
       console.error('No current account ID');
       return;
     }
-    authService.reauthorizePermissions(currentAccountId);
+    authService.reauthorizePermissions(provider, currentAccountId);
   };
 
   return {
@@ -232,7 +232,7 @@ export const useAuth = () => {
     startOAuthSignup,
     startOAuthSignin,
 
-    requestGooglePermission,
+    requestPermission,
     reauthorizePermissions,
 
     isSessionLoading: sessionState.loading,

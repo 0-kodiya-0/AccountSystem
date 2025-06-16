@@ -18,8 +18,6 @@ import {
   TokenRevocationResponse,
   LogoutResponse,
   LogoutAllResponse,
-  EmailVerificationResponse,
-  // NEW: Two-step signup types
   RequestEmailVerificationRequest,
   RequestEmailVerificationResponse,
   VerifyEmailSignupResponse,
@@ -28,7 +26,6 @@ import {
   SignupStatusResponse,
   CancelSignupRequest,
   CancelSignupResponse,
-  // NEW: OAuth 2FA types
   UnifiedTwoFactorVerifyResponse,
   UnifiedTwoFactorVerifyRequest,
   BackupCodesRequest,
@@ -165,10 +162,6 @@ const validatePassword = (password: string | null | undefined, context: string):
 export class AuthService {
   constructor(private httpClient: HttpClient) {}
 
-  // ============================================================================
-  // Session Management (unchanged)
-  // ============================================================================
-
   async getAccountSession(): Promise<GetAccountSessionResponse> {
     return this.httpClient.get('/session');
   }
@@ -212,10 +205,6 @@ export class AuthService {
 
     return this.httpClient.post('/session/remove', { accountId });
   }
-
-  // ============================================================================
-  // Two-Step Signup Flow (unchanged)
-  // ============================================================================
 
   async requestEmailVerification(data: RequestEmailVerificationRequest): Promise<RequestEmailVerificationResponse> {
     validateRequired(data, 'signup data', 'email verification request');
@@ -263,10 +252,6 @@ export class AuthService {
     return this.httpClient.delete('/auth/signup/cancel', data);
   }
 
-  // ============================================================================
-  // Local Authentication (updated login, removed old 2FA methods)
-  // ============================================================================
-
   async localLogin(data: LocalLoginRequest): Promise<LocalLoginResponse> {
     validateRequired(data, 'login data', 'local login');
     validateEmail(data.email, 'local login');
@@ -300,10 +285,6 @@ export class AuthService {
 
     return this.httpClient.post(`/${accountId}/auth/change-password`, data);
   }
-
-  // ============================================================================
-  // UNIFIED Two-Factor Authentication (NEW - replaces separate local/OAuth 2FA)
-  // ============================================================================
 
   /**
    * Get 2FA status for any account type
@@ -369,10 +350,6 @@ export class AuthService {
     return this.httpClient.post('/twofa/verify-login', data);
   }
 
-  // ============================================================================
-  // UNIFIED Token Management (NEW - replaces separate local/OAuth token endpoints)
-  // ============================================================================
-
   /**
    * Get comprehensive token status for any account type
    */
@@ -435,10 +412,6 @@ export class AuthService {
     return this.httpClient.post(`/${accountId}/tokens/validate`, data);
   }
 
-  // ============================================================================
-  // OAuth Authentication (updated to remove old 2FA and token methods)
-  // ============================================================================
-
   async generateOAuthSignupUrl(provider: OAuthProviders): Promise<OAuthUrlResponse> {
     validateProvider(provider, 'OAuth provider invalid to generate signup URL');
 
@@ -477,10 +450,6 @@ export class AuthService {
     return this.httpClient.get(`/oauth/reauthorize/${provider}?${params.toString()}`);
   }
 
-  // ============================================================================
-  // Browser Navigation Methods (updated)
-  // ============================================================================
-
   redirectToOAuthSignup(provider: OAuthProviders): void {
     validateProvider(provider, 'OAuth signup redirect');
 
@@ -505,11 +474,11 @@ export class AuthService {
       });
   }
 
-  requestGooglePermission(accountId: string, scopeNames: string[]): void {
+  requestPermission(provider: OAuthProviders, accountId: string, scopeNames: string[]): void {
     validateAccountId(accountId, 'Google permission request');
     validateArray(scopeNames, 'scope names', 'Google permission request');
 
-    this.generatePermissionUrl(OAuthProviders.Google, accountId, scopeNames)
+    this.generatePermissionUrl(provider, accountId, scopeNames)
       .then((response) => {
         window.location.href = response.authorizationUrl;
       })
@@ -518,10 +487,10 @@ export class AuthService {
       });
   }
 
-  reauthorizePermissions(accountId: string): void {
+  reauthorizePermissions(provider: OAuthProviders, accountId: string): void {
     validateAccountId(accountId, 'permission reauthorization');
 
-    this.generateReauthorizeUrl(OAuthProviders.Google, accountId)
+    this.generateReauthorizeUrl(provider, accountId)
       .then((response) => {
         if (response.authorizationUrl) {
           window.location.href = response.authorizationUrl;
@@ -533,10 +502,6 @@ export class AuthService {
         console.error('Failed to generate reauthorization URL:', error);
       });
   }
-
-  // ============================================================================
-  // Logout Methods (unchanged)
-  // ============================================================================
 
   async logout(accountId: string, clearClientAccountState: boolean = true): Promise<LogoutResponse> {
     validateAccountId(accountId, 'logout');
