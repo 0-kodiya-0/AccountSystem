@@ -3,25 +3,18 @@ import {
   GetAccountSessionDataResponse,
   LocalLoginRequest,
   LocalLoginResponse,
-  TwoFactorVerifyRequest,
   PasswordResetRequest,
   ResetPasswordRequest,
   PasswordChangeRequest,
-  TwoFactorSetupRequest,
-  TwoFactorSetupResponse,
   SessionUpdateResponse,
   PasswordChangeResponse,
   PasswordResetRequestResponse,
   ResetPasswordResponse,
-  TwoFactorSetupVerificationResponse,
   BackupCodesResponse,
   OAuthProviders,
   OAuthUrlResponse,
   PermissionUrlResponse,
   ReauthorizeUrlResponse,
-  LocalTokenInfoResponse,
-  OAuthTokenInfoResponse,
-  OAuthRefreshTokenInfoResponse,
   TokenRevocationResponse,
   LogoutResponse,
   LogoutAllResponse,
@@ -36,10 +29,16 @@ import {
   CancelSignupRequest,
   CancelSignupResponse,
   // NEW: OAuth 2FA types
-  OAuthTwoFactorSetupRequest,
-  OAuthTwoFactorSetupResponse,
-  OAuthTwoFactorVerifyRequest,
-  OAuthTwoFactorVerifyResponse,
+  UnifiedTwoFactorVerifyResponse,
+  UnifiedTwoFactorVerifyRequest,
+  BackupCodesRequest,
+  UnifiedTwoFactorSetupResponse,
+  TwoFactorStatusResponse,
+  UnifiedTwoFactorSetupRequest,
+  TokenInfoResponse,
+  TokenValidationRequest,
+  TokenValidationResponse,
+  TokenStatusResponse,
 } from '../types';
 import { HttpClient } from '../client/HttpClient';
 
@@ -167,7 +166,7 @@ export class AuthService {
   constructor(private httpClient: HttpClient) {}
 
   // ============================================================================
-  // Session Management (with validation)
+  // Session Management (unchanged)
   // ============================================================================
 
   async getAccountSession(): Promise<GetAccountSessionResponse> {
@@ -175,7 +174,6 @@ export class AuthService {
   }
 
   async getSessionAccountsData(accountIds?: string[]): Promise<GetAccountSessionDataResponse> {
-    // Validate accountIds if provided
     if (accountIds && accountIds.length > 0) {
       validateArray(accountIds, 'account IDs', 'session accounts data', 1);
       accountIds.forEach((id, index) => {
@@ -192,7 +190,6 @@ export class AuthService {
   }
 
   async setCurrentAccountInSession(accountId: string | null): Promise<SessionUpdateResponse> {
-    // Allow null for clearing current account, but validate if provided
     if (accountId !== null) {
       validateAccountId(accountId, 'set current account in session');
     }
@@ -217,12 +214,9 @@ export class AuthService {
   }
 
   // ============================================================================
-  // Two-Step Signup Flow (with validation)
+  // Two-Step Signup Flow (unchanged)
   // ============================================================================
 
-  /**
-   * Step 1: Request email verification for signup
-   */
   async requestEmailVerification(data: RequestEmailVerificationRequest): Promise<RequestEmailVerificationResponse> {
     validateRequired(data, 'signup data', 'email verification request');
     validateEmail(data.email, 'email verification request');
@@ -230,18 +224,12 @@ export class AuthService {
     return this.httpClient.post('/auth/signup/request-email', data);
   }
 
-  /**
-   * Step 2: Verify email and get profile completion token
-   */
   async verifyEmailForSignup(token: string): Promise<VerifyEmailSignupResponse> {
     validateToken(token, 'verification token', 'email verification');
 
     return this.httpClient.get(`/auth/signup/verify-email?token=${encodeURIComponent(token)}`);
   }
 
-  /**
-   * Step 3: Complete profile and create account
-   */
   async completeProfile(token: string, data: CompleteProfileRequest): Promise<CompleteProfileResponse> {
     validateToken(token, 'profile completion token', 'profile completion');
     validateRequired(data, 'profile data', 'profile completion');
@@ -253,9 +241,6 @@ export class AuthService {
     return this.httpClient.post(`/auth/signup/complete-profile?token=${encodeURIComponent(token)}`, data);
   }
 
-  /**
-   * Get current signup step status
-   */
   async getSignupStatus(email?: string, token?: string): Promise<SignupStatusResponse> {
     const params = new URLSearchParams();
     if (email) {
@@ -271,9 +256,6 @@ export class AuthService {
     return this.httpClient.get(`/auth/signup/status${queryString ? `?${queryString}` : ''}`);
   }
 
-  /**
-   * Cancel signup process
-   */
   async cancelSignup(data: CancelSignupRequest): Promise<CancelSignupResponse> {
     validateRequired(data, 'cancel data', 'signup cancellation');
     validateEmail(data.email, 'signup cancellation');
@@ -282,7 +264,7 @@ export class AuthService {
   }
 
   // ============================================================================
-  // Local Authentication (with validation)
+  // Local Authentication (updated login, removed old 2FA methods)
   // ============================================================================
 
   async localLogin(data: LocalLoginRequest): Promise<LocalLoginResponse> {
@@ -291,14 +273,6 @@ export class AuthService {
     validateRequired(data.password, 'password', 'local login');
 
     return this.httpClient.post('/auth/login', data);
-  }
-
-  async verifyTwoFactor(data: TwoFactorVerifyRequest): Promise<LocalLoginResponse> {
-    validateRequired(data, '2FA verification data', '2FA verification');
-    validateRequired(data.token, '2FA token', '2FA verification');
-    validateRequired(data.tempToken, 'temporary token', '2FA verification');
-
-    return this.httpClient.post('/auth/verify-two-factor', data);
   }
 
   async requestPasswordReset(data: PasswordResetRequest): Promise<PasswordResetRequestResponse> {
@@ -328,53 +302,141 @@ export class AuthService {
   }
 
   // ============================================================================
-  // Two-Factor Authentication (Local Auth) - with validation
+  // UNIFIED Two-Factor Authentication (NEW - replaces separate local/OAuth 2FA)
   // ============================================================================
 
-  async setupTwoFactor(accountId: string, data: TwoFactorSetupRequest): Promise<TwoFactorSetupResponse> {
+  /**
+   * Get 2FA status for any account type
+   */
+  async getTwoFactorStatus(accountId: string): Promise<TwoFactorStatusResponse> {
+    validateAccountId(accountId, '2FA status check');
+
+    return this.httpClient.get(`/${accountId}/twofa/status`);
+  }
+
+  /**
+   * Set up 2FA for any account type (unified endpoint)
+   */
+  async setupTwoFactor(accountId: string, data: UnifiedTwoFactorSetupRequest): Promise<UnifiedTwoFactorSetupResponse> {
     validateAccountId(accountId, '2FA setup');
     validateRequired(data, '2FA setup data', '2FA setup');
-    validateRequired(data.password, 'password', '2FA setup');
 
     if (typeof data.enableTwoFactor !== 'boolean') {
       throw new Error('enableTwoFactor must be a boolean for 2FA setup');
     }
 
-    return this.httpClient.post(`/${accountId}/auth/setup-two-factor`, data);
+    // For local accounts, password is required
+    if (data.password !== undefined) {
+      validateRequired(data.password, 'password', '2FA setup');
+    }
+
+    return this.httpClient.post(`/${accountId}/twofa/setup`, data);
   }
 
-  async verifyTwoFactorSetup(accountId: string, token: string): Promise<TwoFactorSetupVerificationResponse> {
+  /**
+   * Verify and enable 2FA setup for any account type
+   */
+  async verifyTwoFactorSetup(accountId: string, token: string): Promise<UnifiedTwoFactorSetupResponse> {
     validateAccountId(accountId, '2FA setup verification');
     validateToken(token, '2FA verification token', '2FA setup verification');
 
-    return this.httpClient.post(`/${accountId}/auth/verify-two-factor-setup`, { token });
+    return this.httpClient.post(`/${accountId}/twofa/verify-setup`, { token });
   }
 
-  async generateBackupCodes(accountId: string, password: string): Promise<BackupCodesResponse> {
+  /**
+   * Generate backup codes for any account type
+   */
+  async generateBackupCodes(accountId: string, data: BackupCodesRequest): Promise<BackupCodesResponse> {
     validateAccountId(accountId, 'backup code generation');
-    validateRequired(password, 'password', 'backup code generation');
+    validateRequired(data, 'backup codes data', 'backup code generation');
 
-    return this.httpClient.post(`/${accountId}/auth/generate-backup-codes`, { password });
+    // For local accounts, password is required
+    if (data.password !== undefined) {
+      validateRequired(data.password, 'password', 'backup code generation');
+    }
+
+    return this.httpClient.post(`/${accountId}/twofa/backup-codes`, data);
+  }
+
+  /**
+   * Verify 2FA during login (unified for local and OAuth)
+   */
+  async verifyTwoFactorLogin(data: UnifiedTwoFactorVerifyRequest): Promise<UnifiedTwoFactorVerifyResponse> {
+    validateRequired(data, '2FA verification data', '2FA verification');
+    validateRequired(data.token, '2FA token', '2FA verification');
+    validateRequired(data.tempToken, 'temporary token', '2FA verification');
+
+    return this.httpClient.post('/twofa/verify-login', data);
   }
 
   // ============================================================================
-  // Token Information (Local Auth) - with validation
+  // UNIFIED Token Management (NEW - replaces separate local/OAuth token endpoints)
   // ============================================================================
 
-  async getLocalTokenInfo(accountId: string): Promise<LocalTokenInfoResponse> {
-    validateAccountId(accountId, 'local token info');
+  /**
+   * Get comprehensive token status for any account type
+   */
+  async getTokenStatus(accountId: string): Promise<TokenStatusResponse> {
+    validateAccountId(accountId, 'token status');
 
-    return this.httpClient.get(`/${accountId}/auth/token`);
+    return this.httpClient.get(`/${accountId}/tokens/status`);
   }
 
-  async getLocalRefreshTokenInfo(accountId: string): Promise<LocalTokenInfoResponse> {
-    validateAccountId(accountId, 'local refresh token info');
+  /**
+   * Get access token information for any account type
+   */
+  async getAccessTokenInfo(accountId: string): Promise<TokenInfoResponse> {
+    validateAccountId(accountId, 'access token info');
 
-    return this.httpClient.get(`/${accountId}/auth/refresh/token`);
+    return this.httpClient.get(`/${accountId}/tokens/access`);
+  }
+
+  /**
+   * Get refresh token information for any account type
+   */
+  async getRefreshTokenInfo(accountId: string): Promise<TokenInfoResponse> {
+    validateAccountId(accountId, 'refresh token info');
+
+    return this.httpClient.get(`/${accountId}/tokens/refresh`);
+  }
+
+  /**
+   * Refresh access token for any account type
+   */
+  async refreshToken(accountId: string, redirectUrl: string): Promise<void> {
+    validateAccountId(accountId, 'token refresh');
+    validateRequired(redirectUrl, 'redirect URL', 'token refresh');
+
+    // This endpoint redirects, so we don't return data
+    window.location.href = `/${accountId}/tokens/refresh?redirectUrl=${encodeURIComponent(redirectUrl)}`;
+  }
+
+  /**
+   * Revoke tokens for any account type
+   */
+  async revokeTokens(accountId: string): Promise<TokenRevocationResponse> {
+    validateAccountId(accountId, 'token revocation');
+
+    return this.httpClient.post(`/${accountId}/tokens/revoke`);
+  }
+
+  /**
+   * Validate token ownership and get info
+   */
+  async validateToken(accountId: string, data: TokenValidationRequest): Promise<TokenValidationResponse> {
+    validateAccountId(accountId, 'token validation');
+    validateRequired(data, 'token validation data', 'token validation');
+    validateRequired(data.token, 'token', 'token validation');
+
+    if (data.tokenType && !['access', 'refresh'].includes(data.tokenType)) {
+      throw new Error('tokenType must be either "access" or "refresh" for token validation');
+    }
+
+    return this.httpClient.post(`/${accountId}/tokens/validate`, data);
   }
 
   // ============================================================================
-  // OAuth Authentication (with validation)
+  // OAuth Authentication (updated to remove old 2FA and token methods)
   // ============================================================================
 
   async generateOAuthSignupUrl(provider: OAuthProviders): Promise<OAuthUrlResponse> {
@@ -416,77 +478,7 @@ export class AuthService {
   }
 
   // ============================================================================
-  // OAuth Two-Factor Authentication (with validation)
-  // ============================================================================
-
-  /**
-   * Set up two-factor authentication for OAuth account (no password required)
-   */
-  async setupOAuthTwoFactor(accountId: string, data: OAuthTwoFactorSetupRequest): Promise<OAuthTwoFactorSetupResponse> {
-    validateAccountId(accountId, 'OAuth 2FA setup');
-    validateRequired(data, 'OAuth 2FA setup data', 'OAuth 2FA setup');
-
-    if (typeof data.enableTwoFactor !== 'boolean') {
-      throw new Error('enableTwoFactor must be a boolean for OAuth 2FA setup');
-    }
-
-    return this.httpClient.post(`/${accountId}/oauth/setup-two-factor`, data);
-  }
-
-  /**
-   * Verify and enable 2FA for OAuth account
-   */
-  async verifyOAuthTwoFactorSetup(accountId: string, token: string): Promise<TwoFactorSetupVerificationResponse> {
-    validateAccountId(accountId, 'OAuth 2FA setup verification');
-    validateToken(token, '2FA verification token', 'OAuth 2FA setup verification');
-
-    return this.httpClient.post(`/${accountId}/oauth/verify-two-factor-setup`, { token });
-  }
-
-  /**
-   * Generate new backup codes for OAuth account (no password required)
-   */
-  async generateOAuthBackupCodes(accountId: string): Promise<BackupCodesResponse> {
-    validateAccountId(accountId, 'OAuth backup code generation');
-
-    return this.httpClient.post(`/${accountId}/oauth/generate-backup-codes`);
-  }
-
-  /**
-   * Verify OAuth two-factor authentication during signin
-   */
-  async verifyOAuthTwoFactor(data: OAuthTwoFactorVerifyRequest): Promise<OAuthTwoFactorVerifyResponse> {
-    validateRequired(data, 'OAuth 2FA verification data', 'OAuth 2FA verification');
-    validateRequired(data.token, '2FA token', 'OAuth 2FA verification');
-    validateRequired(data.tempToken, 'temporary token', 'OAuth 2FA verification');
-
-    return this.httpClient.post('/oauth/verify-two-factor', data);
-  }
-
-  // ============================================================================
-  // OAuth Token Management (with validation)
-  // ============================================================================
-
-  async getOAuthTokenInfo(accountId: string): Promise<OAuthTokenInfoResponse> {
-    validateAccountId(accountId, 'OAuth token info');
-
-    return this.httpClient.get(`/${accountId}/oauth/token`);
-  }
-
-  async getOAuthRefreshTokenInfo(accountId: string): Promise<OAuthRefreshTokenInfoResponse> {
-    validateAccountId(accountId, 'OAuth refresh token info');
-
-    return this.httpClient.get(`/${accountId}/oauth/refresh/token`);
-  }
-
-  async revokeOAuthTokens(accountId: string): Promise<TokenRevocationResponse> {
-    validateAccountId(accountId, 'OAuth token revocation');
-
-    return this.httpClient.post(`/${accountId}/oauth/revoke`);
-  }
-
-  // ============================================================================
-  // Browser Navigation Methods (with validation)
+  // Browser Navigation Methods (updated)
   // ============================================================================
 
   redirectToOAuthSignup(provider: OAuthProviders): void {
@@ -543,7 +535,7 @@ export class AuthService {
   }
 
   // ============================================================================
-  // Logout Methods (with validation)
+  // Logout Methods (unchanged)
   // ============================================================================
 
   async logout(accountId: string, clearClientAccountState: boolean = true): Promise<LogoutResponse> {
@@ -563,7 +555,6 @@ export class AuthService {
   async logoutAll(accountIds: string[]): Promise<LogoutAllResponse> {
     validateArray(accountIds, 'account IDs', 'logout all');
 
-    // Validate each account ID
     accountIds.forEach((id, index) => {
       validateAccountId(id, `logout all (account ${index + 1})`);
     });

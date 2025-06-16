@@ -167,11 +167,6 @@ export interface LocalLoginResponse {
   message?: string;
 }
 
-export interface TwoFactorVerifyRequest {
-  token: string;
-  tempToken: string;
-}
-
 export interface PasswordResetRequest {
   email: string;
 }
@@ -185,18 +180,6 @@ export interface PasswordChangeRequest {
   oldPassword: string;
   newPassword: string;
   confirmPassword: string;
-}
-
-export interface TwoFactorSetupRequest {
-  password: string;
-  enableTwoFactor: boolean;
-}
-
-export interface TwoFactorSetupResponse {
-  qrCode?: string;
-  secret?: string;
-  backupCodes?: string[];
-  message?: string;
 }
 
 // ============================================================================
@@ -228,87 +211,99 @@ export interface ReauthorizeUrlResponse {
 }
 
 // ============================================================================
-// OAuth Two-Factor Authentication
+// UNIFIED Two-Factor Authentication (NEW)
 // ============================================================================
 
-export interface OAuthTwoFactorSetupRequest {
-  enableTwoFactor: boolean;
+export interface TwoFactorStatusResponse {
+  enabled: boolean;
+  backupCodesCount?: number;
+  lastSetupDate?: string;
 }
 
-export interface OAuthTwoFactorSetupResponse {
+export interface UnifiedTwoFactorSetupRequest {
+  enableTwoFactor: boolean;
+  password?: string; // Required for local accounts, not needed for OAuth
+}
+
+export interface UnifiedTwoFactorSetupResponse {
   message: string;
-  qrCode?: string;
   secret?: string;
+  qrCode?: string;
+  qrCodeUrl?: string;
   backupCodes?: string[];
 }
 
-export interface OAuthTwoFactorVerifyRequest {
+export interface UnifiedTwoFactorVerifyRequest {
   token: string;
   tempToken: string;
 }
 
-export interface OAuthTwoFactorVerifyResponse {
+export interface UnifiedTwoFactorVerifyResponse {
   accountId: string;
   name: string;
   message: string;
+  // OAuth specific fields (optional)
   needsAdditionalScopes?: boolean;
   missingScopes?: string[];
 }
 
+export interface BackupCodesRequest {
+  password?: string; // Required for local accounts, not needed for OAuth
+}
+
+export interface BackupCodesResponse {
+  message: string;
+  backupCodes: string[];
+}
+
 // ============================================================================
-// Token Management
+// UNIFIED Token Management (NEW)
 // ============================================================================
 
-export interface LocalTokenInfoResponse {
+export interface TokenInfo {
   isExpired: boolean;
-  type: string;
+  isValid: boolean;
+  type: 'local_jwt' | 'oauth_jwt' | 'local_refresh_jwt' | 'oauth_refresh_jwt';
   expiresAt?: number;
   timeRemaining?: number;
   accountId?: string;
   error?: string;
+  // OAuth specific
+  oauthAccessToken?: string;
+  oauthRefreshToken?: string;
 }
 
-export interface GoogleTokenInfo {
-  accessToken?: string;
-  scope?: string;
-  audience?: string;
-  expires_in?: number;
-  issued_to?: string;
-  user_id?: string;
-  email?: string;
-  verified_email?: boolean;
-  access_type?: string;
+export interface TokenStatusResponse {
+  accountId: string;
+  accountType: AccountType;
+  hasAccessToken: boolean;
+  hasRefreshToken: boolean;
+  accessToken?: TokenInfo;
+  refreshToken?: TokenInfo;
 }
 
-export interface OAuthSystemTokenInfo {
-  isExpired: boolean;
-  type: string;
-  expiresAt?: number;
-  timeRemaining?: number;
-  error?: string;
-}
+export interface TokenInfoResponse extends TokenInfo {}
 
-export interface OAuthProviderTokenInfo extends GoogleTokenInfo {
-  provider: string;
-}
-
-export interface OAuthTokenInfoResponse {
-  systemToken: OAuthSystemTokenInfo;
-  providerToken?: OAuthProviderTokenInfo;
-}
-
-export interface OAuthRefreshTokenInfoResponse {
-  systemToken: OAuthSystemTokenInfo;
-  providerToken?: {
-    type: string;
-    provider: string;
-    hasToken: boolean;
-  };
+export interface TokenRefreshResponse {
+  accessToken: string;
+  expiresIn: number;
+  refreshToken?: string;
 }
 
 export interface TokenRevocationResponse {
   accessTokenRevoked: boolean;
   refreshTokenRevoked: boolean;
+  message?: string;
+}
+
+export interface TokenValidationRequest {
+  token: string;
+  tokenType?: 'access' | 'refresh';
+}
+
+export interface TokenValidationResponse extends TokenInfo {
+  isOwner: boolean;
+  belongsToAccount: boolean;
 }
 
 // ============================================================================
@@ -324,10 +319,6 @@ export interface ResetPasswordResponse {
 }
 
 export interface PasswordChangeResponse {
-  message: string;
-}
-
-export interface TwoFactorSetupVerificationResponse {
   message: string;
 }
 
