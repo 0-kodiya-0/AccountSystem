@@ -1,11 +1,32 @@
 import React, { JSX } from 'react';
-import { useAppStore } from '../store/useAppStore';
 import DefaultLoadingSpinner from './DefaultLoadingSpinner';
 import DefaultGlobalErrorDisplay from './DefaultGlobalErrorDisplay';
 import DefaultErrorDisplay from './DefaultErrorDisplay';
 
+interface SessionState {
+  data: {
+    hasSession: boolean;
+    isValid: boolean;
+    accountIds: string[];
+    currentAccountId: string | null;
+  } | null;
+  loading: boolean;
+  error: string | null;
+}
+
 interface BaseAuthGuardProps {
   children?: React.ReactNode;
+
+  // Session state props
+  session: SessionState;
+
+  // Optional operation states
+  switchingAccount?: {
+    loading: boolean;
+    error: string | null;
+  };
+
+  // Component customization
   redirectDelay?: number;
   loadingComponent?: React.ComponentType<{
     reason?: string;
@@ -63,6 +84,8 @@ type AuthGuardProps = GuestNoAccountProps | GuestWithAccountProps | ProtectedWit
 export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
   const {
     children,
+    session,
+    switchingAccount,
     redirectDelay,
     loadingComponent: LoadingComponent,
     redirectingComponent: RedirectingComponent,
@@ -77,21 +100,13 @@ export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
   const redirectToAccountSelection =
     'redirectToAccountSelection' in props ? props.redirectToAccountSelection : undefined;
 
-  // Get session state from store
-  const sessionState = useAppStore((state) => state.getSessionState());
-  const switchingAccount = useAppStore((state) => state.session.switchingAccount);
-
-  // Derived state
-  const isAuthenticated = !!(
-    sessionState.data?.hasSession &&
-    sessionState.data?.isValid &&
-    sessionState.data?.accountIds.length > 0
-  );
-  const currentAccountId = sessionState.data?.currentAccountId || null;
+  // Derived state from session props
+  const isAuthenticated = !!(session.data?.hasSession && session.data?.isValid && session.data?.accountIds.length > 0);
+  const currentAccountId = session.data?.currentAccountId || null;
   const hasAccount = !!currentAccountId;
 
-  // Session is initializing
-  if (!sessionState.lastLoaded && sessionState.loading) {
+  // Session is initializing (no data and loading)
+  if (!session.data && session.loading) {
     if (LoadingComponent) {
       return <LoadingComponent reason="Initializing session" loading={true} />;
     }
@@ -99,7 +114,7 @@ export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
   }
 
   // Session is loading
-  if (sessionState.loading) {
+  if (session.loading) {
     if (LoadingComponent) {
       return <LoadingComponent reason="Loading session" loading={true} />;
     }
@@ -107,7 +122,7 @@ export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
   }
 
   // Account switching in progress
-  if (switchingAccount.loading) {
+  if (switchingAccount?.loading) {
     if (LoadingComponent) {
       return <LoadingComponent reason="Switching account" loading={true} />;
     }
@@ -115,15 +130,15 @@ export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
   }
 
   // Session has error
-  if (sessionState.error) {
+  if (session.error) {
     if (ErrorComponent) {
-      return <ErrorComponent error={sessionState.error} loading={false} retry={() => window.location.reload()} />;
+      return <ErrorComponent error={session.error} loading={false} retry={() => window.location.reload()} />;
     }
-    return <DefaultErrorDisplay error={sessionState.error} retry={() => window.location.reload()} />;
+    return <DefaultErrorDisplay error={session.error} retry={() => window.location.reload()} />;
   }
 
   // Account switching error
-  if (switchingAccount.error) {
+  if (switchingAccount?.error) {
     if (ErrorComponent) {
       return <ErrorComponent error={switchingAccount.error} loading={false} retry={() => window.location.reload()} />;
     }
@@ -131,7 +146,7 @@ export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
   }
 
   // Session is ready - handle auth logic
-  if (sessionState.data) {
+  if (session.data) {
     // Handle guest pages (login, signup, forgot password)
     if (allowGuests) {
       if (isAuthenticated && !children) {

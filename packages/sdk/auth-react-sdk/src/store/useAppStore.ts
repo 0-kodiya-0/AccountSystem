@@ -1,85 +1,88 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
-import { Account, SessionAccount, AccountSessionInfo } from '../types';
+import { Account, AccountSessionInfo } from '../types';
 import { enableMapSet } from 'immer';
 
 enableMapSet();
 
-type AsyncState<T> = {
-  data: T | null;
+// Session state structure
+interface SessionState {
+  data: AccountSessionInfo | null;
   loading: boolean;
   error: string | null;
   lastLoaded: number | null;
-};
+}
 
-type AsyncOperation = {
+// Account state structure
+interface AccountState {
+  data: Account | null;
   loading: boolean;
   error: string | null;
-};
+  lastLoaded: number | null;
+  currentOperation: string | null; // Track which operation is running
+}
 
+// Main store state
 interface AppState {
-  // Session state with three-state pattern
-  session: AsyncState<AccountSessionInfo> & {
-    switchingAccount: AsyncOperation;
-    loadingAccounts: AsyncOperation;
-  };
-
-  // Account data cache with per-account three-state
-  accounts: Map<string, AsyncState<Account>>;
-
-  // Temporary token for 2FA flows
+  session: SessionState;
+  accounts: Record<string, AccountState>;
   tempToken: string | null;
 }
 
-const createAsyncState = <T>(initialData: T | null = null): AsyncState<T> => ({
-  data: initialData,
-  loading: false,
-  error: null,
-  lastLoaded: null,
-});
-
-const createAsyncOperation = (): AsyncOperation => ({
-  loading: false,
-  error: null,
-});
-
+// Store actions
 interface AppActions {
+  // Session actions
   setSessionLoading: (loading: boolean) => void;
   setSessionData: (data: AccountSessionInfo) => void;
   setSessionError: (error: string | null) => void;
   clearSession: () => void;
 
-  setSwitchingAccount: (loading: boolean, error?: string | null) => void;
-  setLoadingAccounts: (loading: boolean, error?: string | null) => void;
-
-  setAccountLoading: (accountId: string, loading: boolean) => void;
+  // Account actions
+  setAccountLoading: (accountId: string, loading: boolean, operation?: string) => void;
   setAccountData: (accountId: string, data: Account) => void;
   setAccountError: (accountId: string, error: string | null) => void;
-  setAccountsData: (accounts: SessionAccount[]) => void;
+  setAccountsData: (accounts: Account[]) => void;
   updateAccountData: (accountId: string, updates: Partial<Account>) => void;
   removeAccount: (accountId: string) => void;
+  clearAccountOperation: (accountId: string) => void;
 
+  // Temp token actions
   setTempToken: (token: string) => void;
   clearTempToken: () => void;
 
-  getSessionState: () => AsyncState<AccountSessionInfo>;
-  getAccountState: (accountId: string) => AsyncState<Account>;
+  // Getters
+  getSessionState: () => SessionState;
+  getAccountState: (accountId: string) => AccountState;
   shouldLoadAccount: (accountId: string, maxAge?: number) => boolean;
+  shouldLoadSession: (maxAge?: number) => boolean;
 }
+
+// Helper functions
+const createSessionState = (): SessionState => ({
+  data: null,
+  loading: false,
+  error: null,
+  lastLoaded: null,
+});
+
+const createAccountState = (): AccountState => ({
+  data: null,
+  loading: false,
+  error: null,
+  lastLoaded: null,
+  currentOperation: null,
+});
 
 export const useAppStore = create<AppState & AppActions>()(
   subscribeWithSelector(
     immer((set, get) => ({
-      session: {
-        ...createAsyncState<AccountSessionInfo>(),
-        switchingAccount: createAsyncOperation(),
-        loadingAccounts: createAsyncOperation(),
-      },
-
-      accounts: new Map(),
+      // Initial state
+      session: createSessionState(),
+      accounts: {},
       tempToken: null,
 
+      // Session actions
       setSessionLoading: (loading: boolean) => {
         set((state) => {
           state.session.loading = loading;
@@ -107,94 +110,78 @@ export const useAppStore = create<AppState & AppActions>()(
 
       clearSession: () => {
         set((state) => {
-          state.session = {
-            ...createAsyncState<AccountSessionInfo>(),
-            switchingAccount: createAsyncOperation(),
-            loadingAccounts: createAsyncOperation(),
-          };
-          state.accounts.clear();
+          state.session = createSessionState();
+          state.accounts = {};
           state.tempToken = null;
         });
       },
 
-      setSwitchingAccount: (loading: boolean, error: string | null = null) => {
+      // Account actions
+      setAccountLoading: (accountId: string, loading: boolean, operation?: string) => {
         set((state) => {
-          state.session.switchingAccount.loading = loading;
-          state.session.switchingAccount.error = error;
-        });
-      },
-
-      setLoadingAccounts: (loading: boolean, error: string | null = null) => {
-        set((state) => {
-          state.session.loadingAccounts.loading = loading;
-          state.session.loadingAccounts.error = error;
-        });
-      },
-
-      setAccountLoading: (accountId: string, loading: boolean) => {
-        set((state) => {
-          if (!state.accounts.has(accountId)) {
-            state.accounts.set(accountId, createAsyncState<Account>());
+          if (!state.accounts[accountId]) {
+            state.accounts[accountId] = createAccountState();
           }
-          const accountState = state.accounts.get(accountId)!;
-          accountState.loading = loading;
+          state.accounts[accountId].loading = loading;
+          state.accounts[accountId].currentOperation = loading ? operation || null : null;
           if (loading) {
-            accountState.error = null;
+            state.accounts[accountId].error = null;
           }
         });
       },
 
       setAccountData: (accountId: string, data: Account) => {
         set((state) => {
-          if (!state.accounts.has(accountId)) {
-            state.accounts.set(accountId, createAsyncState<Account>());
+          if (!state.accounts[accountId]) {
+            state.accounts[accountId] = createAccountState();
           }
-          const accountState = state.accounts.get(accountId)!;
-          accountState.data = data;
-          accountState.loading = false;
-          accountState.error = null;
-          accountState.lastLoaded = Date.now();
+          state.accounts[accountId].data = data;
+          state.accounts[accountId].loading = false;
+          state.accounts[accountId].error = null;
+          state.accounts[accountId].lastLoaded = Date.now();
+          state.accounts[accountId].currentOperation = null;
         });
       },
 
       setAccountError: (accountId: string, error: string | null) => {
         set((state) => {
-          if (!state.accounts.has(accountId)) {
-            state.accounts.set(accountId, createAsyncState<Account>());
+          if (!state.accounts[accountId]) {
+            state.accounts[accountId] = createAccountState();
           }
-          const accountState = state.accounts.get(accountId)!;
-          accountState.error = error;
-          accountState.loading = false;
+          state.accounts[accountId].error = error;
+          state.accounts[accountId].loading = false;
+          state.accounts[accountId].currentOperation = null;
         });
       },
 
-      setAccountsData: (accounts: SessionAccount[]) => {
+      setAccountsData: (accounts: Account[]) => {
         set((state) => {
           accounts.forEach((account) => {
-            if (!state.accounts.has(account.id)) {
-              state.accounts.set(account.id, createAsyncState<Account>());
+            if (!state.accounts[account.id]) {
+              state.accounts[account.id] = createAccountState();
             }
-            const accountState = state.accounts.get(account.id)!;
-            accountState.data = account as Account;
-            accountState.lastLoaded = Date.now();
+            state.accounts[account.id].data = account;
+            state.accounts[account.id].lastLoaded = Date.now();
+            state.accounts[account.id].loading = false;
+            state.accounts[account.id].error = null;
           });
-          state.session.loadingAccounts.loading = false;
-          state.session.loadingAccounts.error = null;
         });
       },
 
       updateAccountData: (accountId: string, updates: Partial<Account>) => {
         set((state) => {
-          const accountState = state.accounts.get(accountId);
-          if (accountState?.data) {
-            accountState.data = { ...accountState.data, ...updates };
+          if (state.accounts[accountId]?.data) {
+            state.accounts[accountId].data = {
+              ...state.accounts[accountId].data!,
+              ...updates,
+            };
           }
         });
       },
 
       removeAccount: (accountId: string) => {
         set((state) => {
-          state.accounts.delete(accountId);
+          delete state.accounts[accountId];
 
           // Update session data if it exists
           if (state.session.data) {
@@ -206,6 +193,16 @@ export const useAppStore = create<AppState & AppActions>()(
         });
       },
 
+      clearAccountOperation: (accountId: string) => {
+        set((state) => {
+          if (state.accounts[accountId]) {
+            state.accounts[accountId].currentOperation = null;
+            state.accounts[accountId].loading = false;
+          }
+        });
+      },
+
+      // Temp token actions
       setTempToken: (token: string) => {
         set((state) => {
           state.tempToken = token;
@@ -218,17 +215,17 @@ export const useAppStore = create<AppState & AppActions>()(
         });
       },
 
+      // Getters
       getSessionState: () => {
-        const { switchingAccount, loadingAccounts, ...sessionState } = get().session;
-        return sessionState;
+        return get().session;
       },
 
       getAccountState: (accountId: string) => {
-        return get().accounts.get(accountId) || createAsyncState<Account>();
+        return get().accounts[accountId] || createAccountState();
       },
 
       shouldLoadAccount: (accountId: string, maxAge: number = 5 * 60 * 1000) => {
-        const accountState = get().accounts.get(accountId);
+        const accountState = get().accounts[accountId];
 
         // Don't load if already loading
         if (accountState?.loading) return false;
@@ -239,6 +236,22 @@ export const useAppStore = create<AppState & AppActions>()(
         // Load if no timestamp or data is stale
         if (!accountState.lastLoaded) return true;
         if (Date.now() - accountState.lastLoaded > maxAge) return true;
+
+        return false;
+      },
+
+      shouldLoadSession: (maxAge: number = 5 * 60 * 1000) => {
+        const sessionState = get().session;
+
+        // Don't load if already loading
+        if (sessionState.loading) return false;
+
+        // Load if no data
+        if (!sessionState.data) return true;
+
+        // Load if no timestamp or data is stale
+        if (!sessionState.lastLoaded) return true;
+        if (Date.now() - sessionState.lastLoaded > maxAge) return true;
 
         return false;
       },

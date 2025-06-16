@@ -1,30 +1,31 @@
 'use client';
 
+// Services
 export { AccountService } from './services/AccountService';
 export { AuthService } from './services/AuthService';
-
-// Main exports
 export { HttpClient } from './client/HttpClient';
 
 // Context and Provider
-export { AuthProvider } from './context/AuthProvider';
 export { ServicesProvider, useAccountService, useAuthService, useHttpClient } from './context/ServicesProvider';
 
 // Components
 export { AuthGuard } from './components/AuthGuard';
 
-// Routing and Protection Hooks
-export { useAuthCallbackHandler } from './hooks/useAuthCallbackHandler';
+// NEW HOOKS - Main authentication hooks
+export { useSession } from './hooks/useSession';
+export { useSignin } from './hooks/useSignin';
+export { useSignup } from './hooks/useSignup';
+export { useEmailVerification } from './hooks/useEmailVerification';
+export { useTwoFactorVerification } from './hooks/useTwoFactorVerification';
+export { useAuthCallback } from './hooks/useAuthCallback';
 
 // Store exports
-export * as useAppStore from './store/useAppStore';
+export { useAppStore } from './store/useAppStore';
 
-export { useAccount } from './hooks/useAccount';
-export { useGoogle } from './hooks/useGoogle';
-
-// Type exports (with new workflow types)
+// Type exports
 export * from './types';
 
+// Utilities
 export * from './utils';
 
 // Version export

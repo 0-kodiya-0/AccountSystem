@@ -1,11 +1,11 @@
-import { CallbackCode, CallbackData, OAuthProviders } from '../types';
-import { useCallback, useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { useAuth } from './useAuth';
+import { useAuthService } from '../context/ServicesProvider';
+import { CallbackCode, CallbackData, OAuthProviders } from '../types';
 
 type CallbackHandler<T = any> = (data: T) => void | Promise<void>;
 
-interface UseCallbackHandlerOptions {
+interface UseAuthCallbackOptions {
   onOAuthSigninSuccess?: CallbackHandler<{
     accountId: string;
     name: string;
@@ -25,7 +25,6 @@ interface UseCallbackHandlerOptions {
     provider: OAuthProviders;
     message?: string;
   }>;
-  // Two-factor authentication handlers
   onTwoFactorRequired?: CallbackHandler<{
     accountId: string;
     tempToken: string;
@@ -41,15 +40,38 @@ interface UseCallbackHandlerOptions {
   }>;
 }
 
-interface UseCallbackHandlerReturn {
+interface UseAuthCallbackReturn {
   error: string | null;
+  processing: boolean;
   handleAuthCallback: (params: URLSearchParams) => Promise<void>;
+  clearError: () => void;
 }
 
-export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}): UseCallbackHandlerReturn => {
-  const setTempToken = useAppStore((state) => state.setTempToken);
-  const { refreshSession } = useAuth();
+export const useAuthCallback = (options: UseAuthCallbackOptions = {}): UseAuthCallbackReturn => {
+  const authService = useAuthService();
+
+  const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const setTempToken = useAppStore((state) => state.setTempToken);
+  const setSessionData = useAppStore((state) => state.setSessionData);
+  const setAccountsData = useAppStore((state) => state.setAccountsData);
+
+  const clearError = () => setError(null);
+
+  const refreshSession = useCallback(async (): Promise<void> => {
+    try {
+      const sessionResponse = await authService.getAccountSession();
+      setSessionData(sessionResponse.session);
+
+      if (sessionResponse.session.accountIds.length > 0) {
+        const accountsData = await authService.getSessionAccountsData(sessionResponse.session.accountIds);
+        setAccountsData(accountsData as any[]);
+      }
+    } catch (error) {
+      console.warn('Failed to refresh session after callback:', error);
+    }
+  }, [authService, setSessionData, setAccountsData]);
 
   const navigateToRoot = useCallback(() => {
     if (typeof window !== 'undefined') {
@@ -63,7 +85,7 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
         switch (callbackData.code) {
           case CallbackCode.OAUTH_SIGNIN_SUCCESS: {
             await refreshSession();
-            options.onOAuthSigninSuccess?.({
+            await options.onOAuthSigninSuccess?.({
               accountId: callbackData.accountId!,
               name: callbackData.name!,
               provider: callbackData.provider!,
@@ -75,7 +97,7 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
 
           case CallbackCode.OAUTH_SIGNUP_SUCCESS: {
             await refreshSession();
-            options.onOAuthSignupSuccess?.({
+            await options.onOAuthSignupSuccess?.({
               accountId: callbackData.accountId!,
               name: callbackData.name!,
               provider: callbackData.provider!,
@@ -85,7 +107,7 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
 
           case CallbackCode.OAUTH_PERMISSION_SUCCESS: {
             await refreshSession();
-            options.onOAuthPermissionSuccess?.({
+            await options.onOAuthPermissionSuccess?.({
               accountId: callbackData.accountId!,
               service: callbackData.service,
               scopeLevel: callbackData.scopeLevel,
@@ -95,14 +117,13 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
             break;
           }
 
-          // NEW: Handle 2FA required scenarios
           case CallbackCode.LOCAL_SIGNIN_REQUIRES_2FA: {
             // Store temp token for 2FA verification
             if (callbackData.tempToken) {
               setTempToken(callbackData.tempToken);
             }
 
-            options.onTwoFactorRequired?.({
+            await options.onTwoFactorRequired?.({
               accountId: callbackData.accountId!,
               tempToken: callbackData.tempToken!,
               message: callbackData.message || 'Two-factor authentication required',
@@ -118,7 +139,7 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
               setTempToken(callbackData.tempToken);
             }
 
-            options.onTwoFactorRequired?.({
+            await options.onTwoFactorRequired?.({
               accountId: callbackData.accountId!,
               tempToken: callbackData.tempToken!,
               provider: callbackData.provider,
@@ -132,7 +153,7 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
           case CallbackCode.OAUTH_ERROR:
           case CallbackCode.PERMISSION_ERROR:
           default: {
-            options.onError?.({
+            await options.onError?.({
               error: callbackData.error || 'Unknown callback error',
               provider: callbackData.provider,
               code: callbackData.code,
@@ -153,6 +174,9 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
   const handleAuthCallback = useCallback(
     async (params: URLSearchParams) => {
       try {
+        setProcessing(true);
+        setError(null);
+
         // Convert all URL parameters to a simple object with decoded values
         const callbackData: CallbackData = {};
 
@@ -182,14 +206,22 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
           url.search = '';
           window.history.replaceState({}, '', url.toString());
         }
+
+        setProcessing(false);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Auth callback failed';
         setError(message);
+        setProcessing(false);
         console.error('Auth callback error:', error);
       }
     },
-    [executeCallback, setError],
+    [executeCallback],
   );
 
-  return { error, handleAuthCallback };
+  return {
+    error,
+    processing,
+    handleAuthCallback,
+    clearError,
+  };
 };
