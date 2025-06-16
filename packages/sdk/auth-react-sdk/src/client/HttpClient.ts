@@ -1,4 +1,4 @@
-import { AuthSDKError, ErrorCode, SDKConfig } from '../types';
+import { ApiErrorCode, AuthSDKError, SDKConfig } from '../types';
 
 export class HttpClient {
   private baseURL: string;
@@ -33,7 +33,7 @@ export class HttpClient {
     if (!response.ok) {
       throw new AuthSDKError(
         `HTTP ${response.status}: ${response.statusText}`,
-        ErrorCode.NETWORK_ERROR,
+        ApiErrorCode.NETWORK_ERROR,
         response.status,
       );
     }
@@ -41,7 +41,7 @@ export class HttpClient {
     const result = await response.json();
 
     if (!result.success) {
-      throw new AuthSDKError(result.error?.message || 'API error', result.error?.code || ErrorCode.SERVER_ERROR);
+      throw new AuthSDKError(result.error?.message || 'API error', result.error?.code || ApiErrorCode.SERVER_ERROR);
     }
 
     return result.data;

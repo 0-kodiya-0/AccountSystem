@@ -344,121 +344,6 @@ export interface LogoutAllResponse {
 }
 
 // ============================================================================
-// Notifications
-// ============================================================================
-
-export type NotificationType = 'info' | 'success' | 'warning' | 'error';
-
-export interface Notification {
-  id: string;
-  accountId: string;
-  title: string;
-  message: string;
-  type: NotificationType;
-  read: boolean;
-  link?: string;
-  timestamp: number;
-  expiresAt?: number;
-  metadata?: Record<string, unknown>;
-}
-
-export interface CreateNotificationRequest {
-  title: string;
-  message: string;
-  type: NotificationType;
-  link?: string;
-  expiresAt?: number;
-  metadata?: Record<string, unknown>;
-}
-
-export interface NotificationListResponse {
-  notifications: Notification[];
-  total: number;
-  unreadCount: number;
-}
-
-// ============================================================================
-// Socket/Real-time Types
-// ============================================================================
-
-export enum SocketConnectionState {
-  DISCONNECTED = 'disconnected',
-  CONNECTING = 'connecting',
-  CONNECTED = 'connected',
-  RECONNECTING = 'reconnecting',
-  ERROR = 'error',
-}
-
-export interface SocketConfig {
-  url: string;
-  path?: string;
-  reconnect?: boolean;
-  maxReconnectAttempts?: number;
-  reconnectDelay?: number;
-  timeout?: number;
-  forceNew?: boolean;
-  transports?: ('websocket' | 'polling')[];
-}
-
-export enum NotificationSocketEvents {
-  // Client to server
-  SUBSCRIBE = 'notification:subscribe',
-  UNSUBSCRIBE = 'notification:unsubscribe',
-  PING = 'ping',
-  // Server to client
-  NEW_NOTIFICATION = 'notification:new',
-  UPDATED_NOTIFICATION = 'notification:updated',
-  DELETED_NOTIFICATION = 'notification:deleted',
-  ALL_READ = 'notification:all-read',
-  SUBSCRIBED = 'notification:subscribed',
-  UNSUBSCRIBED = 'notification:unsubscribed',
-  PONG = 'pong',
-  ERROR = 'error',
-}
-
-export interface SocketEventPayloads {
-  [NotificationSocketEvents.SUBSCRIBE]: { accountId: string };
-  [NotificationSocketEvents.UNSUBSCRIBE]: { accountId: string };
-  [NotificationSocketEvents.PING]: undefined;
-  [NotificationSocketEvents.NEW_NOTIFICATION]: Notification;
-  [NotificationSocketEvents.UPDATED_NOTIFICATION]: Notification;
-  [NotificationSocketEvents.DELETED_NOTIFICATION]: string;
-  [NotificationSocketEvents.ALL_READ]: { accountId: string };
-  [NotificationSocketEvents.SUBSCRIBED]: { accountId: string };
-  [NotificationSocketEvents.UNSUBSCRIBED]: { accountId: string };
-  [NotificationSocketEvents.PONG]: { timestamp: string };
-  [NotificationSocketEvents.ERROR]: { message: string; code?: string };
-}
-
-export interface SocketConnectionInfo {
-  state: SocketConnectionState;
-  connectedAt?: Date;
-  reconnectAttempts: number;
-  lastError?: string;
-  latency?: number;
-}
-
-export type SocketEventListener<T = any> = (data: T) => void;
-
-export interface SocketManager {
-  connect(): Promise<void>;
-  disconnect(): void;
-  subscribe(accountId: string): Promise<void>;
-  unsubscribe(accountId: string): Promise<void>;
-  getConnectionState(): SocketConnectionState;
-  getLatency(): number | null;
-  isConnected(): boolean;
-}
-
-export interface RealtimeNotificationUpdate {
-  type: 'new' | 'updated' | 'deleted' | 'all_read';
-  notification?: Notification;
-  notificationId?: string;
-  accountId: string;
-  timestamp: number;
-}
-
-// ============================================================================
 // SDK Configuration & Error Handling
 // ============================================================================
 
@@ -478,28 +363,233 @@ export interface ApiResponse<T = unknown> {
   };
 }
 
-export enum ErrorCode {
+export enum ApiErrorCode {
+  // Network & Connection Errors
   NETWORK_ERROR = 'NETWORK_ERROR',
+  TIMEOUT_ERROR = 'TIMEOUT_ERROR',
+  CONNECTION_ERROR = 'CONNECTION_ERROR',
+
+  // Authentication Errors
   AUTH_FAILED = 'AUTH_FAILED',
   TOKEN_EXPIRED = 'TOKEN_EXPIRED',
   TOKEN_INVALID = 'TOKEN_INVALID',
-  INSUFFICIENT_SCOPE = 'INSUFFICIENT_SCOPE',
+  TOKEN_MISSING = 'TOKEN_MISSING',
+  SESSION_EXPIRED = 'SESSION_EXPIRED',
+  INVALID_CREDENTIALS = 'INVALID_CREDENTIALS',
+
+  // Authorization Errors
+  INSUFFICIENT_PERMISSIONS = 'INSUFFICIENT_PERMISSIONS',
+  ACCESS_DENIED = 'ACCESS_DENIED',
+  ACCOUNT_SUSPENDED = 'ACCOUNT_SUSPENDED',
+  ACCOUNT_LOCKED = 'ACCOUNT_LOCKED',
+
+  // Validation Errors
   VALIDATION_ERROR = 'VALIDATION_ERROR',
+  INVALID_EMAIL = 'INVALID_EMAIL',
+  INVALID_PASSWORD = 'INVALID_PASSWORD',
+  PASSWORD_TOO_WEAK = 'PASSWORD_TOO_WEAK',
+  PASSWORDS_DONT_MATCH = 'PASSWORDS_DONT_MATCH',
+
+  // User/Account Errors
   USER_NOT_FOUND = 'USER_NOT_FOUND',
   USER_EXISTS = 'USER_EXISTS',
+  ACCOUNT_NOT_FOUND = 'ACCOUNT_NOT_FOUND',
+  EMAIL_NOT_VERIFIED = 'EMAIL_NOT_VERIFIED',
+  EMAIL_ALREADY_VERIFIED = 'EMAIL_ALREADY_VERIFIED',
+
+  // Two-Factor Authentication Errors
+  TWO_FACTOR_REQUIRED = 'TWO_FACTOR_REQUIRED',
+  TWO_FACTOR_INVALID = 'TWO_FACTOR_INVALID',
+  TWO_FACTOR_NOT_ENABLED = 'TWO_FACTOR_NOT_ENABLED',
+  BACKUP_CODE_INVALID = 'BACKUP_CODE_INVALID',
+
+  // OAuth Errors
+  OAUTH_ERROR = 'OAUTH_ERROR',
+  OAUTH_CANCELLED = 'OAUTH_CANCELLED',
+  OAUTH_TOKEN_INVALID = 'OAUTH_TOKEN_INVALID',
+  OAUTH_SCOPE_INSUFFICIENT = 'OAUTH_SCOPE_INSUFFICIENT',
+  OAUTH_PROVIDER_ERROR = 'OAUTH_PROVIDER_ERROR',
+
+  // Resource Errors
+  RESOURCE_NOT_FOUND = 'RESOURCE_NOT_FOUND',
+  RESOURCE_CONFLICT = 'RESOURCE_CONFLICT',
+  RESOURCE_LOCKED = 'RESOURCE_LOCKED',
+
+  // Rate Limiting
+  RATE_LIMIT_EXCEEDED = 'RATE_LIMIT_EXCEEDED',
+  TOO_MANY_REQUESTS = 'TOO_MANY_REQUESTS',
+  LOCKOUT_ACTIVE = 'LOCKOUT_ACTIVE',
+
+  // Server Errors
   SERVER_ERROR = 'SERVER_ERROR',
+  SERVICE_UNAVAILABLE = 'SERVICE_UNAVAILABLE',
+  MAINTENANCE_MODE = 'MAINTENANCE_MODE',
+
+  // Client Errors
+  BAD_REQUEST = 'BAD_REQUEST',
   MISSING_DATA = 'MISSING_DATA',
+  INVALID_FORMAT = 'INVALID_FORMAT',
+  UNSUPPORTED_OPERATION = 'UNSUPPORTED_OPERATION',
+
+  // Email/Password Reset Errors
+  EMAIL_SEND_FAILED = 'EMAIL_SEND_FAILED',
+  RESET_TOKEN_EXPIRED = 'RESET_TOKEN_EXPIRED',
+  RESET_TOKEN_INVALID = 'RESET_TOKEN_INVALID',
+  RESET_LIMIT_EXCEEDED = 'RESET_LIMIT_EXCEEDED',
+
+  // Verification Errors
+  VERIFICATION_TOKEN_EXPIRED = 'VERIFICATION_TOKEN_EXPIRED',
+  VERIFICATION_TOKEN_INVALID = 'VERIFICATION_TOKEN_INVALID',
+  VERIFICATION_FAILED = 'VERIFICATION_FAILED',
+  VERIFICATION_LIMIT_EXCEEDED = 'VERIFICATION_LIMIT_EXCEEDED',
+
+  // Unknown/Generic
+  UNKNOWN_ERROR = 'UNKNOWN_ERROR',
+}
+
+// ============================================================================
+// Error Response Interface
+// ============================================================================
+
+export interface ApiError {
+  code: ApiErrorCode;
+  message: string;
+  statusCode?: number;
+  field?: string; // For validation errors
+  timestamp?: string;
+  requestId?: string;
+  details?: Record<string, any>;
 }
 
 export class AuthSDKError extends Error {
+  public readonly code: ApiErrorCode;
+  public readonly statusCode?: number;
+  public readonly field?: string;
+  public readonly timestamp: string;
+  public readonly requestId?: string;
+  public readonly details?: Record<string, any>;
+
   constructor(
     message: string,
-    public code: string,
-    public statusCode?: number,
-    public data?: Record<string, any>,
+    code: ApiErrorCode = ApiErrorCode.UNKNOWN_ERROR,
+    statusCode?: number,
+    options: {
+      field?: string;
+      requestId?: string;
+      details?: Record<string, any>;
+    } = {},
   ) {
     super(message);
     this.name = 'AuthSDKError';
+    this.code = code;
+    this.statusCode = statusCode;
+    this.field = options.field;
+    this.timestamp = new Date().toISOString();
+    this.requestId = options.requestId;
+    this.details = options.details;
+  }
+
+  /**
+   * Create error from API response
+   */
+  static fromApiResponse(response: any, statusCode?: number): AuthSDKError {
+    const code = response?.error?.code || response?.code || ApiErrorCode.UNKNOWN_ERROR;
+    const message = response?.error?.message || response?.message || 'Unknown error occurred';
+
+    return new AuthSDKError(message, code, statusCode, {
+      field: response?.error?.field || response?.field,
+      requestId: response?.requestId,
+      details: response?.error?.details || response?.details,
+    });
+  }
+
+  /**
+   * Check if error is of specific type
+   */
+  is(code: ApiErrorCode): boolean {
+    return this.code === code;
+  }
+
+  /**
+   * Check if error is authentication related
+   */
+  isAuthError(): boolean {
+    return [
+      ApiErrorCode.AUTH_FAILED,
+      ApiErrorCode.TOKEN_EXPIRED,
+      ApiErrorCode.TOKEN_INVALID,
+      ApiErrorCode.TOKEN_MISSING,
+      ApiErrorCode.SESSION_EXPIRED,
+      ApiErrorCode.INVALID_CREDENTIALS,
+    ].includes(this.code);
+  }
+
+  /**
+   * Check if error is validation related
+   */
+  isValidationError(): boolean {
+    return [
+      ApiErrorCode.VALIDATION_ERROR,
+      ApiErrorCode.INVALID_EMAIL,
+      ApiErrorCode.INVALID_PASSWORD,
+      ApiErrorCode.PASSWORD_TOO_WEAK,
+      ApiErrorCode.PASSWORDS_DONT_MATCH,
+    ].includes(this.code);
+  }
+
+  /**
+   * Check if error is retryable
+   */
+  isRetryable(): boolean {
+    return [
+      ApiErrorCode.NETWORK_ERROR,
+      ApiErrorCode.TIMEOUT_ERROR,
+      ApiErrorCode.CONNECTION_ERROR,
+      ApiErrorCode.SERVER_ERROR,
+      ApiErrorCode.SERVICE_UNAVAILABLE,
+    ].includes(this.code);
+  }
+
+  /**
+   * Get user-friendly error message
+   */
+  getUserMessage(): string {
+    switch (this.code) {
+      case ApiErrorCode.NETWORK_ERROR:
+        return 'Network connection failed. Please check your internet connection.';
+      case ApiErrorCode.TOKEN_EXPIRED:
+        return 'Your session has expired. Please sign in again.';
+      case ApiErrorCode.INVALID_CREDENTIALS:
+        return 'Invalid email or password. Please try again.';
+      case ApiErrorCode.USER_NOT_FOUND:
+        return 'Account not found. Please check your email address.';
+      case ApiErrorCode.EMAIL_NOT_VERIFIED:
+        return 'Please verify your email address before continuing.';
+      case ApiErrorCode.PASSWORD_TOO_WEAK:
+        return 'Password is too weak. Please choose a stronger password.';
+      case ApiErrorCode.RATE_LIMIT_EXCEEDED:
+        return 'Too many attempts. Please wait before trying again.';
+      case ApiErrorCode.SERVER_ERROR:
+        return 'Something went wrong on our end. Please try again later.';
+      default:
+        return this.message;
+    }
+  }
+
+  /**
+   * Convert to JSON for logging
+   */
+  toJSON() {
+    return {
+      name: this.name,
+      message: this.message,
+      code: this.code,
+      statusCode: this.statusCode,
+      field: this.field,
+      timestamp: this.timestamp,
+      requestId: this.requestId,
+      details: this.details,
+    };
   }
 }
 
@@ -525,4 +615,68 @@ export interface TokenCheckResponse {
   requestedScopeNames: string[];
   requestedScopeUrls: string[];
   results: Record<string, ScopeCheckResult>;
+}
+
+export interface GoogleScopeResult {
+  hasAccess: boolean;
+  scopeName: string;
+  scopeUrl: string;
+}
+
+export interface GoogleScopeCheckResult {
+  summary: {
+    totalRequested: number;
+    totalGranted: number;
+    allGranted: boolean;
+  };
+  requestedScopeNames: string[];
+  requestedScopeUrls: string[];
+  results: Record<string, GoogleScopeResult>;
+}
+
+export interface GoogleTokenState {
+  data: TokenStatusResponse | null;
+  loading: boolean;
+  error: AuthSDKError | null;
+  lastLoaded: number | null;
+}
+
+export interface GoogleScopeState {
+  data: GoogleScopeCheckResult | null;
+  loading: boolean;
+  error: AuthSDKError | null;
+  lastChecked: number | null;
+}
+
+export enum CallbackCode {
+  // OAuth success codes
+  OAUTH_SIGNIN_SUCCESS = 'oauth_signin_success',
+  OAUTH_SIGNUP_SUCCESS = 'oauth_signup_success',
+  OAUTH_PERMISSION_SUCCESS = 'oauth_permission_success',
+
+  // Two-factor authentication required codes
+  LOCAL_SIGNIN_REQUIRES_2FA = 'local_signin_requires_2fa',
+  OAUTH_SIGNIN_REQUIRES_2FA = 'oauth_signin_requires_2fa',
+
+  // Error codes
+  OAUTH_ERROR = 'oauth_error',
+  PERMISSION_ERROR = 'permission_error',
+}
+
+export interface CallbackData {
+  code?: CallbackCode;
+  accountId?: string;
+  name?: string;
+  provider?: OAuthProviders;
+  service?: string;
+  scopeLevel?: string;
+  error?: string;
+  message?: string;
+  needsAdditionalScopes?: boolean;
+  missingScopes?: string[];
+  // Two-factor authentication fields
+  requiresTwoFactor?: boolean;
+  tempToken?: string;
+  // Additional context data
+  [key: string]: any;
 }

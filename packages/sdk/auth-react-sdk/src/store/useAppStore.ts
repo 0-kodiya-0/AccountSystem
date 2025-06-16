@@ -1,232 +1,254 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
-import {
-  Account,
-  GetAccountSessionResponse,
-  LoadingState,
-  SessionAccount,
-  Notification,
-  CreateNotificationRequest,
-  AccountSessionInfo,
-} from '../types';
+import { Account, SessionAccount, AccountSessionInfo } from '../types';
 import { enableMapSet } from 'immer';
-import { ServiceManager } from '../services/ServiceManager';
 
 enableMapSet();
 
 // ============================================================================
-// Simplified App State - Session-focused only
+// Three-State Loading Pattern Types
+// ============================================================================
+
+type AsyncState<T> = {
+  data: T | null;
+  loading: boolean;
+  error: string | null;
+  lastLoaded: number | null;
+};
+
+type AsyncOperation = {
+  loading: boolean;
+  error: string | null;
+};
+
+// ============================================================================
+// App State with Three-State Pattern (No Notifications)
 // ============================================================================
 
 interface AppState {
-  // Session state with loading management
-  session: {
-    hasSession: boolean;
-    accountIds: string[];
-    currentAccountId: string | null;
-    isValid: boolean;
-    loadingState: LoadingState;
-    error: string | null;
+  // Session state with three-state pattern
+  session: AsyncState<AccountSessionInfo> & {
+    switchingAccount: AsyncOperation;
+    loadingAccounts: AsyncOperation;
   };
 
-  // Simple account data cache (no individual loading states)
-  accounts: Map<string, Account>;
-
-  // Simple notification cache by account
-  notifications: Map<string, Notification[]>;
+  // Account data cache with per-account three-state
+  accounts: Map<string, AsyncState<Account>>;
 
   // Temporary token for 2FA flows
   tempToken: string | null;
 }
 
 // ============================================================================
-// App Actions - Essential only
+// Helper Functions for Three-State Pattern
+// ============================================================================
+
+const createAsyncState = <T>(initialData: T | null = null): AsyncState<T> => ({
+  data: initialData,
+  loading: false,
+  error: null,
+  lastLoaded: null,
+});
+
+const createAsyncOperation = (): AsyncOperation => ({
+  loading: false,
+  error: null,
+});
+
+// ============================================================================
+// Store Actions with Three-State Pattern
 // ============================================================================
 
 interface AppActions {
   // ============================================================================
-  // Session Management
+  // Session Actions
   // ============================================================================
-  initializeSession: () => Promise<void>;
-  loadSession: () => Promise<AccountSessionInfo>;
-  setCurrentAccount: (accountId: string | null) => Promise<void>;
-  refreshSession: () => Promise<void>;
+  setSessionLoading: (loading: boolean) => void;
+  setSessionData: (data: AccountSessionInfo) => void;
+  setSessionError: (error: string | null) => void;
   clearSession: () => void;
 
+  setSwitchingAccount: (loading: boolean, error?: string | null) => void;
+  setLoadingAccounts: (loading: boolean, error?: string | null) => void;
+
   // ============================================================================
-  // Account Management (simple operations)
+  // Account Actions
   // ============================================================================
-  loadAccount: (accountId: string) => Promise<Account>;
-  loadSessionAccountsData: (accountIds?: string[]) => Promise<SessionAccount[]>;
-  updateAccount: (accountId: string, updates: Partial<Account>) => void;
+  setAccountLoading: (accountId: string, loading: boolean) => void;
+  setAccountData: (accountId: string, data: Account) => void;
+  setAccountError: (accountId: string, error: string | null) => void;
+  setAccountsData: (accounts: SessionAccount[]) => void;
+  updateAccountData: (accountId: string, updates: Partial<Account>) => void;
   removeAccount: (accountId: string) => void;
 
   // ============================================================================
-  // Notifications (simplified operations)
-  // ============================================================================
-  loadNotifications: (accountId: string) => Promise<Notification[]>;
-  createNotification: (accountId: string, notification: CreateNotificationRequest) => Promise<Notification>;
-  markNotificationAsRead: (accountId: string, notificationId: string) => Promise<void>;
-  markAllNotificationsAsRead: (accountId: string) => Promise<void>;
-  deleteNotification: (accountId: string, notificationId: string) => Promise<void>;
-  deleteAllNotifications: (accountId: string) => Promise<void>;
-
-  // ============================================================================
-  // State Management (simplified)
+  // Temp Token
   // ============================================================================
   setTempToken: (token: string) => void;
   clearTempToken: () => void;
-  clearSessionError: () => void;
 
   // ============================================================================
-  // Helper methods (session-focused only)
+  // Computed Getters
   // ============================================================================
-  isSessionLoading: () => boolean;
-  isSessionReady: () => boolean;
-  isSessionIdle: () => boolean;
-  isSessionError: () => boolean;
-
-  // ============================================================================
-  // Reset methods (session only)
-  // ============================================================================
-  resetSessionState: () => void;
+  getSessionState: () => AsyncState<AccountSessionInfo>;
+  getAccountState: (accountId: string) => AsyncState<Account>;
+  shouldLoadAccount: (accountId: string, maxAge?: number) => boolean;
 }
 
 // ============================================================================
-// Service Management + Loading Cache
-// ============================================================================
-
-// Get singleton service manager instance
-const serviceManager = ServiceManager.getInstance();
-
-// Cache for ongoing API requests to prevent duplicate calls
-const loadingCache = new Map<string, Promise<any>>();
-
-// Helper function to ensure single concurrent call per key
-const singleCall = <T>(key: string, fn: () => Promise<T>): Promise<T> => {
-  if (loadingCache.has(key)) {
-    return loadingCache.get(key) as Promise<T>;
-  }
-
-  const promise = fn().finally(() => {
-    loadingCache.delete(key);
-  });
-
-  loadingCache.set(key, promise);
-  return promise;
-};
-
-// ============================================================================
-// Store Implementation (type-only, implementation would follow)
+// Store Implementation
 // ============================================================================
 
 export const useAppStore = create<AppState & AppActions>()(
   subscribeWithSelector(
     immer((set, get) => ({
       // ============================================================================
-      // Initial State (simplified)
+      // Initial State
       // ============================================================================
       session: {
-        hasSession: false,
-        accountIds: [],
-        currentAccountId: null,
-        isValid: false,
-        loadingState: LoadingState.IDLE,
-        error: null,
+        ...createAsyncState<AccountSessionInfo>(),
+        switchingAccount: createAsyncOperation(),
+        loadingAccounts: createAsyncOperation(),
       },
 
       accounts: new Map(),
-      notifications: new Map(),
       tempToken: null,
 
       // ============================================================================
-      // Session Management Implementation
+      // Session Actions
       // ============================================================================
-      loadSession: async () => {
-        serviceManager.ensureInitialized();
-
-        // Use singleCall to prevent duplicate session loading
-        return singleCall('session', async () => {
-          try {
-            const response: GetAccountSessionResponse = await serviceManager.authService.getAccountSession();
-
-            // Update session data (but not loading state)
-            set((state) => {
-              state.session.hasSession = response.session.hasSession;
-              state.session.accountIds = response.session.accountIds;
-              state.session.currentAccountId = response.session.currentAccountId;
-              state.session.isValid = response.session.isValid;
-              // Don't update loadingState or error - that's handled by initializeSession
-            });
-
-            return response.session;
-          } catch (error) {
-            throw error;
+      setSessionLoading: (loading: boolean) => {
+        set((state) => {
+          state.session.loading = loading;
+          if (loading) {
+            state.session.error = null;
           }
         });
       },
 
-      initializeSession: async () => {
-        serviceManager.ensureInitialized();
-
+      setSessionData: (data: AccountSessionInfo) => {
         set((state) => {
-          state.session.loadingState = LoadingState.LOADING;
+          state.session.data = data;
+          state.session.loading = false;
           state.session.error = null;
+          state.session.lastLoaded = Date.now();
         });
+      },
 
-        try {
-          // Use the separate loadSession function
-          await get().loadSession();
+      setSessionError: (error: string | null) => {
+        set((state) => {
+          state.session.error = error;
+          state.session.loading = false;
+        });
+      },
 
-          set((state) => {
-            state.session = {
-              ...state.session,
-              loadingState: LoadingState.READY,
-              error: null,
-            };
+      clearSession: () => {
+        set((state) => {
+          state.session = {
+            ...createAsyncState<AccountSessionInfo>(),
+            switchingAccount: createAsyncOperation(),
+            loadingAccounts: createAsyncOperation(),
+          };
+          state.accounts.clear();
+          state.tempToken = null;
+        });
+      },
+
+      setSwitchingAccount: (loading: boolean, error: string | null = null) => {
+        set((state) => {
+          state.session.switchingAccount.loading = loading;
+          state.session.switchingAccount.error = error;
+        });
+      },
+
+      setLoadingAccounts: (loading: boolean, error: string | null = null) => {
+        set((state) => {
+          state.session.loadingAccounts.loading = loading;
+          state.session.loadingAccounts.error = error;
+        });
+      },
+
+      // ============================================================================
+      // Account Actions
+      // ============================================================================
+      setAccountLoading: (accountId: string, loading: boolean) => {
+        set((state) => {
+          if (!state.accounts.has(accountId)) {
+            state.accounts.set(accountId, createAsyncState<Account>());
+          }
+          const accountState = state.accounts.get(accountId)!;
+          accountState.loading = loading;
+          if (loading) {
+            accountState.error = null;
+          }
+        });
+      },
+
+      setAccountData: (accountId: string, data: Account) => {
+        set((state) => {
+          if (!state.accounts.has(accountId)) {
+            state.accounts.set(accountId, createAsyncState<Account>());
+          }
+          const accountState = state.accounts.get(accountId)!;
+          accountState.data = data;
+          accountState.loading = false;
+          accountState.error = null;
+          accountState.lastLoaded = Date.now();
+        });
+      },
+
+      setAccountError: (accountId: string, error: string | null) => {
+        set((state) => {
+          if (!state.accounts.has(accountId)) {
+            state.accounts.set(accountId, createAsyncState<Account>());
+          }
+          const accountState = state.accounts.get(accountId)!;
+          accountState.error = error;
+          accountState.loading = false;
+        });
+      },
+
+      setAccountsData: (accounts: SessionAccount[]) => {
+        set((state) => {
+          accounts.forEach((account) => {
+            if (!state.accounts.has(account.id)) {
+              state.accounts.set(account.id, createAsyncState<Account>());
+            }
+            const accountState = state.accounts.get(account.id)!;
+            accountState.data = account as Account;
+            accountState.lastLoaded = Date.now();
           });
+          state.session.loadingAccounts.loading = false;
+          state.session.loadingAccounts.error = null;
+        });
+      },
 
-          // Load account data if session has accounts
-          if (get().session.accountIds.length > 0) {
-            try {
-              await get().loadSessionAccountsData(get().session.accountIds);
-            } catch (error) {
-              console.warn('Failed to load session accounts data:', error);
+      updateAccountData: (accountId: string, updates: Partial<Account>) => {
+        set((state) => {
+          const accountState = state.accounts.get(accountId);
+          if (accountState?.data) {
+            accountState.data = { ...accountState.data, ...updates };
+          }
+        });
+      },
+
+      removeAccount: (accountId: string) => {
+        set((state) => {
+          state.accounts.delete(accountId);
+
+          // Update session data if it exists
+          if (state.session.data) {
+            state.session.data.accountIds = state.session.data.accountIds.filter((id) => id !== accountId);
+            if (state.session.data.currentAccountId === accountId) {
+              state.session.data.currentAccountId = state.session.data.accountIds[0] || null;
             }
           }
-        } catch (error) {
-          set((state) => {
-            state.session.loadingState = LoadingState.ERROR;
-            state.session.error = error instanceof Error ? error.message : 'Failed to load session';
-          });
-          throw error;
-        }
-      },
-
-      // ============================================================================
-      // Helper Methods
-      // ============================================================================
-      isSessionLoading: () => get().session.loadingState === LoadingState.LOADING,
-      isSessionReady: () => get().session.loadingState === LoadingState.READY,
-      isSessionIdle: () => get().session.loadingState === LoadingState.IDLE,
-      isSessionError: () => get().session.loadingState === LoadingState.ERROR,
-
-      clearSessionError: () => {
-        set((state) => {
-          state.session.error = null;
-        });
-      },
-
-      resetSessionState: () => {
-        set((state) => {
-          state.session.loadingState = LoadingState.IDLE;
-          state.session.error = null;
         });
       },
 
       // ============================================================================
-      // State Management
+      // Temp Token
       // ============================================================================
       setTempToken: (token: string) => {
         set((state) => {
@@ -240,214 +262,32 @@ export const useAppStore = create<AppState & AppActions>()(
         });
       },
 
-      clearSession: () => {
-        set((state) => {
-          state.session = {
-            hasSession: false,
-            accountIds: [],
-            currentAccountId: null,
-            isValid: false,
-            loadingState: LoadingState.IDLE,
-            error: null,
-          };
-          state.accounts.clear();
-          state.notifications.clear();
-          state.tempToken = null;
-        });
-      },
-
       // ============================================================================
-      // Placeholder implementations (other methods would be implemented similarly)
+      // Computed Getters
       // ============================================================================
-      setCurrentAccount: async (accountId: string | null) => {
-        serviceManager.ensureInitialized();
-
-        set((state) => {
-          state.session.loadingState = LoadingState.LOADING;
-          state.session.error = null;
-        });
-
-        try {
-          await serviceManager.authService.setCurrentAccountInSession(accountId);
-
-          set((state) => {
-            state.session.currentAccountId = accountId;
-            state.session.loadingState = LoadingState.READY;
-          });
-        } catch (error) {
-          set((state) => {
-            state.session.error = error instanceof Error ? error.message : 'Failed to set current account';
-            state.session.loadingState = LoadingState.ERROR;
-          });
-          throw error;
-        }
+      getSessionState: () => {
+        const { switchingAccount, loadingAccounts, ...sessionState } = get().session;
+        return sessionState;
       },
 
-      refreshSession: async () => {
-        return get().initializeSession();
+      getAccountState: (accountId: string) => {
+        return get().accounts.get(accountId) || createAsyncState<Account>();
       },
 
-      loadAccount: async (accountId: string) => {
-        serviceManager.ensureInitialized();
+      shouldLoadAccount: (accountId: string, maxAge: number = 5 * 60 * 1000) => {
+        const accountState = get().accounts.get(accountId);
 
-        // Use singleCall to prevent duplicate requests for same account
-        return singleCall(`account:${accountId}`, async () => {
-          try {
-            const account = await serviceManager.accountService.getAccount(accountId);
+        // Don't load if already loading
+        if (accountState?.loading) return false;
 
-            set((state) => {
-              state.accounts.set(accountId, account);
-            });
+        // Load if no data
+        if (!accountState?.data) return true;
 
-            return account;
-          } catch (error) {
-            throw error;
-          }
-        });
-      },
+        // Load if no timestamp or data is stale
+        if (!accountState.lastLoaded) return true;
+        if (Date.now() - accountState.lastLoaded > maxAge) return true;
 
-      loadSessionAccountsData: async (accountIds?: string[]) => {
-        serviceManager.ensureInitialized();
-
-        // Use singleCall for session accounts data
-        const cacheKey = `session-accounts:${accountIds?.join(',') || 'all'}`;
-
-        return singleCall(cacheKey, async () => {
-          try {
-            const accountsData = await serviceManager.authService.getSessionAccountsData(accountIds);
-
-            set((state) => {
-              accountsData.forEach((account) => {
-                state.accounts.set(account.id, account as Account);
-              });
-            });
-
-            return accountsData;
-          } catch (error) {
-            throw error;
-          }
-        });
-      },
-
-      updateAccount: (accountId: string, updates: Partial<Account>) => {
-        set((state) => {
-          const existing = state.accounts.get(accountId);
-          if (existing) {
-            state.accounts.set(accountId, { ...existing, ...updates });
-          }
-        });
-      },
-
-      removeAccount: (accountId: string) => {
-        set((state) => {
-          state.accounts.delete(accountId);
-          state.notifications.delete(accountId);
-          state.session.accountIds = state.session.accountIds.filter((id) => id !== accountId);
-          if (state.session.currentAccountId === accountId) {
-            state.session.currentAccountId = state.session.accountIds[0] || null;
-          }
-        });
-      },
-
-      // ============================================================================
-      // Notification Management (simplified)
-      // ============================================================================
-      loadNotifications: async (accountId: string) => {
-        serviceManager.ensureInitialized();
-
-        // Use singleCall to prevent duplicate notification loading
-        return singleCall(`notifications:${accountId}`, async () => {
-          try {
-            const result = await serviceManager.notificationService.getNotifications(accountId);
-
-            set((state) => {
-              state.notifications.set(accountId, result.notifications);
-            });
-
-            return result.notifications;
-          } catch (error) {
-            throw error;
-          }
-        });
-      },
-
-      createNotification: async (accountId: string, notification: CreateNotificationRequest) => {
-        serviceManager.ensureInitialized();
-
-        try {
-          const result = await serviceManager.notificationService.createNotification(accountId, notification);
-
-          set((state) => {
-            const existing = state.notifications.get(accountId) || [];
-            state.notifications.set(accountId, [result, ...existing]);
-          });
-
-          return result;
-        } catch (error) {
-          throw error;
-        }
-      },
-
-      markNotificationAsRead: async (accountId: string, notificationId: string) => {
-        serviceManager.ensureInitialized();
-
-        try {
-          await serviceManager.notificationService.markNotificationAsRead(accountId, notificationId);
-
-          set((state) => {
-            const notifications = state.notifications.get(accountId) || [];
-            const updated = notifications.map((n) => (n.id === notificationId ? { ...n, read: true } : n));
-            state.notifications.set(accountId, updated);
-          });
-        } catch (error) {
-          throw error;
-        }
-      },
-
-      markAllNotificationsAsRead: async (accountId: string) => {
-        serviceManager.ensureInitialized();
-
-        try {
-          await serviceManager.notificationService.markAllNotificationsAsRead(accountId);
-
-          set((state) => {
-            const notifications = state.notifications.get(accountId) || [];
-            const updated = notifications.map((n) => ({ ...n, read: true }));
-            state.notifications.set(accountId, updated);
-          });
-        } catch (error) {
-          throw error;
-        }
-      },
-
-      deleteNotification: async (accountId: string, notificationId: string) => {
-        serviceManager.ensureInitialized();
-
-        try {
-          await serviceManager.notificationService.deleteNotification(accountId, notificationId);
-
-          set((state) => {
-            const notifications = state.notifications.get(accountId) || [];
-            const updated = notifications.filter((n) => n.id !== notificationId);
-            state.notifications.set(accountId, updated);
-          });
-        } catch (error) {
-          throw error;
-        }
-      },
-
-      deleteAllNotifications: async (accountId: string) => {
-        serviceManager.ensureInitialized();
-
-        try {
-          await serviceManager.notificationService.deleteAllNotifications(accountId);
-
-          set((state) => {
-            state.notifications.set(accountId, []);
-          });
-        } catch (error) {
-          throw error;
-        }
+        return false;
       },
     })),
   ),

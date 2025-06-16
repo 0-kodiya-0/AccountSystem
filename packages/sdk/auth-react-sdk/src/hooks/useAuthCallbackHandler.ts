@@ -1,33 +1,7 @@
+import { CallbackCode, CallbackData, OAuthProviders } from '../types';
 import { useCallback, useState } from 'react';
+import { useAppStore } from '../store/useAppStore';
 import { useAuth } from './useAuth';
-import { OAuthProviders } from '../types';
-
-// Callback codes based on actual backend implementation
-export enum CallbackCode {
-  // OAuth success codes
-  OAUTH_SIGNIN_SUCCESS = 'oauth_signin_success',
-  OAUTH_SIGNUP_SUCCESS = 'oauth_signup_success',
-  OAUTH_PERMISSION_SUCCESS = 'oauth_permission_success',
-
-  // Error codes
-  OAUTH_ERROR = 'oauth_error',
-  PERMISSION_ERROR = 'permission_error',
-}
-
-export interface CallbackData {
-  code?: CallbackCode;
-  accountId?: string;
-  name?: string;
-  provider?: OAuthProviders;
-  service?: string;
-  scopeLevel?: string;
-  error?: string;
-  message?: string;
-  needsAdditionalScopes?: boolean;
-  missingScopes?: string[];
-  // Additional context data
-  [key: string]: any;
-}
 
 type CallbackHandler<T = any> = (data: T) => void | Promise<void>;
 
@@ -51,6 +25,15 @@ interface UseCallbackHandlerOptions {
     provider: OAuthProviders;
     message?: string;
   }>;
+  // Two-factor authentication handlers
+  onTwoFactorRequired?: CallbackHandler<{
+    accountId: string;
+    tempToken: string;
+    provider?: OAuthProviders;
+    message?: string;
+    isLocal: boolean;
+    isOAuth: boolean;
+  }>;
   onError?: CallbackHandler<{
     error: string;
     provider?: OAuthProviders;
@@ -64,6 +47,7 @@ interface UseCallbackHandlerReturn {
 }
 
 export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}): UseCallbackHandlerReturn => {
+  const setTempToken = useAppStore((state) => state.setTempToken);
   const { refreshSession } = useAuth();
   const [error, setError] = useState<string | null>(null);
 
@@ -111,6 +95,40 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
             break;
           }
 
+          // NEW: Handle 2FA required scenarios
+          case CallbackCode.LOCAL_SIGNIN_REQUIRES_2FA: {
+            // Store temp token for 2FA verification
+            if (callbackData.tempToken) {
+              setTempToken(callbackData.tempToken);
+            }
+
+            options.onTwoFactorRequired?.({
+              accountId: callbackData.accountId!,
+              tempToken: callbackData.tempToken!,
+              message: callbackData.message || 'Two-factor authentication required',
+              isLocal: true,
+              isOAuth: false,
+            });
+            break;
+          }
+
+          case CallbackCode.OAUTH_SIGNIN_REQUIRES_2FA: {
+            // Store temp token for 2FA verification
+            if (callbackData.tempToken) {
+              setTempToken(callbackData.tempToken);
+            }
+
+            options.onTwoFactorRequired?.({
+              accountId: callbackData.accountId!,
+              tempToken: callbackData.tempToken!,
+              provider: callbackData.provider,
+              message: callbackData.message || 'Two-factor authentication required',
+              isLocal: false,
+              isOAuth: true,
+            });
+            break;
+          }
+
           case CallbackCode.OAUTH_ERROR:
           case CallbackCode.PERMISSION_ERROR:
           default: {
@@ -129,7 +147,7 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
         navigateToRoot();
       }
     },
-    [options, refreshSession, navigateToRoot],
+    [options, refreshSession, setTempToken, navigateToRoot],
   );
 
   const handleAuthCallback = useCallback(
@@ -145,7 +163,14 @@ export const useAuthCallbackHandler = (options: UseCallbackHandlerOptions = {}):
           if (decodedValue.includes(',')) {
             callbackData[key] = decodedValue.split(',').map((s) => s.trim());
           } else {
-            callbackData[key] = decodedValue;
+            // Handle boolean values
+            if (decodedValue === 'true') {
+              callbackData[key] = true;
+            } else if (decodedValue === 'false') {
+              callbackData[key] = false;
+            } else {
+              callbackData[key] = decodedValue;
+            }
           }
         });
 

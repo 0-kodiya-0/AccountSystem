@@ -1,26 +1,39 @@
 import React, { JSX, ReactNode, useEffect } from 'react';
-import { useAppStore } from '../store/useAppStore';
-import { ServiceManager } from '../services/ServiceManager';
-import { HttpClient } from '../client/HttpClient';
+import { ServicesProvider, ServicesConfig } from './ServicesProvider';
+import { useAuth } from '../hooks/useAuth';
 
 interface AuthProviderProps {
   children: ReactNode;
-  httpClient: HttpClient;
+  config: ServicesConfig;
 }
 
-export const AuthProvider = ({ children, httpClient }: AuthProviderProps): JSX.Element | null => {
-  const { initializeSession } = useAppStore();
+/**
+ * Main AuthProvider that sets up services and initializes the session
+ * This is the single entry point for the SDK
+ */
+export const AuthProvider = ({ children, config }: AuthProviderProps): JSX.Element => {
+  return (
+    <ServicesProvider config={config}>
+      <SessionInitializer>{children}</SessionInitializer>
+    </ServicesProvider>
+  );
+};
+
+/**
+ * Internal component that initializes the session after services are available
+ */
+const SessionInitializer = ({ children }: { children: ReactNode }): JSX.Element => {
+  const { initializeSession } = useAuth();
 
   useEffect(() => {
-    console.log('AuthProvider effect running');
+    console.log('AuthProvider: Services available, initializing session');
 
-    // Initialize ServiceManager with HttpClient
-    const serviceManager = ServiceManager.getInstance();
-    serviceManager.initialize(httpClient);
-
-    // Initialize session after services are ready
-    initializeSession();
-  }, []);
+    // Services are guaranteed to be available here due to context
+    // useAuth will handle all service interactions
+    initializeSession().catch((error) => {
+      console.error('Failed to initialize session:', error);
+    });
+  }, [initializeSession]);
 
   return <>{children}</>;
 };

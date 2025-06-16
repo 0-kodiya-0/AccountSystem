@@ -1,19 +1,15 @@
 import React, { JSX } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { LoadingState } from '../types';
 import DefaultLoadingSpinner from './DefaultLoadingSpinner';
 import DefaultGlobalErrorDisplay from './DefaultGlobalErrorDisplay';
 import DefaultErrorDisplay from './DefaultErrorDisplay';
 
-// Base props that are always available
 interface BaseAuthGuardProps {
   children?: React.ReactNode;
   redirectDelay?: number;
-
-  // Customizable UI components
   loadingComponent?: React.ComponentType<{
     reason?: string;
-    loadingState?: LoadingState;
+    loading?: boolean;
   }>;
   redirectingComponent?: React.ComponentType<{
     destination: string;
@@ -22,7 +18,7 @@ interface BaseAuthGuardProps {
   }>;
   errorComponent?: React.ComponentType<{
     error: string;
-    loadingState?: LoadingState;
+    loading?: boolean;
     retry?: () => void;
   }>;
   globalErrorComponent?: React.ComponentType<{
@@ -32,19 +28,14 @@ interface BaseAuthGuardProps {
   }>;
 }
 
-// Rule 1: allowGuests: true, requireAccount: false
-// Only redirectOnAuthenticated is allowed (disabled if children present)
 interface GuestNoAccountProps extends BaseAuthGuardProps {
   allowGuests: true;
   requireAccount: false;
   redirectOnAuthenticated?: string;
-  // Explicitly forbid these props
   redirectToLogin?: never;
   redirectToAccountSelection?: never;
 }
 
-// Rule 2: allowGuests: true, requireAccount: true
-// All redirect props are allowed
 interface GuestWithAccountProps extends BaseAuthGuardProps {
   allowGuests: true;
   requireAccount: true;
@@ -53,8 +44,6 @@ interface GuestWithAccountProps extends BaseAuthGuardProps {
   redirectToAccountSelection?: string;
 }
 
-// Rule 3: allowGuests: false, requireAccount: true
-// All props allowed except redirectOnAuthenticated is disabled if children present
 interface ProtectedWithAccountProps extends BaseAuthGuardProps {
   allowGuests: false;
   requireAccount: true;
@@ -63,16 +52,12 @@ interface ProtectedWithAccountProps extends BaseAuthGuardProps {
   redirectToAccountSelection?: string;
 }
 
-// Rule 4: allowGuests: false, requireAccount: false
-// This combination should cause a compilation error
 interface InvalidCombinationProps extends BaseAuthGuardProps {
   allowGuests: false;
   requireAccount: false;
-  // Force a compilation error with never types
   _error: 'Invalid combination: allowGuests: false and requireAccount: false is not allowed. Use allowGuests: true with requireAccount: false instead.';
 }
 
-// Union type that enforces all the rules
 type AuthGuardProps = GuestNoAccountProps | GuestWithAccountProps | ProtectedWithAccountProps | InvalidCombinationProps;
 
 export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
@@ -85,7 +70,6 @@ export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
     globalErrorComponent: GlobalErrorComponent,
   } = props;
 
-  // Extract props safely based on the type
   const allowGuests = 'allowGuests' in props ? props.allowGuests : false;
   const requireAccount = 'requireAccount' in props ? props.requireAccount : false;
   const redirectOnAuthenticated = 'redirectOnAuthenticated' in props ? props.redirectOnAuthenticated : undefined;
@@ -93,49 +77,61 @@ export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
   const redirectToAccountSelection =
     'redirectToAccountSelection' in props ? props.redirectToAccountSelection : undefined;
 
-  const session = useAppStore((state) => state.session);
+  // Get session state from store
+  const sessionState = useAppStore((state) => state.getSessionState());
+  const switchingAccount = useAppStore((state) => state.session.switchingAccount);
 
-  // Derive authentication state from session
-  const isAuthenticated = session.hasSession && session.isValid && session.accountIds.length > 0;
-  const loadingState = session.loadingState;
+  // Derived state
+  const isAuthenticated = !!(
+    sessionState.data?.hasSession &&
+    sessionState.data?.isValid &&
+    sessionState.data?.accountIds.length > 0
+  );
+  const currentAccountId = sessionState.data?.currentAccountId || null;
+  const hasAccount = !!currentAccountId;
 
-  // Wait for session to be ready before making auth decisions
-  if (loadingState === LoadingState.IDLE) {
+  // Session is initializing
+  if (!sessionState.lastLoaded && sessionState.loading) {
     if (LoadingComponent) {
-      return <LoadingComponent reason="Initializing session" loadingState={loadingState} />;
+      return <LoadingComponent reason="Initializing session" loading={true} />;
     }
-
     return <DefaultLoadingSpinner message="Initializing..." />;
   }
 
-  // Show loading state
-  if (loadingState === LoadingState.LOADING) {
+  // Session is loading
+  if (sessionState.loading) {
     if (LoadingComponent) {
-      return <LoadingComponent reason="Loading session" loadingState={loadingState} />;
+      return <LoadingComponent reason="Loading session" loading={true} />;
     }
-
     return <DefaultLoadingSpinner message="Loading..." />;
   }
 
-  // Show error state if session has error
-  if (loadingState === LoadingState.ERROR || session.error) {
-    if (ErrorComponent) {
-      return (
-        <ErrorComponent
-          error={session.error || 'Authentication error'}
-          loadingState={loadingState}
-          retry={() => window.location.reload()}
-        />
-      );
+  // Account switching in progress
+  if (switchingAccount.loading) {
+    if (LoadingComponent) {
+      return <LoadingComponent reason="Switching account" loading={true} />;
     }
-
-    return (
-      <DefaultErrorDisplay error={session.error || 'Authentication error'} retry={() => window.location.reload()} />
-    );
+    return <DefaultLoadingSpinner message="Switching account..." />;
   }
 
-  // Session is ready - now handle auth logic
-  if (loadingState === LoadingState.READY) {
+  // Session has error
+  if (sessionState.error) {
+    if (ErrorComponent) {
+      return <ErrorComponent error={sessionState.error} loading={false} retry={() => window.location.reload()} />;
+    }
+    return <DefaultErrorDisplay error={sessionState.error} retry={() => window.location.reload()} />;
+  }
+
+  // Account switching error
+  if (switchingAccount.error) {
+    if (ErrorComponent) {
+      return <ErrorComponent error={switchingAccount.error} loading={false} retry={() => window.location.reload()} />;
+    }
+    return <DefaultErrorDisplay error={switchingAccount.error} retry={() => window.location.reload()} />;
+  }
+
+  // Session is ready - handle auth logic
+  if (sessionState.data) {
     // Handle guest pages (login, signup, forgot password)
     if (allowGuests) {
       if (isAuthenticated && !children) {
@@ -158,7 +154,13 @@ export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
           return <DefaultLoadingSpinner message="Redirecting..." />;
         }
 
-        throw new Error('redirectOnAuthenticated url is needed');
+        console.error('redirectOnAuthenticated url is needed for guest page with authenticated user');
+        return (
+          <DefaultGlobalErrorDisplay
+            error="Configuration error: redirectOnAuthenticated is required"
+            retry={() => window.location.reload()}
+          />
+        );
       }
 
       // Allow guests (authenticated or not) to see the page
@@ -187,12 +189,17 @@ export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
           return <DefaultLoadingSpinner message="Redirecting to login..." />;
         }
 
-        // No redirect URL provided - just show children or error
-        throw new Error('redirectToLogin url is needed');
+        console.error('redirectToLogin url is needed for protected page');
+        return (
+          <DefaultGlobalErrorDisplay
+            error="Configuration error: redirectToLogin is required"
+            retry={() => window.location.reload()}
+          />
+        );
       }
 
       // User authenticated but account selection required
-      if (requireAccount && !session.currentAccountId) {
+      if (requireAccount && !hasAccount) {
         if (redirectToAccountSelection) {
           if (RedirectingComponent) {
             return (
@@ -211,7 +218,13 @@ export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
           return <DefaultLoadingSpinner message="Redirecting to account selection..." />;
         }
 
-        throw new Error('redirectToAccountSelection url is needed');
+        console.error('redirectToAccountSelection url is needed when requireAccount is true');
+        return (
+          <DefaultGlobalErrorDisplay
+            error="Configuration error: redirectToAccountSelection is required"
+            retry={() => window.location.reload()}
+          />
+        );
       }
 
       // Handle redirect-only pages (no children) - redirect on success
@@ -238,7 +251,16 @@ export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
     }
   }
 
-  // Fallback - unexpected state, show error
+  // Fallback - unexpected state
+  if (GlobalErrorComponent) {
+    return (
+      <GlobalErrorComponent
+        error="AuthGuard reached an unexpected state. Please check your configuration."
+        retry={() => window.location.reload()}
+      />
+    );
+  }
+
   return (
     <DefaultGlobalErrorDisplay
       error="AuthGuard reached an unexpected state. Please check your configuration."

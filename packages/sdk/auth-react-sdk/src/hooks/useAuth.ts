@@ -1,171 +1,245 @@
 import { useAppStore } from '../store/useAppStore';
-import { ServiceManager } from '../services/ServiceManager';
-import { LocalLoginRequest, OAuthProviders, PasswordChangeRequest, CompleteProfileRequest } from '../types';
-
-// Get ServiceManager instance at module level
-const serviceManager = ServiceManager.getInstance();
+import { useAuthService } from '../context/ServicesProvider';
+import { LocalLoginRequest, OAuthProviders, CompleteProfileRequest } from '../types';
+import { parseApiError } from '../utils';
 
 export const useAuth = () => {
-  // Get session data from store
-  const session = useAppStore((state) => state.session);
-  const accounts = useAppStore((state) => state.accounts);
+  const authService = useAuthService();
+
+  const sessionState = useAppStore((state) => state.getSessionState());
+  const switchingAccount = useAppStore((state) => state.session.switchingAccount);
+  const loadingAccounts = useAppStore((state) => state.session.loadingAccounts);
   const tempToken = useAppStore((state) => state.tempToken);
 
-  // Get session actions
-  const setCurrentAccount = useAppStore((state) => state.setCurrentAccount);
+  const setSessionLoading = useAppStore((state) => state.setSessionLoading);
+  const setSessionData = useAppStore((state) => state.setSessionData);
+  const setSessionError = useAppStore((state) => state.setSessionError);
+  const setSwitchingAccount = useAppStore((state) => state.setSwitchingAccount);
+  const setLoadingAccounts = useAppStore((state) => state.setLoadingAccounts);
+  const setAccountsData = useAppStore((state) => state.setAccountsData);
   const clearSession = useAppStore((state) => state.clearSession);
-  const refreshSession = useAppStore((state) => state.initializeSession);
+  const setTempToken = useAppStore((state) => state.setTempToken);
+  const clearTempToken = useAppStore((state) => state.clearTempToken);
 
-  // Derived authentication state
-  const isAuthenticated = session.hasSession && session.isValid && session.accountIds.length > 0;
-  const currentAccount = session.currentAccountId ? accounts.get(session.currentAccountId) : null;
+  const isAuthenticated = !!(
+    sessionState.data?.hasSession &&
+    sessionState.data?.isValid &&
+    sessionState.data?.accountIds.length > 0
+  );
+  const currentAccountId = sessionState.data?.currentAccountId || null;
+  const accountIds = sessionState.data?.accountIds || [];
+  const hasMultipleAccounts = accountIds.length > 1;
 
-  // ============================================================================
-  // Core Authentication
-  // ============================================================================
+  const currentAccountState = useAppStore((state) =>
+    currentAccountId
+      ? state.getAccountState(currentAccountId)
+      : { data: null, loading: false, error: null, lastLoaded: null },
+  );
+
+  const initializeSession = async () => {
+    try {
+      setSessionLoading(true);
+
+      const sessionResponse = await authService.getAccountSession();
+      setSessionData(sessionResponse.session);
+
+      if (sessionResponse.session.accountIds.length > 0) {
+        try {
+          setLoadingAccounts(true);
+          const accountsData = await authService.getSessionAccountsData(sessionResponse.session.accountIds);
+          setAccountsData(accountsData);
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Failed to load accounts';
+          setLoadingAccounts(false, errorMessage);
+          console.warn('Failed to load session accounts data:', error);
+        }
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to initialize session';
+      setSessionError(errorMessage);
+    }
+  };
+
+  const refreshSession = async () => {
+    return initializeSession();
+  };
+
+  const setCurrentAccount = async (accountId: string | null) => {
+    try {
+      setSwitchingAccount(true);
+
+      await authService.setCurrentAccountInSession(accountId);
+
+      const sessionResponse = await authService.getAccountSession();
+      setSessionData(sessionResponse.session);
+
+      setSwitchingAccount(false);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to switch account';
+      setSwitchingAccount(false, errorMessage);
+    }
+  };
 
   const login = async (data: LocalLoginRequest) => {
-    serviceManager.ensureInitialized();
-    const result = await serviceManager.authService.localLogin(data);
+    const result = await authService.localLogin(data);
 
-    if (!result.requiresTwoFactor) {
-      // Refresh session on successful login
-      await refreshSession();
+    if (result.requiresTwoFactor && result.tempToken) {
+      setTempToken(result.tempToken);
+    } else {
+      await initializeSession();
     }
 
     return result;
   };
 
   const logout = async (accountId?: string) => {
-    const targetAccountId = accountId || session.currentAccountId;
-    if (!targetAccountId) throw new Error('No account ID to logout');
+    const targetAccountId = accountId || currentAccountId;
+    if (!targetAccountId) {
+      console.error('No account ID to logout');
+      return;
+    }
 
-    serviceManager.ensureInitialized();
-    await serviceManager.authService.logout(targetAccountId);
-    await refreshSession();
+    await authService.logout(targetAccountId);
+    await initializeSession();
   };
 
   const logoutAll = async () => {
-    if (session.accountIds.length === 0) return;
+    if (accountIds.length === 0) return;
 
-    serviceManager.ensureInitialized();
-    await serviceManager.authService.logoutAll(session.accountIds);
+    await authService.logoutAll(accountIds);
     clearSession();
   };
 
-  // ============================================================================
-  // Signup Flow
-  // ============================================================================
+  const verify2FA = async (token: string, tempTokenToUse?: string) => {
+    const tokenToUse = tempTokenToUse || tempToken;
 
-  const requestEmailVerification = async (email: string) => {
-    serviceManager.ensureInitialized();
-    return serviceManager.authService.requestEmailVerification({ email });
+    if (!tokenToUse) {
+      console.error('No temporary token available for 2FA verification');
+      return null;
+    }
+
+    const result = await authService.verifyTwoFactorLogin({
+      token,
+      tempToken: tokenToUse,
+    });
+
+    if (result.accountId) {
+      // Clear temp token and refresh session on success
+      clearTempToken();
+      await initializeSession();
+    }
+
+    return result;
   };
+
+  const requestEmailVerification = authService.requestEmailVerification;
+
+  const verifyEmail = authService.verifyEmailForSignup;
 
   const completeProfile = async (token: string, data: CompleteProfileRequest) => {
-    serviceManager.ensureInitialized();
-    return serviceManager.authService.completeProfile(token, data);
+    const result = await authService.completeProfile(token, data);
+    await initializeSession();
+    return result;
   };
 
-  const getSignupStatus = async (email?: string, token?: string) => {
-    serviceManager.ensureInitialized();
-    return serviceManager.authService.getSignupStatus(email, token);
-  };
+  const getSignupStatus = authService.getSignupStatus;
 
   const cancelSignup = async (email: string) => {
-    serviceManager.ensureInitialized();
-    return serviceManager.authService.cancelSignup({ email });
+    try {
+      return await authService.cancelSignup({ email });
+    } catch (error) {
+      const apiError = parseApiError(error, 'Cancel signup failed');
+      console.error('Cancel signup failed:', apiError);
+      return null;
+    }
   };
 
-  // ============================================================================
-  // Password Management
-  // ============================================================================
-
-  const requestPasswordReset = async (email: string) => {
-    serviceManager.ensureInitialized();
-    return serviceManager.authService.requestPasswordReset({ email });
-  };
-
-  const changePassword = async (accountId: string, data: PasswordChangeRequest) => {
-    serviceManager.ensureInitialized();
-    return serviceManager.authService.changePassword(accountId, data);
-  };
-
-  // ============================================================================
-  // OAuth Authentication
-  // ============================================================================
+  const resetPassword = authService.resetPassword;
 
   const startOAuthSignup = (provider: OAuthProviders) => {
-    serviceManager.ensureInitialized();
-    serviceManager.authService.redirectToOAuthSignup(provider);
+    authService.redirectToOAuthSignup(provider);
   };
 
   const startOAuthSignin = (provider: OAuthProviders) => {
-    serviceManager.ensureInitialized();
-    serviceManager.authService.redirectToOAuthSignin(provider);
+    authService.redirectToOAuthSignin(provider);
   };
-
-  // ============================================================================
-  // Account Management
-  // ============================================================================
-
-  const switchAccount = async (accountId: string) => {
-    return setCurrentAccount(accountId);
-  };
-
-  // ============================================================================
-  // Google Permissions
-  // ============================================================================
 
   const requestGooglePermission = (scopeNames: string[]) => {
-    if (!currentAccount?.id) throw new Error('No current account ID');
-    serviceManager.ensureInitialized();
-    serviceManager.authService.requestGooglePermission(currentAccount.id, scopeNames);
+    if (!currentAccountId) {
+      console.error('No current account ID');
+      return;
+    }
+    authService.requestGooglePermission(currentAccountId, scopeNames);
   };
 
   const reauthorizePermissions = () => {
-    if (!currentAccount?.id) throw new Error('No current account ID');
-    serviceManager.ensureInitialized();
-    serviceManager.authService.reauthorizePermissions(currentAccount.id);
+    if (!currentAccountId) {
+      console.error('No current account ID');
+      return;
+    }
+    authService.reauthorizePermissions(currentAccountId);
   };
 
   return {
-    // Authentication state
-    session,
+    session: {
+      data: sessionState.data,
+      loading: sessionState.loading,
+      error: sessionState.error,
+      lastLoaded: sessionState.lastLoaded,
+    },
+
     isAuthenticated,
-    currentAccount,
-    accounts: Array.from(accounts.values()),
+    currentAccountId,
+    accountIds,
+    hasMultipleAccounts,
+
+    currentAccount: {
+      data: currentAccountState.data,
+      loading: currentAccountState.loading,
+      error: currentAccountState.error,
+    },
+
+    switchingAccount: {
+      loading: switchingAccount.loading,
+      error: switchingAccount.error,
+    },
+
+    loadingAccounts: {
+      loading: loadingAccounts.loading,
+      error: loadingAccounts.error,
+    },
+
     tempToken,
 
-    // Core authentication
+    initializeSession,
+    refreshSession,
+    setCurrentAccount,
+    clearSession,
+
     login,
     logout,
     logoutAll,
 
-    // Signup flow
+    // 2FA Verification (integrated from use2FAVerification)
+    verify2FA,
+    clearTempToken,
+
     requestEmailVerification,
     completeProfile,
     getSignupStatus,
     cancelSignup,
 
-    // Password management
-    requestPasswordReset,
-    changePassword,
-
-    // OAuth authentication
     startOAuthSignup,
     startOAuthSignin,
 
-    // Account management
-    switchAccount,
-    setCurrentAccount,
-
-    // Google permissions
     requestGooglePermission,
     reauthorizePermissions,
 
-    // Session management
-    refreshSession,
-    clearSession,
+    isSessionLoading: sessionState.loading,
+    isSessionReady: !sessionState.loading && !!sessionState.data && !sessionState.error,
+    hasSessionError: !!sessionState.error,
+
+    isSwitchingAccount: switchingAccount.loading,
+    isLoadingAccounts: loadingAccounts.loading,
   };
 };
