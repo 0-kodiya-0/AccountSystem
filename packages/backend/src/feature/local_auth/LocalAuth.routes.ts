@@ -9,104 +9,23 @@ export const authRequiredRouter = express.Router({ mergeParams: true });
  * Public routes (no authentication required)
  */
 
-/**
- * @route POST /auth/signup/request-email
- * @desc Step 1: Request email verification
- * @access Public
- */
+// Signup routes
 authNotRequiredRouter.post('/signup/request-email', LocalAuthController.requestEmailVerification);
-
-/**
- * @route GET /auth/signup/verify-email
- * @desc Step 2: Verify email and get profile token
- * @access Public
- */
 authNotRequiredRouter.get('/signup/verify-email', LocalAuthController.verifyEmailForSignup);
-
-/**
- * @route POST /auth/signup/complete-profile
- * @desc Step 3: Complete profile and create account
- * @access Public
- */
 authNotRequiredRouter.post('/signup/complete-profile', LocalAuthController.completeProfile);
-
-/**
- * @route DELETE /auth/signup/cancel
- * @desc Cancel signup process
- * @access Public
- */
 authNotRequiredRouter.delete('/signup/cancel', LocalAuthController.cancelEmailVerification);
-
-/**
- * @route GET /auth/signup/status
- * @desc Get current signup step status
- * @access Public
- */
 authNotRequiredRouter.get('/signup/status', LocalAuthController.getSignupStatus);
 
-/**
- * @route POST /login
- * @desc Login with email/username and password
- * @access Public
- */
+// Login routes
 authNotRequiredRouter.post('/login', LocalAuthController.login);
 
-/**
- * @route POST /verify-two-factor
- * @desc Verify two-factor code during login
- * @access Public (but requires temp token)
- */
-authNotRequiredRouter.post('/verify-two-factor', LocalAuthController.verifyTwoFactor);
-
-/**
- * @route POST /reset-password-request
- * @desc Request password reset email
- * @access Public
- */
+// Password reset routes
 authNotRequiredRouter.post('/reset-password-request', LocalAuthController.requestPasswordReset);
-
-/**
- * @route POST /reset-password
- * @desc Reset password with token
- * @access Public
- */
 authNotRequiredRouter.post('/reset-password', LocalAuthController.resetPassword);
 
 /**
  * Authenticated routes (require authentication)
  */
 
-/**
- * @route POST /:accountId/change-password
- * @desc Change password (authenticated user)
- * @access Private
- */
+// Password management
 authRequiredRouter.post('/change-password', LocalAuthController.changePassword);
-
-/**
- * @route POST /:accountId/setup-two-factor
- * @desc Set up two-factor authentication
- * @access Private
- */
-authRequiredRouter.post('/setup-two-factor', LocalAuthController.setupTwoFactor);
-
-/**
- * @route POST /:accountId/verify-two-factor-setup
- * @desc Verify and enable two-factor authentication
- * @access Private
- */
-authRequiredRouter.post('/verify-two-factor-setup', LocalAuthController.verifyAndEnableTwoFactor);
-
-/**
- * @route POST /:accountId/generate-backup-codes
- * @desc Generate new backup codes for two-factor authentication
- * @access Private
- */
-authRequiredRouter.post('/generate-backup-codes', LocalAuthController.generateBackupCodes);
-
-// Refresh token route
-authRequiredRouter.get('/refresh', LocalAuthController.refreshLocalToken);
-
-// Token information routes
-authRequiredRouter.get('/token', LocalAuthController.getLocalTokenInfo);
-authRequiredRouter.get('/refresh/token', LocalAuthController.getLocalRefreshTokenInfo);

@@ -170,7 +170,7 @@ export async function refreshGoogleToken(refreshToken: string) {
  * @param accessToken The access token to revoke
  * @param refreshToken Optional refresh token to revoke
  */
-export async function revokeTokens(accessToken: string, refreshToken?: string) {
+export async function revokeGoogleTokens(accessToken: string, refreshToken?: string) {
   ValidationUtils.validateAccessToken(accessToken, 'revokeTokens');
 
   if (refreshToken) {
@@ -219,7 +219,7 @@ export async function revokeTokens(accessToken: string, refreshToken?: string) {
  * Helper function to check if a user has additional scopes in GooglePermissions
  * that aren't included in their current access token
  */
-export async function checkForAdditionalScopes(
+export async function checkForAdditionalGoogleScopes(
   accountId: string,
   accessToken: string,
 ): Promise<{
@@ -254,7 +254,7 @@ export async function checkForAdditionalScopes(
  * @param accountId The account ID that should own this token
  * @returns Object indicating if the token is valid and reason if not
  */
-export async function verifyTokenOwnership(
+export async function verifyGoogleTokenOwnership(
   accessToken: string,
   accountId: string,
 ): Promise<{ isValid: boolean; reason?: string }> {

@@ -1,5 +1,4 @@
 import bcrypt from 'bcrypt';
-import crypto from 'crypto';
 import { AccountStatus, AccountType, Account } from '../account/Account.types';
 import db from '../../config/db';
 import { BadRequestError, NotFoundError, ValidationError, ApiErrorCode, ServerError } from '../../types/response.types';
@@ -9,14 +8,10 @@ import {
   sendPasswordChangedNotification,
   sendSignupEmailVerification,
 } from '../email/Email.service';
-import { authenticator } from 'otplib';
 import { ValidationUtils } from '../../utils/validation';
 import {
   getPasswordResetToken,
   removePasswordResetToken,
-  saveTwoFactorTempToken,
-  getTwoFactorTempToken,
-  removeTwoFactorTempToken,
   savePasswordResetToken,
   removeProfileCompletionData,
   cleanupSignupData,
@@ -27,7 +22,6 @@ import {
   saveEmailForVerification,
   getEmailVerificationData,
 } from './LocalAuth.cache';
-import { getAppName } from '../../config/env.config';
 import { logger } from '../../utils/logger';
 import { sendCriticalEmail, sendNonCriticalEmail } from '../email/Email.utils';
 import {
@@ -35,8 +29,8 @@ import {
   LocalAuthRequest,
   PasswordChangeRequest,
   PasswordResetRequest,
-  SetupTwoFactorRequest,
 } from './LocalAuth.types';
+import { saveTwoFactorLoginToken } from '../twofa/TwoFA.service';
 
 export async function requestEmailVerification(email: string): Promise<{ token: string }> {
   ValidationUtils.validateEmail(email);
@@ -319,7 +313,11 @@ export async function authenticateLocalUser(
   // Check if 2FA is enabled
   if (account.security.twoFactorEnabled) {
     // Generate temporary token for 2FA verification
-    const tempToken = saveTwoFactorTempToken(account._id.toString(), account.userDetails.email as string);
+    const tempToken = saveTwoFactorLoginToken(
+      account._id.toString(),
+      account.userDetails.email as string,
+      AccountType.Local,
+    );
 
     return {
       requiresTwoFactor: true,
@@ -532,225 +530,4 @@ export async function changePassword(accountId: string, data: PasswordChangeRequ
   );
 
   return true;
-}
-
-/**
- * Set up two-factor authentication
- */
-export async function setupTwoFactor(
-  accountId: string,
-  data: SetupTwoFactorRequest,
-): Promise<{ secret?: string; qrCodeUrl?: string }> {
-  const models = await db.getModels();
-
-  ValidationUtils.validateObjectId(accountId, 'Account ID');
-  ValidationUtils.validateRequiredFields(data, ['password', 'enableTwoFactor']);
-
-  // Find account by ID
-  const account = await models.accounts.Account.findById(accountId);
-
-  if (!account || account.accountType !== AccountType.Local) {
-    throw new NotFoundError('Account not found', 404, ApiErrorCode.USER_NOT_FOUND);
-  }
-
-  // Verify password before enabling/disabling 2FA
-  const isPasswordValid = await account.comparePassword!(data.password);
-
-  if (!isPasswordValid) {
-    throw new ValidationError('Password is incorrect', 401, ApiErrorCode.AUTH_FAILED);
-  }
-
-  // Enable or disable 2FA
-  if (data.enableTwoFactor) {
-    // Generate new secret if it doesn't exist or is being reset
-    if (!account.security.twoFactorSecret) {
-      const secret = authenticator.generateSecret();
-      account.security.twoFactorSecret = secret;
-
-      // Generate backup codes (10 codes, 8 chars each)
-      const backupCodes = Array(10)
-        .fill(0)
-        .map(() => crypto.randomBytes(4).toString('hex'));
-
-      // Hash the backup codes before storing
-      account.security.twoFactorBackupCodes = await Promise.all(
-        backupCodes.map(async (code) => {
-          const salt = await bcrypt.genSalt(10);
-          return bcrypt.hash(code, salt);
-        }),
-      );
-
-      await account.save();
-
-      const accountName = account.userDetails.email || account.userDetails.username || accountId;
-      const qrCodeUrl = authenticator.keyuri(accountName.toString(), getAppName(), secret);
-
-      return {
-        secret,
-        qrCodeUrl,
-      };
-    } else {
-      // Secret already exists
-      const accountName = account.userDetails.email || account.userDetails.username || accountId;
-      const qrCodeUrl = authenticator.keyuri(accountName.toString(), getAppName(), account.security.twoFactorSecret);
-
-      return {
-        secret: account.security.twoFactorSecret,
-        qrCodeUrl,
-      };
-    }
-  } else {
-    // Disable 2FA
-    account.security.twoFactorEnabled = false;
-    account.security.twoFactorSecret = undefined;
-    account.security.twoFactorBackupCodes = undefined;
-
-    await account.save();
-
-    return {};
-  }
-}
-
-/**
- * Verify and activate two-factor authentication
- */
-export async function verifyAndEnableTwoFactor(accountId: string, token: string): Promise<boolean> {
-  const models = await db.getModels();
-
-  ValidationUtils.validateObjectId(accountId, 'Account ID');
-  ValidationUtils.validateRequiredFields({ token }, ['token']);
-  ValidationUtils.validateStringLength(token, '2FA token', 6, 6);
-
-  // Find account by ID
-  const account = await models.accounts.Account.findById(accountId);
-
-  if (!account || account.accountType !== AccountType.Local || !account.security.twoFactorSecret) {
-    throw new NotFoundError('Account not found or 2FA not set up', 404, ApiErrorCode.USER_NOT_FOUND);
-  }
-
-  // Verify token
-  const isValid = authenticator.verify({
-    token,
-    secret: account.security.twoFactorSecret,
-  });
-
-  if (!isValid) {
-    throw new ValidationError('Invalid two-factor code', 401, ApiErrorCode.AUTH_FAILED);
-  }
-
-  // Enable 2FA
-  account.security.twoFactorEnabled = true;
-  await account.save();
-
-  return true;
-}
-
-/**
- * Verify two-factor code during login
- */
-export async function verifyTwoFactorLogin(tempToken: string, twoFactorCode: string): Promise<Account> {
-  const models = await db.getModels();
-
-  ValidationUtils.validateRequiredFields({ tempToken, twoFactorCode }, ['tempToken', 'twoFactorCode']);
-  ValidationUtils.validateStringLength(twoFactorCode, '2FA token', 6, 8);
-
-  // Get temporary token from cache
-  const tokenData = getTwoFactorTempToken(tempToken);
-
-  if (!tokenData) {
-    throw new ValidationError('Invalid or expired temporary token', 401, ApiErrorCode.TOKEN_INVALID);
-  }
-
-  // Find account by ID
-  const account = await models.accounts.Account.findById(tokenData.accountId);
-
-  if (
-    !account ||
-    account.accountType !== AccountType.Local ||
-    !account.security.twoFactorEnabled ||
-    !account.security.twoFactorSecret
-  ) {
-    throw new NotFoundError('Account not found or 2FA not enabled', 404, ApiErrorCode.USER_NOT_FOUND);
-  }
-
-  // Verify email matches (additional security check)
-  if (account.userDetails.email !== tokenData.email) {
-    throw new ValidationError('Token account mismatch', 401, ApiErrorCode.AUTH_FAILED);
-  }
-
-  // Check if token is a backup code
-  if (account.security.twoFactorBackupCodes && account.security.twoFactorBackupCodes.length > 0) {
-    const backupCodeIndex = await Promise.all(
-      account.security.twoFactorBackupCodes.map(async (hashedCode, index) => {
-        const isMatch = await bcrypt.compare(twoFactorCode, hashedCode);
-        return isMatch ? index : -1;
-      }),
-    ).then((results) => results.find((index) => index !== -1));
-
-    if (backupCodeIndex !== undefined && backupCodeIndex >= 0) {
-      // Remove used backup code
-      account.security.twoFactorBackupCodes?.splice(backupCodeIndex, 1);
-      await account.save();
-
-      removeTwoFactorTempToken(tempToken);
-
-      return toSafeAccount(account) as Account;
-    }
-  }
-
-  // Verify regular TOTP token
-  const isValid = authenticator.verify({
-    token: twoFactorCode,
-    secret: account.security.twoFactorSecret,
-  });
-
-  if (!isValid) {
-    throw new ValidationError('Invalid two-factor code', 401, ApiErrorCode.AUTH_FAILED);
-  }
-
-  removeTwoFactorTempToken(tempToken);
-
-  return toSafeAccount(account) as Account;
-}
-
-/**
- * Generate new backup codes for two-factor authentication
- */
-export async function generateNewBackupCodes(accountId: string, password: string): Promise<string[]> {
-  const models = await db.getModels();
-
-  ValidationUtils.validateObjectId(accountId, 'Account ID');
-  ValidationUtils.validateRequiredFields({ password }, ['password']);
-
-  // Find account by ID
-  const account = await models.accounts.Account.findById(accountId);
-
-  if (!account || account.accountType !== AccountType.Local) {
-    throw new NotFoundError('Account not found or 2FA not enabled', 404, ApiErrorCode.USER_NOT_FOUND);
-  }
-
-  // Verify password
-  const isPasswordValid = await account.comparePassword!(password);
-
-  if (!isPasswordValid) {
-    throw new ValidationError('Password is incorrect', 401, ApiErrorCode.AUTH_FAILED);
-  }
-
-  // Generate new backup codes (10 codes, 8 chars each)
-  const backupCodes = Array(10)
-    .fill(0)
-    .map(() => crypto.randomBytes(4).toString('hex'));
-
-  // Hash the backup codes before storing
-  account.security.twoFactorBackupCodes = await Promise.all(
-    backupCodes.map(async (code) => {
-      const salt = await bcrypt.genSalt(10);
-      return bcrypt.hash(code, salt);
-    }),
-  );
-
-  await account.save();
-
-  // Return plain text codes to show to user
-  return backupCodes;
 }

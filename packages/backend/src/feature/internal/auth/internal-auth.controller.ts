@@ -7,7 +7,7 @@ import { verifyOAuthJwtToken, verifyOAuthRefreshToken } from '../../oauth/OAuth.
 import {
   getGoogleTokenInfo as getTokenInfo,
   getGoogleAccountScopes,
-  verifyTokenOwnership,
+  verifyGoogleTokenOwnership,
 } from '../../google/services/tokenInfo/tokenInfo.services';
 import { buildGoogleScopeUrls } from '../../google/config';
 import db from '../../../config/db';
@@ -194,7 +194,7 @@ export const validateGoogleAccess = asyncHandler(async (req, res, next) => {
 
   try {
     // Verify token ownership
-    const ownership = await verifyTokenOwnership(accessToken, accountId);
+    const ownership = await verifyGoogleTokenOwnership(accessToken, accountId);
     if (!ownership.isValid) {
       throw new AuthError(`Token ownership verification failed: ${ownership.reason}`, 403, ApiErrorCode.AUTH_FAILED);
     }
@@ -262,7 +262,7 @@ export const verifyGoogleToken = asyncHandler(async (req, res, next) => {
   }
 
   try {
-    const result = await verifyTokenOwnership(accessToken, accountId);
+    const result = await verifyGoogleTokenOwnership(accessToken, accountId);
 
     next(
       new JsonSuccess({
@@ -305,7 +305,7 @@ export const getGoogleTokenInfo = asyncHandler(async (req, res, next) => {
 
   try {
     // Verify token ownership first
-    const ownership = await verifyTokenOwnership(accessToken, accountId);
+    const ownership = await verifyGoogleTokenOwnership(accessToken, accountId);
     if (!ownership.isValid) {
       throw new AuthError(`Token ownership verification failed: ${ownership.reason}`, 403, ApiErrorCode.AUTH_FAILED);
     }

@@ -5,8 +5,6 @@ import {
   removeAccountFromSession as removeAccountFromSessionManager,
   setCurrentAccountInSession as setCurrentAccountInSessionManager,
   clearAccountSession,
-  clearSession,
-  setAccessTokenCookie,
 } from './session.utils';
 import { GetAccountSessionDataResponse, GetAccountSessionResponse } from './session.types';
 import { ValidationUtils } from '../../utils/validation';
@@ -14,10 +12,6 @@ import { BadRequestError, ApiErrorCode } from '../../types/response.types';
 import db from '../../config/db';
 import { toSafeSessionAccount } from '../../feature/account/Account.utils';
 import { logger } from '../../utils/logger';
-import { AccountType } from '../account';
-import { refreshGoogleToken, revokeTokens } from '../google/services/tokenInfo/tokenInfo.services';
-import { createLocalJwtToken } from '../local_auth';
-import { createOAuthJwtToken } from '../oauth/OAuth.jwt';
 
 /**
  * Get account session information only
@@ -199,92 +193,3 @@ export async function removeAccountsFromSession(req: Request, res: Response, acc
 
   clearAccountSession(req, res, accountIds);
 }
-
-/**
- * Refresh an access token using a refresh token
- */
-export const refreshOAuthAccessToken = async (
-  req: Request,
-  res: Response,
-  accountId: string,
-  oauthRefreshToken: string,
-): Promise<{ accessToken: string; expiresIn: number }> => {
-  try {
-    const tokens = await refreshGoogleToken(oauthRefreshToken);
-
-    if (!tokens.access_token || !tokens.expiry_date) {
-      throw new Error('Failed to refresh Google access token');
-    }
-
-    const expiresIn = Math.floor(((tokens.expiry_date as number) - Date.now()) / 1000);
-
-    const newJwtToken = await createOAuthJwtToken(accountId, tokens.access_token, expiresIn);
-
-    setAccessTokenCookie(req, res, accountId, newJwtToken, expiresIn);
-
-    return {
-      accessToken: newJwtToken,
-      expiresIn: expiresIn,
-    };
-  } catch {
-    clearSession(res, accountId);
-
-    // Throw clear error
-    throw new BadRequestError(
-      'Refresh token expired or invalid. Please sign in again.',
-      401,
-      ApiErrorCode.TOKEN_INVALID,
-    );
-  }
-};
-
-/**
- * Refresh an access token using a refresh token
- */
-export const refreshLocalAccessToken = async (
-  req: Request,
-  res: Response,
-  accountId: string,
-  refreshToken: string,
-): Promise<{ accessToken: string; expiresIn: number }> => {
-  try {
-    const newAccessToken = await createLocalJwtToken(accountId);
-    const expiresIn = 3600 * 1000; // 1 hour in milliseconds
-
-    setAccessTokenCookie(req, res, accountId, newAccessToken, expiresIn);
-
-    return {
-      accessToken: newAccessToken,
-      expiresIn,
-    };
-  } catch {
-    clearSession(res, accountId);
-
-    // Throw clear error
-    throw new BadRequestError(
-      'Refresh token expired or invalid. Please sign in again.',
-      401,
-      ApiErrorCode.TOKEN_INVALID,
-    );
-  }
-};
-
-/**
- * Revoke tokens based on account type
- */
-export const revokeAuthTokens = async (
-  accountId: string,
-  accountType: AccountType,
-  extractedAccessToken: string,
-  extractedRefreshToken: string,
-  res: Response,
-): Promise<any> => {
-  if (accountType === AccountType.OAuth) {
-    const result = await revokeTokens(extractedAccessToken, extractedRefreshToken);
-    clearSession(res, accountId);
-    return result;
-  } else {
-    clearSession(res, accountId);
-    return { accessTokenRevoked: true, refreshTokenRevoked: true };
-  }
-};

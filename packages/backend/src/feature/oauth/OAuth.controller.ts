@@ -1,6 +1,5 @@
 import {
   ApiErrorCode,
-  AuthError,
   BadRequestError,
   CallbackCode,
   CallbackData,
@@ -10,26 +9,21 @@ import {
 } from '../../types/response.types';
 import * as AuthService from './OAuth.service';
 import { AuthType, OAuthState, PermissionState } from './OAuth.types';
-import { Account, AccountType, OAuthProviders } from '../account/Account.types';
+import { OAuthProviders } from '../account/Account.types';
 import { validateOAuthState, validatePermissionState, validateState } from './OAuth.validation';
 import { generateOAuthState, generatePermissionState } from './OAuth.utils';
 import {
   exchangeGoogleCode,
   getGoogleTokenInfo,
-  verifyTokenOwnership,
+  verifyGoogleTokenOwnership,
 } from '../google/services/tokenInfo/tokenInfo.services';
-import { extractAccessToken, extractRefreshToken, setupCompleteAccountSession } from '../session/session.utils';
+import { setupCompleteAccountSession } from '../session/session.utils';
 import { getCallbackUrl } from '../../utils/redirect';
 import { ValidationUtils } from '../../utils/validation';
 import { buildGoogleScopeUrls, validateScopeNames } from '../google/config';
 import { asyncHandler, oauthCallbackHandler } from '../../utils/response';
 import { logger } from '../../utils/logger';
-import {
-  createOAuthJwtToken,
-  createOAuthRefreshToken,
-  verifyOAuthJwtToken,
-  verifyOAuthRefreshToken,
-} from './OAuth.jwt';
+import { createOAuthAccessToken, createOAuthRefreshToken } from '../tokens';
 import { getBaseUrl, getProxyUrl } from '../../config/env.config';
 import {
   buildGoogleSignupUrl,
@@ -37,11 +31,6 @@ import {
   buildGooglePermissionUrl,
   buildGoogleReauthorizeUrl,
 } from '../google/config';
-import QRCode from 'qrcode';
-import { AccountDocument, findUserById } from '../account';
-import { refreshOAuthAccessToken, revokeAuthTokens } from '../session/session.service';
-import { sendNonCriticalEmail } from '../email/Email.utils';
-import { sendTwoFactorEnabledNotification } from '../email/Email.service';
 
 /**
  * Generate OAuth signup URL
@@ -121,6 +110,7 @@ export const generateSigninUrl = asyncHandler(async (req, res, next) => {
 
 /**
  * Handle OAuth callback from provider
+ * Updated to use unified 2FA service
  */
 export const handleOAuthCallback = oauthCallbackHandler(
   getCallbackUrl(),
@@ -140,7 +130,7 @@ export const handleOAuthCallback = oauthCallbackHandler(
     // Validate the state parameter and get OAuth state details
     const stateDetails = (await validateState(
       state as string,
-      (state) => validateOAuthState(state, provider), // Fix: Don't use stateDetails.provider before it's defined
+      (state) => validateOAuthState(state, provider),
       res,
     )) as OAuthState;
 
@@ -165,7 +155,7 @@ export const handleOAuthCallback = oauthCallbackHandler(
         );
     }
 
-    // Fix: Ensure userInfo has required fields for ProviderResponse
+    // Create provider response object
     const providerResponse = {
       email: userInfo.email || '',
       name: userInfo.name || '',
@@ -178,7 +168,7 @@ export const handleOAuthCallback = oauthCallbackHandler(
     await AuthService.processSignInSignupCallback(providerResponse, stateDetails);
 
     if (stateDetails.authType === AuthType.SIGN_UP) {
-      // Process signup
+      // Process signup - no 2FA check needed for new accounts
       const signupResult = await AuthService.processSignup(
         {
           ...stateDetails,
@@ -187,13 +177,12 @@ export const handleOAuthCallback = oauthCallbackHandler(
         stateDetails.provider,
       );
 
-      // Set up account session
+      // Set up account session for new user
       if (signupResult.accessTokenInfo && signupResult.accessTokenInfo.expires_in) {
         setupCompleteAccountSession(
           req,
           res,
           signupResult.accountId,
-          AccountType.OAuth,
           signupResult.accessToken,
           signupResult.accessTokenInfo.expires_in * 1000,
           signupResult.refreshToken,
@@ -218,13 +207,26 @@ export const handleOAuthCallback = oauthCallbackHandler(
         oAuthResponse: providerResponse,
       });
 
-      // Set up account session
+      // Check if 2FA is required for signin
+      if ('requiresTwoFactor' in signinResult && signinResult.requiresTwoFactor) {
+        const callbackData: CallbackData = {
+          code: CallbackCode.OAUTH_SIGNIN_REQUIRES_2FA,
+          accountId: signinResult.accountId,
+          tempToken: signinResult.tempToken,
+          provider: stateDetails.provider,
+          message: 'Please complete two-factor authentication to continue.',
+        };
+
+        next(new Redirect(callbackData, getCallbackUrl()));
+        return;
+      }
+
+      // Normal signin flow - set up account session
       if (signinResult.accessTokenInfo && signinResult.accessTokenInfo.expires_in) {
         setupCompleteAccountSession(
           req,
           res,
           signinResult.userId,
-          AccountType.OAuth,
           signinResult.accessToken,
           signinResult.accessTokenInfo.expires_in * 1000,
           signinResult.refreshToken,
@@ -284,7 +286,7 @@ export const handlePermissionCallback = oauthCallbackHandler(
     }
 
     // Verify that the token belongs to the correct user account
-    const tokenVerification = await verifyTokenOwnership(tokens.accessToken, accountId);
+    const tokenVerification = await verifyGoogleTokenOwnership(tokens.accessToken, accountId);
     if (!tokenVerification.isValid) {
       throw new BadRequestError(
         'Permission was granted with an incorrect account. Please try again and ensure you use the correct Google account.',
@@ -303,21 +305,20 @@ export const handlePermissionCallback = oauthCallbackHandler(
     await AuthService.updateTokensAndScopes(accountId, tokens.accessToken);
 
     // Create JWT tokens for our system
-    const jwtAccessToken = await createOAuthJwtToken(accountId, tokens.accessToken, accessTokenInfo.expires_in);
+    const jwtAccessToken = createOAuthAccessToken(accountId, tokens.accessToken, accessTokenInfo.expires_in);
 
     // Fix: Ensure refreshToken is not null/undefined
     if (!tokens.refreshToken) {
       throw new BadRequestError('Missing refresh token from OAuth response', 400, ApiErrorCode.TOKEN_INVALID);
     }
 
-    const jwtRefreshToken = await createOAuthRefreshToken(accountId, tokens.refreshToken);
+    const jwtRefreshToken = createOAuthRefreshToken(accountId, tokens.refreshToken);
 
     // Set up complete account session (auth cookies + account session)
     setupCompleteAccountSession(
       req,
       res,
       accountId,
-      AccountType.OAuth,
       jwtAccessToken,
       accessTokenInfo.expires_in * 1000,
       jwtRefreshToken,
@@ -470,371 +471,4 @@ export const generateReauthorizeUrl = asyncHandler(async (req, res, next) => {
       userEmail: account.userDetails.email,
     }),
   );
-});
-
-/**
- * Get OAuth access token information
- * Route: GET /:accountId/oauth/token
- */
-export const getOAuthTokenInfo = asyncHandler(async (req, res, next) => {
-  const accountId = req.params.accountId;
-
-  // First try to get token from body, then from cookies
-  let systemToken = req.body.token;
-  if (!systemToken) {
-    systemToken = extractAccessToken(req, accountId);
-  }
-
-  if (!systemToken) {
-    throw new BadRequestError('Access token not found in body or cookies', 400, ApiErrorCode.TOKEN_INVALID);
-  }
-
-  try {
-    // Decode our JWT wrapper to get OAuth token and validate system token
-    const { accountId: tokenAccountId, oauthAccessToken, exp } = verifyOAuthJwtToken(systemToken);
-
-    // Check if our system token is expired
-    const isSystemTokenExpired = exp && Date.now() >= exp * 1000;
-    if (isSystemTokenExpired) {
-      return next(
-        new JsonSuccess({
-          systemToken: {
-            isExpired: true,
-            type: 'oauth_jwt',
-          },
-        }),
-      );
-    }
-
-    // Verify token belongs to correct account
-    if (tokenAccountId !== accountId) {
-      throw new BadRequestError('Token does not belong to this account', 400, ApiErrorCode.TOKEN_INVALID);
-    }
-
-    // Get Google provider token information
-    const providerTokenInfo = await getGoogleTokenInfo(oauthAccessToken);
-
-    const response = {
-      systemToken: {
-        isExpired: false,
-        type: 'oauth_jwt',
-        expiresAt: exp ? exp * 1000 : null,
-        timeRemaining: exp ? Math.max(0, exp * 1000 - Date.now()) : null,
-      },
-      providerToken: {
-        ...providerTokenInfo,
-        provider: 'google',
-      },
-    };
-
-    next(new JsonSuccess(response));
-  } catch {
-    // If JWT verification fails, token is invalid/expired
-    next(
-      new JsonSuccess({
-        systemToken: {
-          isExpired: true,
-          type: 'oauth_jwt',
-          error: 'Invalid or expired token',
-        },
-      }),
-    );
-  }
-});
-
-/**
- * Get OAuth refresh token information
- * Route: GET /:accountId/oauth/refresh/token
- */
-export const getOAuthRefreshTokenInfo = asyncHandler(async (req, res, next) => {
-  const accountId = req.params.accountId;
-
-  // First try to get token from body, then from cookies
-  let refreshToken = req.body.token;
-  if (!refreshToken) {
-    refreshToken = extractRefreshToken(req, accountId);
-  }
-
-  if (!refreshToken) {
-    throw new BadRequestError('Refresh token not found in body or cookies', 400, ApiErrorCode.TOKEN_INVALID);
-  }
-
-  try {
-    // Decode our JWT wrapper
-    const { accountId: tokenAccountId, oauthRefreshToken, exp } = verifyOAuthRefreshToken(refreshToken);
-
-    // Check if our system refresh token is expired (if it has expiration)
-    const isSystemTokenExpired = exp && Date.now() >= exp * 1000;
-    if (isSystemTokenExpired) {
-      return next(
-        new JsonSuccess({
-          systemToken: {
-            isExpired: true,
-            type: 'oauth_refresh_jwt',
-          },
-        }),
-      );
-    }
-
-    // Verify token belongs to correct account
-    if (tokenAccountId !== accountId) {
-      throw new BadRequestError('Token does not belong to this account', 400, ApiErrorCode.TOKEN_INVALID);
-    }
-
-    const response = {
-      systemToken: {
-        isExpired: false,
-        type: 'oauth_refresh_jwt',
-        expiresAt: exp ? exp * 1000 : null,
-        timeRemaining: exp ? Math.max(0, exp * 1000 - Date.now()) : null,
-      },
-      providerToken: {
-        type: 'google_refresh_token',
-        provider: 'google',
-        // Note: Google refresh tokens don't expire, so we can't get info about them
-        hasToken: !!oauthRefreshToken,
-      },
-    };
-
-    next(new JsonSuccess(response));
-  } catch {
-    next(
-      new JsonSuccess({
-        systemToken: {
-          isExpired: true,
-          type: 'oauth_refresh_jwt',
-          error: 'Invalid or expired refresh token',
-        },
-      }),
-    );
-  }
-});
-
-/**
- * Refresh OAuth access token
- * Route: POST /:accountId/oauth/refresh
- */
-export const refreshOAuthToken = asyncHandler(async (req, res, next) => {
-  const accountId = req.params.accountId;
-  const account = req.account as AccountDocument;
-  const { redirectUrl } = req.query;
-
-  // Validate account type
-  if (account.accountType !== AccountType.OAuth) {
-    throw new BadRequestError('Account is not an OAuth account', 400, ApiErrorCode.AUTH_FAILED);
-  }
-
-  // Extract refresh token
-  const refreshToken = req.refreshToken;
-  if (!refreshToken) {
-    throw new BadRequestError('Refresh token not found', 400, ApiErrorCode.TOKEN_INVALID);
-  }
-
-  // Extract OAuth refresh token from middleware (already verified)
-  const oauthRefreshToken = req.oauthRefreshToken;
-
-  if (!oauthRefreshToken) {
-    throw new BadRequestError('OAuth refresh token not available', 400, ApiErrorCode.TOKEN_INVALID);
-  }
-
-  // Use the session manager to handle token refresh
-  await refreshOAuthAccessToken(req, res, accountId, oauthRefreshToken);
-
-  // Validate and determine redirect URL
-  if (!redirectUrl) {
-    throw new BadRequestError('Missing redirectUrl query parameter', 400, ApiErrorCode.MISSING_DATA);
-  }
-
-  ValidationUtils.validateUrl(redirectUrl as string, 'Redirect URL');
-
-  next(new Redirect(null, redirectUrl as string));
-});
-
-/**
- * Revoke OAuth tokens
- * Route: POST /:accountId/oauth/revoke
- */
-export const revokeOAuthToken = asyncHandler(async (req, res, next) => {
-  const accountId = req.params.accountId as string;
-  const account = req.account as AccountDocument;
-
-  // Validate account type
-  if (account.accountType !== AccountType.OAuth) {
-    throw new BadRequestError('Account is not an OAuth account', 400, ApiErrorCode.AUTH_FAILED);
-  }
-
-  // Tokens are already extracted by middleware
-  const accessToken = req.oauthAccessToken as string;
-  const refreshToken = req.oauthRefreshToken as string;
-
-  if (!accessToken || !refreshToken) {
-    throw new BadRequestError('OAuth tokens not available', 400, ApiErrorCode.TOKEN_INVALID);
-  }
-
-  // Use the existing service function to revoke tokens
-  const result = await revokeAuthTokens(accountId, account.accountType, accessToken, refreshToken, res);
-
-  next(new JsonSuccess(result, undefined, 'OAuth tokens revoked successfully'));
-});
-
-/**
- * Set up two-factor authentication for OAuth account
- * Route: POST /:accountId/oauth/setup-two-factor
- */
-export const setupOAuthTwoFactor = asyncHandler(async (req, res, next) => {
-  const accountId = req.params.accountId;
-  const data = req.body as { enableTwoFactor: boolean };
-
-  // Extract OAuth access token from middleware
-  const accessToken = req.oauthAccessToken;
-  if (!accessToken) {
-    throw new BadRequestError('OAuth access token not available', 400, ApiErrorCode.TOKEN_INVALID);
-  }
-
-  if (typeof data.enableTwoFactor !== 'boolean') {
-    throw new BadRequestError('enableTwoFactor field is required and must be boolean', 400, ApiErrorCode.MISSING_DATA);
-  }
-
-  // Set up 2FA for OAuth account using token verification
-  const result = await AuthService.setupOAuthTwoFactor(accountId, accessToken, data);
-
-  // If enabling 2FA, generate QR code
-  if (data.enableTwoFactor && result.secret && result.qrCodeUrl) {
-    try {
-      const qrCodeDataUrl = await QRCode.toDataURL(result.qrCodeUrl);
-
-      // Generate backup codes
-      const backupCodes = await AuthService.generateOAuthBackupCodes(accountId, accessToken);
-
-      // Send notification email (async - don't wait)
-      const account = (await findUserById(accountId)) as Account;
-      if (account.userDetails.email) {
-        sendNonCriticalEmail(
-          sendTwoFactorEnabledNotification,
-          [account.userDetails.email, account.userDetails.firstName || account.userDetails.name.split(' ')[0]],
-          { maxAttempts: 2, delayMs: 1000 },
-        );
-      }
-
-      next(
-        new JsonSuccess({
-          message: '2FA setup successful. Please scan the QR code with your authenticator app.',
-          qrCode: qrCodeDataUrl,
-          secret: result.secret,
-          backupCodes,
-        }),
-      );
-    } catch (error) {
-      logger.error('Failed to generate QR code:', error);
-      throw new BadRequestError('Failed to generate QR code', 500, ApiErrorCode.SERVER_ERROR);
-    }
-  } else {
-    // If disabling 2FA
-    next(
-      new JsonSuccess({
-        message: '2FA has been disabled for your account.',
-      }),
-    );
-  }
-});
-
-/**
- * Verify and enable 2FA for OAuth account
- * Route: POST /:accountId/oauth/verify-two-factor-setup
- */
-export const verifyAndEnableOAuthTwoFactor = asyncHandler(async (req, res, next) => {
-  const accountId = req.params.accountId;
-  const { token } = req.body;
-
-  if (!token) {
-    throw new BadRequestError('Verification token is required', 400, ApiErrorCode.MISSING_DATA);
-  }
-
-  // Verify and enable 2FA
-  const success = await AuthService.verifyAndEnableOAuthTwoFactor(accountId, token);
-
-  if (success) {
-    next(
-      new JsonSuccess({
-        message: 'Two-factor authentication has been successfully enabled for your account.',
-      }),
-    );
-  } else {
-    throw new AuthError('Failed to verify token', 400, ApiErrorCode.AUTH_FAILED);
-  }
-});
-
-/**
- * Generate new backup codes for OAuth account
- * Route: POST /:accountId/oauth/generate-backup-codes
- */
-export const generateOAuthBackupCodes = asyncHandler(async (req, res, next) => {
-  const accountId = req.params.accountId;
-
-  // Extract OAuth access token from middleware
-  const accessToken = req.oauthAccessToken;
-  if (!accessToken) {
-    throw new BadRequestError('OAuth access token not available', 400, ApiErrorCode.TOKEN_INVALID);
-  }
-
-  // Generate new backup codes using OAuth token verification
-  const backupCodes = await AuthService.generateOAuthBackupCodes(accountId, accessToken);
-
-  next(
-    new JsonSuccess({
-      message: 'New backup codes generated successfully. Please save these codes in a secure location.',
-      backupCodes,
-    }),
-  );
-});
-
-/**
- * Verify OAuth two-factor authentication during signin
- * Route: POST /oauth/verify-two-factor
- * @access Public (uses temp token from OAuth signin)
- */
-export const verifyOAuthTwoFactor = asyncHandler(async (req, res, next) => {
-  const { token, tempToken } = req.body as {
-    token: string;
-    tempToken: string;
-  };
-
-  if (!token || !tempToken) {
-    throw new BadRequestError('Verification token and temporary token are required', 400, ApiErrorCode.MISSING_DATA);
-  }
-
-  try {
-    // Complete OAuth signin after 2FA verification
-    const signinResult = await AuthService.completeOAuthSigninAfterTwoFactor(tempToken, token);
-
-    // Set up complete account session (auth cookies + account session)
-    if (signinResult.accessTokenInfo && signinResult.accessTokenInfo.expires_in) {
-      setupCompleteAccountSession(
-        req,
-        res,
-        signinResult.userId,
-        AccountType.OAuth,
-        signinResult.accessToken,
-        signinResult.accessTokenInfo.expires_in * 1000,
-        signinResult.refreshToken,
-        true, // set as current account
-      );
-    }
-
-    logger.info(`OAuth 2FA verification successful for account: ${signinResult.userId}`);
-
-    // Return success response
-    next(
-      new JsonSuccess({
-        accountId: signinResult.userId,
-        name: signinResult.userName,
-        message: 'Two-factor authentication successful',
-        needsAdditionalScopes: signinResult.needsAdditionalScopes,
-        missingScopes: signinResult.missingScopes,
-      }),
-    );
-  } catch (error) {
-    logger.error('OAuth 2FA verification failed:', error);
-    throw new AuthError('Two-factor authentication failed', 401, ApiErrorCode.AUTH_FAILED);
-  }
 });
