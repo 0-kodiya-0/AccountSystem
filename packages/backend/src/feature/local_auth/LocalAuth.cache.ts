@@ -1,7 +1,6 @@
 import { LRUCache } from 'lru-cache';
 import crypto from 'crypto';
 import {
-  TwoFactorTempToken,
   PasswordResetToken,
   EmailVerificationToken,
   EmailVerificationData,
@@ -23,27 +22,12 @@ const verificationOptions = {
   allowStale: false,
 };
 
-// Cache for temporary 2FA tokens (5 minutes)
-const twoFactorTempOptions = {
-  max: 1000,
-  ttl: 1000 * 60 * 5, // 5 minutes
-  updateAgeOnGet: false,
-  allowStale: false,
-};
-
-// Create separate caches for each token type
-const twoFactorTempCache = new LRUCache<string, TwoFactorTempToken>(twoFactorTempOptions);
-const passwordResetCache = new LRUCache<string, PasswordResetToken>(options);
-const emailVerificationCache = new LRUCache<string, EmailVerificationToken>(verificationOptions);
-
 const emailVerificationStepOptions = {
   max: 1000,
   ttl: 1000 * 60 * 60 * 24, // 24 hours
   updateAgeOnGet: false,
   allowStale: false,
 };
-
-const emailVerificationStepCache = new LRUCache<string, EmailVerificationData>(emailVerificationStepOptions);
 
 // Cache for profile completion step (1 hour after email verification)
 const profileCompletionOptions = {
@@ -53,6 +37,9 @@ const profileCompletionOptions = {
   allowStale: false,
 };
 
+const emailVerificationStepCache = new LRUCache<string, EmailVerificationData>(emailVerificationStepOptions);
+const passwordResetCache = new LRUCache<string, PasswordResetToken>(options);
+const emailVerificationCache = new LRUCache<string, EmailVerificationToken>(verificationOptions);
 const profileCompletionCache = new LRUCache<string, ProfileCompletionData>(profileCompletionOptions);
 
 // Password Reset Token methods
@@ -106,42 +93,6 @@ export const removeAllTokensForAccount = (accountId: string): void => {
       emailVerificationCache.delete(token);
     }
   }
-};
-
-// Temporary 2FA Token methods
-export const saveTwoFactorTempToken = (accountId: string, email: string): string => {
-  const token = crypto.randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + twoFactorTempOptions.ttl);
-
-  const tokenData: TwoFactorTempToken = {
-    token,
-    accountId,
-    email,
-    expiresAt: expiresAt.toISOString(),
-  };
-
-  twoFactorTempCache.set(token, tokenData);
-  return token;
-};
-
-export const getTwoFactorTempToken = (token: string): TwoFactorTempToken | null => {
-  const tokenData = twoFactorTempCache.get(token);
-
-  if (!tokenData) {
-    return null;
-  }
-
-  // Check if token has expired
-  if (new Date(tokenData.expiresAt) < new Date()) {
-    twoFactorTempCache.delete(token);
-    return null;
-  }
-
-  return tokenData;
-};
-
-export const removeTwoFactorTempToken = (token: string): void => {
-  twoFactorTempCache.delete(token);
 };
 
 // Clear all tokens (useful for testing)

@@ -18,11 +18,6 @@ export interface PasswordChangeRequest {
   confirmPassword: string;
 }
 
-export interface SetupTwoFactorRequest {
-  password: string;
-  enableTwoFactor: boolean;
-}
-
 export interface VerifyTwoFactorRequest {
   token: string;
 }
@@ -37,14 +32,6 @@ export interface PasswordResetToken {
 
 // Email verification token interface
 export interface EmailVerificationToken {
-  token: string;
-  accountId: string;
-  email: string;
-  expiresAt: string;
-}
-
-// Temporary 2FA token interface
-export interface TwoFactorTempToken {
   token: string;
   accountId: string;
   email: string;

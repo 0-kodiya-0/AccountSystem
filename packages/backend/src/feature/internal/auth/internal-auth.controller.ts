@@ -2,12 +2,11 @@ import { JsonSuccess, NotFoundError, BadRequestError, ApiErrorCode, AuthError } 
 import { ValidationUtils } from '../../../utils/validation';
 import { toSafeAccount } from '../../account/Account.utils';
 import { AccountType } from '../../account/Account.types';
-import { verifyLocalJwtToken, verifyLocalRefreshToken } from '../../local_auth';
-import { verifyOAuthJwtToken, verifyOAuthRefreshToken } from '../../oauth/OAuth.jwt';
+import { verifyAccessToken, verifyRefreshToken } from '../../tokens';
 import {
   getGoogleTokenInfo as getTokenInfo,
   getGoogleAccountScopes,
-  verifyTokenOwnership,
+  verifyGoogleTokenOwnership,
 } from '../../google/services/tokenInfo/tokenInfo.services';
 import { buildGoogleScopeUrls } from '../../google/config';
 import db from '../../../config/db';
@@ -128,25 +127,17 @@ export const validateSession = asyncHandler(async (req, res, next) => {
 
   try {
     if (accessToken) {
-      if (account.accountType === AccountType.Local) {
-        const { accountId: tokenAccountId } = verifyLocalJwtToken(accessToken);
-        tokenValid = tokenAccountId === accountId;
-        tokenType = 'access';
-      } else if (account.accountType === AccountType.OAuth) {
-        const { accountId: tokenAccountId, oauthAccessToken: extractedToken } = verifyOAuthJwtToken(accessToken);
-        tokenValid = tokenAccountId === accountId;
-        tokenType = 'access';
+      const { accountId: tokenAccountId, oauthAccessToken: extractedToken } = verifyAccessToken(accessToken);
+      tokenValid = tokenAccountId === accountId;
+      tokenType = 'access';
+      if (extractedToken) {
         oauthAccessToken = extractedToken;
       }
     } else if (refreshToken) {
-      if (account.accountType === AccountType.Local) {
-        const { accountId: tokenAccountId } = verifyLocalRefreshToken(refreshToken);
-        tokenValid = tokenAccountId === accountId;
-        tokenType = 'refresh';
-      } else if (account.accountType === AccountType.OAuth) {
-        const { accountId: tokenAccountId, oauthRefreshToken: extractedToken } = verifyOAuthRefreshToken(refreshToken);
-        tokenValid = tokenAccountId === accountId;
-        tokenType = 'refresh';
+      const { accountId: tokenAccountId, oauthRefreshToken: extractedToken } = verifyRefreshToken(refreshToken);
+      tokenValid = tokenAccountId === accountId;
+      tokenType = 'refresh';
+      if (extractedToken) {
         oauthRefreshToken = extractedToken;
       }
     }
@@ -194,7 +185,7 @@ export const validateGoogleAccess = asyncHandler(async (req, res, next) => {
 
   try {
     // Verify token ownership
-    const ownership = await verifyTokenOwnership(accessToken, accountId);
+    const ownership = await verifyGoogleTokenOwnership(accessToken, accountId);
     if (!ownership.isValid) {
       throw new AuthError(`Token ownership verification failed: ${ownership.reason}`, 403, ApiErrorCode.AUTH_FAILED);
     }
@@ -262,7 +253,7 @@ export const verifyGoogleToken = asyncHandler(async (req, res, next) => {
   }
 
   try {
-    const result = await verifyTokenOwnership(accessToken, accountId);
+    const result = await verifyGoogleTokenOwnership(accessToken, accountId);
 
     next(
       new JsonSuccess({
@@ -305,7 +296,7 @@ export const getGoogleTokenInfo = asyncHandler(async (req, res, next) => {
 
   try {
     // Verify token ownership first
-    const ownership = await verifyTokenOwnership(accessToken, accountId);
+    const ownership = await verifyGoogleTokenOwnership(accessToken, accountId);
     if (!ownership.isValid) {
       throw new AuthError(`Token ownership verification failed: ${ownership.reason}`, 403, ApiErrorCode.AUTH_FAILED);
     }

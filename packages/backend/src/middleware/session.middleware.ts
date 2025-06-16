@@ -7,8 +7,7 @@ import { extractAccessToken, extractRefreshToken } from '../feature/session/sess
 import { AccountType } from '../feature/account/Account.types';
 import { AccountDocument } from '../feature/account/Account.model';
 import { ValidationUtils } from '../utils/validation';
-import { verifyLocalJwtToken, verifyLocalRefreshToken } from '../feature/local_auth';
-import { verifyOAuthJwtToken, verifyOAuthRefreshToken } from '../feature/oauth/OAuth.jwt';
+import { verifyAccessToken, verifyRefreshToken } from '../feature/tokens';
 
 /**
  * Middleware to verify token from cookies and add accountId to request
@@ -43,7 +42,6 @@ export const validateAccountAccess = asyncHandler(async (req, res, next) => {
   }
 
   // Attach the account to the request for downstream middleware/handlers
-  // We'll use a unified property name
   req.account = account as AccountDocument;
 
   // Keep legacy properties for backward compatibility during transition
@@ -58,7 +56,7 @@ export const validateAccountAccess = asyncHandler(async (req, res, next) => {
 
 /**
  * Middleware to validate token access
- * Now properly handles both OAuth and Local auth tokens with correct redirect paths
+ * Now uses centralized auth token service
  */
 export const validateTokenAccess = asyncHandler(async (req, res, next) => {
   const accountId = req.params.accountId;
@@ -83,63 +81,45 @@ export const validateTokenAccess = asyncHandler(async (req, res, next) => {
       }
     }
 
-    if (account.accountType === AccountType.Local) {
-      // For local auth, verify JWT token
-      try {
-        if (isRefreshTokenPath) {
-          const { accountId: tokenAccountId } = verifyLocalRefreshToken(token);
+    // Use centralized token verification
+    if (isRefreshTokenPath) {
+      const refreshResult = verifyRefreshToken(token);
 
-          // Check if token belongs to the right account
-          if (tokenAccountId !== accountId) {
-            throw new Error('Invalid refresh token for this account');
-          }
-
-          req.refreshToken = token;
-        } else {
-          const { accountId: tokenAccountId } = verifyLocalJwtToken(token);
-
-          // Check if token belongs to the right account
-          if (tokenAccountId !== accountId) {
-            throw new Error('Invalid access token for this account');
-          }
-
-          req.accessToken = token;
-        }
-      } catch {
-        throw new Error('Invalid or expired token');
+      // Check if token belongs to the right account
+      if (refreshResult.accountId !== accountId) {
+        throw new Error('Invalid refresh token for this account');
       }
-    } else if (account.accountType === AccountType.OAuth) {
-      // For OAuth, verify our JWT wrapper and extract OAuth token
-      try {
-        if (isRefreshTokenPath) {
-          // For refresh token path, we expect a refresh token
-          const { accountId: tokenAccountId, oauthRefreshToken } = verifyOAuthRefreshToken(token);
 
-          // Check if token belongs to the right account
-          if (tokenAccountId !== accountId) {
-            throw new Error('Invalid refresh token for this account');
-          }
+      // Check account type matches
+      if (refreshResult.accountType !== account.accountType) {
+        throw new Error('Token account type mismatch');
+      }
 
-          req.refreshToken = token;
-          req.oauthRefreshToken = oauthRefreshToken;
-        } else {
-          // For access token, verify and extract OAuth access token
-          const { accountId: tokenAccountId, oauthAccessToken } = verifyOAuthJwtToken(token);
+      req.refreshToken = token;
 
-          // Check if token belongs to the right account
-          if (tokenAccountId !== accountId) {
-            throw new Error('Invalid access token for this account');
-          }
-
-          // Store both our JWT and the extracted OAuth token
-          req.accessToken = token; // Our JWT wrapper
-          req.oauthAccessToken = oauthAccessToken;
-        }
-      } catch {
-        throw new Error('Invalid or expired OAuth token');
+      // For OAuth refresh tokens, extract the OAuth refresh token
+      if (refreshResult.accountType === AccountType.OAuth && refreshResult.oauthRefreshToken) {
+        req.oauthRefreshToken = refreshResult.oauthRefreshToken;
       }
     } else {
-      throw new Error('Unsupported account type');
+      const accessResult = verifyAccessToken(token);
+
+      // Check if token belongs to the right account
+      if (accessResult.accountId !== accountId) {
+        throw new Error('Invalid access token for this account');
+      }
+
+      // Check account type matches
+      if (accessResult.accountType !== account.accountType) {
+        throw new Error('Token account type mismatch');
+      }
+
+      req.accessToken = token;
+
+      // For OAuth access tokens, extract the OAuth access token
+      if (accessResult.accountType === AccountType.OAuth && accessResult.oauthAccessToken) {
+        req.oauthAccessToken = accessResult.oauthAccessToken;
+      }
     }
 
     next();
@@ -155,9 +135,8 @@ export const validateTokenAccess = asyncHandler(async (req, res, next) => {
         `./${accountPath}/account/logout?accountId=${accountPath}&clearClientAccountState=false`,
       );
     } else {
-      // Determine correct refresh path based on account type
-      const refreshPath =
-        account.accountType === AccountType.OAuth ? `./${accountPath}/oauth/refresh` : `./${accountPath}/auth/refresh`;
+      // Determine correct refresh path - now unified
+      const refreshPath = `./${accountPath}/tokens/refresh`;
 
       throw new Redirect(
         {

@@ -4,7 +4,6 @@ import { getJwtSecret, getNodeEnv } from '../../config/env.config';
 import { getStrippedPathPrefix } from '../../utils/redirect';
 import { AccountSessionData, AccountSessionTokenPayload, AccountSessionInfo } from './session.types';
 import { logger } from '../../utils/logger';
-import { AccountType } from '../account';
 
 // Environment variables
 const JWT_SECRET = getJwtSecret();
@@ -234,20 +233,12 @@ export const setAccessTokenCookie = (
 /**
  * Sets the refresh token as a cookie for a specific account
  */
-export const setRefreshTokenCookie = (
-  req: Request,
-  res: Response,
-  accountId: string,
-  accountType: AccountType,
-  refreshToken: string,
-): void => {
-  const authPath = accountType === AccountType.OAuth ? 'oauth' : 'auth';
-
+export const setRefreshTokenCookie = (req: Request, res: Response, accountId: string, refreshToken: string): void => {
   res.cookie(`refresh_token_${accountId}`, refreshToken, {
     httpOnly: true,
     secure: getNodeEnv() === 'production',
     maxAge: COOKIE_MAX_AGE,
-    path: `${getStrippedPathPrefix(req)}/${accountId}/${authPath}/refresh`,
+    path: `${getStrippedPathPrefix(req)}/${accountId}/token/refresh`,
     sameSite: 'lax',
   });
 };
@@ -259,7 +250,6 @@ export const setupCompleteAccountSession = (
   req: Request,
   res: Response,
   accountId: string,
-  accountType: AccountType,
   accessToken: string,
   expiresIn: number,
   refreshToken?: string,
@@ -269,7 +259,7 @@ export const setupCompleteAccountSession = (
   setAccessTokenCookie(req, res, accountId, accessToken, expiresIn);
 
   if (refreshToken) {
-    setRefreshTokenCookie(req, res, accountId, accountType, refreshToken);
+    setRefreshTokenCookie(req, res, accountId, refreshToken);
   }
 
   // Add account to session

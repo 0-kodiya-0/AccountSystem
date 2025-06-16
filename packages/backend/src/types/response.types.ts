@@ -169,12 +169,15 @@ export class JsonSuccess<T> extends BaseSuccess<T> {
   }
 }
 
-// New callback codes enum - Updated with logout codes
 export enum CallbackCode {
   // OAuth success codes
   OAUTH_SIGNIN_SUCCESS = 'oauth_signin_success',
   OAUTH_SIGNUP_SUCCESS = 'oauth_signup_success',
   OAUTH_PERMISSION_SUCCESS = 'oauth_permission_success',
+
+  // NEW: 2FA required codes (only for signin)
+  OAUTH_SIGNIN_REQUIRES_2FA = 'oauth_signin_requires_2fa',
+  LOCAL_SIGNIN_REQUIRES_2FA = 'local_signin_requires_2fa',
 
   // Error codes
   OAUTH_ERROR = 'oauth_error',
@@ -187,7 +190,7 @@ export interface CallbackData {
   accountIds?: string[];
   name?: string;
   provider?: OAuthProviders;
-  tempToken?: string;
+  tempToken?: string; // NEW: For 2FA flows
   service?: string;
   scopeLevel?: string;
   error?: string;

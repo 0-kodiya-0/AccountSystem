@@ -12,6 +12,8 @@ import * as oauthRouter from './feature/oauth';
 import * as accountRouter from './feature/account';
 import * as sessionRouter from './feature/session/session.routes'; // NEW: Session routes
 import * as localAuthRouter from './feature/local_auth';
+import * as twoFARouter from './feature/twofa';
+import * as tokenRouter from './feature/tokens';
 import notificationRouter, { NotificationSocketHandler } from './feature/notifications';
 import { authenticateSession, validateAccountAccess, validateTokenAccess } from './middleware';
 import { ApiErrorCode, NotFoundError } from './types/response.types';
@@ -53,9 +55,9 @@ function createMainApp(): express.Application {
     logger.info('OAuth routes disabled');
   }
 
-  // Account routes (always enabled) - UPDATED to include session routes
+  // Account routes (always enabled)
   app.use('/account', autoTrackParentUrl(), accountRouter.authNotRequiredRouter);
-  app.use('/session', autoTrackParentUrl(), sessionRouter.sessionRouter); // NEW: Session routes
+  app.use('/session', autoTrackParentUrl(), sessionRouter.sessionRouter);
 
   // Local auth routes (enabled unless specifically disabled)
   if (process.env.DISABLE_LOCAL_AUTH !== 'true') {
@@ -63,6 +65,12 @@ function createMainApp(): express.Application {
     logger.info('Local authentication routes enabled');
   } else {
     logger.info('Local authentication routes disabled');
+  }
+
+  // NEW: 2FA public routes (enabled unless specifically disabled)
+  if (process.env.DISABLE_LOCAL_AUTH !== 'true' || process.env.DISABLE_OAUTH !== 'true') {
+    app.use('/twofa', autoTrackParentUrl(), twoFARouter.twoFAPublicRouter);
+    logger.info('2FA public routes enabled');
   }
 
   // Routes that need authentication
@@ -80,13 +88,23 @@ function createMainApp(): express.Application {
 
   if (process.env.DISABLE_OAUTH !== 'true') {
     app.use('/:accountId/oauth', autoTrackParentUrl(), oauthRouter.authRequiredRouter);
-    logger.info('OAuth routes enabled');
+    logger.info('OAuth authenticated routes enabled');
   }
 
   // Local auth authenticated routes (enabled unless specifically disabled)
   if (process.env.DISABLE_LOCAL_AUTH !== 'true') {
     app.use('/:accountId/auth', autoTrackParentUrl(), localAuthRouter.authRequiredRouter);
+    logger.info('Local auth authenticated routes enabled');
   }
+
+  // NEW: 2FA authenticated routes (enabled unless both auth types are disabled)
+  if (process.env.DISABLE_LOCAL_AUTH !== 'true' || process.env.DISABLE_OAUTH !== 'true') {
+    app.use('/:accountId/twofa', autoTrackParentUrl(), twoFARouter.twoFAAuthenticatedRouter);
+    logger.info('2FA authenticated routes enabled');
+  }
+
+  app.use('/:accountId/tokens', autoTrackParentUrl(), tokenRouter.tokenRouter);
+  logger.info('Centralized token routes enabled');
 
   applyErrorHandlers(app);
 
