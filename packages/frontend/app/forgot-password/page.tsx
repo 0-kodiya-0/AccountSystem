@@ -1,195 +1,283 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { ArrowLeft, Mail, RefreshCw } from 'lucide-react';
+import { Mail, CheckCircle, Eye, EyeOff } from 'lucide-react';
 
+import { AuthLayout } from '@/components/layout/auth-layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { AuthLayout } from '@/components/layout/auth-layout';
-import { getEnvironmentConfig } from '@/lib/utils';
-import { AuthGuard, useAuth } from '../../../sdk/auth-react-sdk/src';
-import { ErrorDisplay } from '@/components/auth/error-display';
+import { PasswordStrengthIndicator } from '@/components/auth/password-strength-indicator';
+import { AuthGuard, usePasswordReset } from '../../../sdk/auth-react-sdk/src';
 import { LoadingSpinner } from '@/components/auth/loading-spinner';
+import { ErrorDisplay } from '@/components/auth/error-display';
 import { RedirectingDisplay } from '@/components/auth/redirecting-display';
-
-const forgotPasswordSchema = z.object({
-  email: z.string().email('Please enter a valid email address'),
-});
-
-type ForgotPasswordFormData = z.infer<typeof forgotPasswordSchema>;
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
-  const config = getEnvironmentConfig();
-  const { requestPasswordReset } = useAuth();
-
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-    getValues,
-  } = useForm<ForgotPasswordFormData>({
-    resolver: zodResolver(forgotPasswordSchema),
+  const [email, setEmail] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    password: '',
+    confirmPassword: '',
   });
 
-  const onSubmit = async (data: ForgotPasswordFormData) => {
-    try {
-      setIsLoading(true);
-      setError(null);
+  const {
+    requestReset,
+    resetPassword,
+    phase,
+    loading,
+    error,
+    hasValidToken,
+    canResetPassword,
+    isCompleted,
+    clearError,
+    reset,
+  } = usePasswordReset();
 
-      await requestPasswordReset(data.email);
+  // Handle password reset request
+  const handleRequestReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    clearError();
 
-      setIsSuccess(true);
-      setMessage('Password reset email sent successfully!');
-      console.log('Password reset requested for:', data.email);
-    } catch (err: any) {
-      console.error('Password reset failed:', err);
-      setError(err.message || 'Failed to send password reset email. Please try again.');
-    } finally {
-      setIsLoading(false);
+    if (!email.trim()) {
+      return;
+    }
+
+    const callbackUrl = `${window.location.origin}/forgot-password`;
+
+    const result = await requestReset({
+      email: email.trim(),
+      callbackUrl,
+    });
+
+    if (result.success) {
+      // Email sent - user will see confirmation
     }
   };
 
-  const handleResend = async () => {
-    const email = getValues('email');
-    if (email) {
-      try {
-        setIsLoading(true);
-        setError(null);
+  // Handle password reset
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    clearError();
 
-        await requestPasswordReset(email);
+    if (!passwordData.password || !passwordData.confirmPassword) {
+      return;
+    }
 
-        setMessage('Password reset email sent again!');
-        console.log('Password reset resent for:', email);
-      } catch (err: any) {
-        console.error('Password reset resend failed:', err);
-        setError(err.message || 'Failed to resend password reset email. Please try again.');
-      } finally {
-        setIsLoading(false);
-      }
+    if (passwordData.password !== passwordData.confirmPassword) {
+      return;
+    }
+
+    const result = await resetPassword({
+      password: passwordData.password,
+      confirmPassword: passwordData.confirmPassword,
+    });
+
+    if (result.success) {
+      // Password reset successfully
     }
   };
 
-  const handleBackToLogin = () => {
-    router.push('/login');
+  // Handle password input changes
+  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setPasswordData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
-  // Show success state
-  if (isSuccess) {
-    return (
-      <AuthGuard
-        allowGuests={true}
-        requireAccount={false}
-        redirectOnAuthenticated="/dashboard"
-        errorComponent={ErrorDisplay}
-        loadingComponent={LoadingSpinner}
-        redirectingComponent={RedirectingDisplay}
+  // Redirect to login after completion
+  useEffect(() => {
+    if (isCompleted) {
+      const timer = setTimeout(() => {
+        router.push('/login?passwordReset=true');
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [isCompleted, router]);
+
+  const renderRequestForm = () => (
+    <form onSubmit={handleRequestReset} className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="email">Email Address</Label>
+        <Input
+          id="email"
+          name="email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Enter your email address"
+          required
+          disabled={loading}
+        />
+      </div>
+
+      {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{error}</div>}
+
+      <Button type="submit" className="w-full" loading={loading}>
+        Send Reset Email
+      </Button>
+    </form>
+  );
+
+  const renderEmailSentMessage = () => (
+    <div className="text-center space-y-4">
+      <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
+        <Mail className="w-6 h-6 text-blue-600" />
+      </div>
+      <div>
+        <h3 className="text-lg font-medium">Check your email</h3>
+        <p className="text-sm text-muted-foreground">We&apos;ve sent a password reset link to {email}</p>
+        <p className="text-sm text-muted-foreground mt-2">Click the link in the email to reset your password.</p>
+      </div>
+      <Button variant="outline" onClick={reset}>
+        Use a different email
+      </Button>
+    </div>
+  );
+
+  const renderResetForm = () => (
+    <form onSubmit={handleResetPassword} className="space-y-4">
+      <div className="text-center space-y-2 mb-6">
+        <h3 className="text-lg font-medium">Reset your password</h3>
+        <p className="text-sm text-muted-foreground">Enter your new password below</p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="password">New Password</Label>
+        <div className="relative">
+          <Input
+            id="password"
+            name="password"
+            type={showPassword ? 'text' : 'password'}
+            value={passwordData.password}
+            onChange={handlePasswordChange}
+            placeholder="Enter your new password"
+            required
+            disabled={loading}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            disabled={loading}
+          >
+            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
+        {passwordData.password && <PasswordStrengthIndicator password={passwordData.password} />}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="confirmPassword">Confirm New Password</Label>
+        <div className="relative">
+          <Input
+            id="confirmPassword"
+            name="confirmPassword"
+            type={showConfirmPassword ? 'text' : 'password'}
+            value={passwordData.confirmPassword}
+            onChange={handlePasswordChange}
+            placeholder="Confirm your new password"
+            required
+            disabled={loading}
+            error={!!(passwordData.confirmPassword && passwordData.password !== passwordData.confirmPassword)}
+          />
+          <button
+            type="button"
+            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            disabled={loading}
+          >
+            {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
+        {passwordData.confirmPassword && passwordData.password !== passwordData.confirmPassword && (
+          <p className="text-sm text-destructive">Passwords do not match</p>
+        )}
+      </div>
+
+      {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{error}</div>}
+
+      <Button
+        type="submit"
+        className="w-full"
+        loading={loading}
+        disabled={passwordData.password !== passwordData.confirmPassword}
       >
-        <AuthLayout title="Check your email" description="We've sent password reset instructions to your email">
-          <div className="space-y-6">
-            {/* Success Icon */}
-            <div className="text-center space-y-4">
-              <div className="mx-auto w-12 h-12 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
-                <Mail className="w-6 h-6 text-green-600 dark:text-green-400" />
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-lg font-medium">Password reset email sent</h3>
-                <p className="text-sm text-muted-foreground">
-                  {message ||
-                    `We've sent a password reset link to ${getValues(
-                      'email',
-                    )}. Click the link in the email to reset your password.`}
-                </p>
-              </div>
-            </div>
+        Reset Password
+      </Button>
+    </form>
+  );
 
-            {/* Instructions */}
-            <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-              <h4 className="text-sm font-medium">What to do next:</h4>
-              <ul className="text-sm text-muted-foreground space-y-1">
-                <li>• Check your email inbox (and spam folder)</li>
-                <li>• Click the reset link in the email</li>
-                <li>• Create a new password</li>
-                <li>• Sign in with your new password</li>
-              </ul>
-            </div>
+  const renderCompletionMessage = () => (
+    <div className="text-center space-y-4">
+      <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+        <CheckCircle className="w-6 h-6 text-green-600" />
+      </div>
+      <div>
+        <h3 className="text-lg font-medium text-green-600">Password reset successfully!</h3>
+        <p className="text-sm text-muted-foreground">
+          Your password has been updated. You can now sign in with your new password.
+        </p>
+        <p className="text-sm text-muted-foreground mt-2">Redirecting you to sign in...</p>
+      </div>
+    </div>
+  );
 
-            {/* Actions */}
-            <div className="space-y-3">
-              <Button type="button" variant="outline" className="w-full" onClick={handleResend} disabled={isLoading}>
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Resend email
-              </Button>
+  const getTitle = () => {
+    if (isCompleted) return 'Password Reset Complete';
+    if (phase === 'reset_email_sent') return 'Check Your Email';
+    if (canResetPassword) return 'Reset Password';
+    return 'Forgot Password';
+  };
 
-              <div className="text-center">
-                <Button variant="ghost" className="text-sm" onClick={handleBackToLogin}>
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back to sign in
-                </Button>
-              </div>
-            </div>
-          </div>
-        </AuthLayout>
-      </AuthGuard>
-    );
-  }
+  const getDescription = () => {
+    if (isCompleted) return 'Your password has been successfully updated';
+    if (phase === 'reset_email_sent') return "We've sent you a password reset link";
+    if (canResetPassword) return 'Enter your new password below';
+    return 'Enter your email to receive a password reset link';
+  };
 
-  // Show request form
   return (
     <AuthGuard
       allowGuests={true}
       requireAccount={false}
       redirectOnAuthenticated="/dashboard"
-      errorComponent={ErrorDisplay}
       loadingComponent={LoadingSpinner}
       redirectingComponent={RedirectingDisplay}
+      errorComponent={ErrorDisplay}
+      session={{
+        data: null,
+        loading: false,
+        error: null,
+      }}
     >
-      <AuthLayout
-        title="Forgot your password?"
-        description="Enter your email address and we'll send you a reset link"
-        showBackToHome={!!config.homeUrl}
-      >
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          {/* Email Field */}
-          <div className="space-y-2">
-            <Label htmlFor="email">Email address</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="Enter your email address"
-              error={!!errors.email || !!error}
-              disabled={isLoading}
-              {...register('email')}
-              autoComplete="email"
-            />
-            {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            <p className="text-xs text-muted-foreground">We&apos;ll send reset instructions to this email address</p>
+      <AuthLayout title={getTitle()} description={getDescription()} showBackToHome={true}>
+        {isCompleted ? (
+          renderCompletionMessage()
+        ) : phase === 'reset_email_sent' ? (
+          renderEmailSentMessage()
+        ) : canResetPassword ? (
+          renderResetForm()
+        ) : (
+          <div className="space-y-6">
+            {renderRequestForm()}
+
+            <div className="text-center">
+              <p className="text-sm text-muted-foreground">
+                Remember your password?{' '}
+                <Link href="/login" className="text-primary hover:underline">
+                  Sign in
+                </Link>
+              </p>
+            </div>
           </div>
-
-          {/* Submit Button */}
-          <Button type="submit" className="w-full" disabled={isLoading} loading={isLoading}>
-            Send reset email
-          </Button>
-        </form>
-
-        {/* Back to login */}
-        <div className="text-center">
-          <Button variant="ghost" className="text-sm" onClick={handleBackToLogin}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to sign in
-          </Button>
-        </div>
+        )}
       </AuthLayout>
     </AuthGuard>
   );

@@ -1,162 +1,167 @@
 'use client';
 
-import * as React from 'react';
-import { useState } from 'react';
-import Link from 'next/link';
+import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, User, Chrome, Settings, LogOut } from 'lucide-react';
+import { Plus, LogOut, Settings, Shield, ArrowRight, Check } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/components/ui/use-toast';
-import { ThemeToggle } from '@/components/theme/theme-toggle';
-import { Account, AuthGuard, OAuthProviders, useAuth } from '../../../sdk/auth-react-sdk/src';
-import { getEnvironmentConfig } from '@/lib/utils';
 import { UserAvatar } from '@/components/auth/user-avatar';
+import { AuthGuard, useSession } from '../../../sdk/auth-react-sdk/src';
+import { formatAccountName } from '@/lib/utils';
 import { LoadingSpinner } from '@/components/auth/loading-spinner';
-import { RedirectingDisplay } from '@/components/auth/redirecting-display';
 import { ErrorDisplay } from '@/components/auth/error-display';
+import { RedirectingDisplay } from '@/components/auth/redirecting-display';
 
-// Move the main content to a separate component
-function AccountSelectionContent() {
+export default function AccountsPage() {
   const router = useRouter();
-  const { toast } = useToast();
-  const [switchingTo, setSwitchingTo] = useState<string | null>(null);
-  const [actioningAccount, setActioningAccount] = useState<string | null>(null);
+  const { session, currentAccount, accounts, operations } = useSession();
 
-  const { accounts, switchAccount, logout, startOAuthSignin, session } = useAuth();
+  // Load session on mount
+  useEffect(() => {
+    if (session.isIdle && !session.data) {
+      operations.load();
+    }
+  }, [session.isIdle, session.data, operations]);
 
-  const config = getEnvironmentConfig();
+  // Load account data for each account
+  useEffect(() => {
+    accounts.forEach((account) => {
+      if (account.isIdle && !account.data) {
+        account.operations.load();
+      }
+    });
+  }, [accounts]);
 
   const handleSwitchAccount = async (accountId: string) => {
     try {
-      setSwitchingTo(accountId);
-      await switchAccount(accountId);
-
-      toast({
-        title: 'Account switched successfully',
-        description: 'You are now signed in to your account.',
-        variant: 'success',
-      });
-
-      // Redirect to home after successful switch
-      const redirectUrl = config.homeUrl || '/dashboard';
-      router.push(redirectUrl);
-    } catch (error: unknown) {
-      toast({
-        title: 'Failed to switch account',
-        description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setSwitchingTo(null);
+      await operations.setCurrentAccount(accountId);
+      router.push('/dashboard');
+    } catch (error) {
+      console.error('Failed to switch account:', error);
     }
   };
 
-  const handleLogout = async (accountId: string) => {
-    try {
-      setActioningAccount(accountId);
-      await logout(accountId);
-    } catch (error: unknown) {
-      toast({
-        title: 'Logout failed',
-        description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
-      });
-      setActioningAccount(null);
+  const handleLogoutAccount = async (accountId: string) => {
+    const account = accounts.find((acc) => acc.id === accountId);
+    if (account) {
+      await account.operations.logout();
+      // Session will be automatically updated after logout
     }
   };
 
-  const handleAddOAuthAccount = (provider: OAuthProviders) => {
-    startOAuthSignin(provider);
+  const handleLogoutAll = async () => {
+    await operations.logoutAll();
+    router.push('/login');
   };
 
-  const getAccountStatusBadge = (account: Account) => {
-    if (account.accountType === 'oauth') {
+  const handleAddAccount = () => {
+    router.push('/login?add=true');
+  };
+
+  const renderAccountCard = (account: (typeof accounts)[0]) => {
+    const isLoading = account.isLoading;
+    const isCurrent = currentAccount?.id === account.id;
+    const accountData = account.data;
+
+    if (isLoading || !accountData) {
       return (
-        <Badge variant="default" className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-          <Chrome className="w-3 h-3 mr-1" />
-          {account.provider || 'OAuth'}
-        </Badge>
-      );
-    } else {
-      return (
-        <Badge variant="secondary">
-          <User className="w-3 h-3 mr-1" />
-          Local
-        </Badge>
+        <Card key={account.id} className="relative">
+          <CardContent className="p-6">
+            <div className="flex items-center space-x-4">
+              <div className="w-12 h-12 bg-gray-200 animate-pulse rounded-full" />
+              <div className="flex-1 space-y-2">
+                <div className="w-32 h-4 bg-gray-200 animate-pulse rounded" />
+                <div className="w-48 h-3 bg-gray-200 animate-pulse rounded" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       );
     }
-  };
 
-  // Inline SessionAccountCard component - only shows session data
-  const SessionAccountCard = ({ account }: { account: Account }) => {
-    const displayName = account.userDetails.name;
-    const email = account.userDetails.email;
-    const imageUrl = account.userDetails.imageUrl;
+    const displayName = formatAccountName(
+      accountData.userDetails.firstName,
+      accountData.userDetails.lastName,
+      accountData.userDetails.name,
+    );
 
     return (
       <Card
-        className="group cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-[1.02] border-2 hover:border-primary/20"
-        onClick={() => handleSwitchAccount(account.id)}
+        key={account.id}
+        className={`relative cursor-pointer transition-all hover:shadow-md ${isCurrent ? 'ring-2 ring-primary' : ''}`}
+        onClick={() => !isCurrent && handleSwitchAccount(account.id)}
       >
-        <CardHeader className="pb-4">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center space-x-3">
-              <UserAvatar name={displayName} imageUrl={imageUrl} size="lg" />
-              <div className="flex-1 min-w-0">
-                <CardTitle className="text-lg truncate">{displayName}</CardTitle>
-                {email && <CardDescription className="text-sm truncate">{email}</CardDescription>}
+        {isCurrent && (
+          <div className="absolute -top-2 -right-2 w-6 h-6 bg-primary rounded-full flex items-center justify-center">
+            <Check className="w-4 h-4 text-primary-foreground" />
+          </div>
+        )}
+
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <UserAvatar name={displayName} imageUrl={accountData.userDetails.imageUrl} size="lg" />
+              <div>
+                <h3 className="font-semibold text-lg">{displayName}</h3>
+                <p className="text-sm text-muted-foreground">{accountData.userDetails.email}</p>
+                <div className="flex items-center space-x-2 mt-2">
+                  <Badge variant={accountData.accountType === 'oauth' ? 'default' : 'secondary'}>
+                    {accountData.accountType === 'oauth' ? accountData.provider : 'Local'}
+                  </Badge>
+                  <Badge variant="outline" className="text-xs">
+                    {accountData.status}
+                  </Badge>
+                  {accountData.security?.twoFactorEnabled && (
+                    <Badge variant="outline" className="text-green-600 text-xs">
+                      <Shield className="w-3 h-3 mr-1" />
+                      2FA
+                    </Badge>
+                  )}
+                  {isCurrent && (
+                    <Badge variant="default" className="text-xs">
+                      Current
+                    </Badge>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="flex items-center justify-between pt-2">
             <div className="flex items-center space-x-2">
-              {getAccountStatusBadge(account)}
-              {/* Note: session data doesn't include security info, so we can't show 2FA badge */}
-            </div>
-          </div>
-        </CardHeader>
+              {!isCurrent && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSwitchAccount(account.id);
+                  }}
+                >
+                  <ArrowRight className="w-4 h-4 mr-2" />
+                  Switch
+                </Button>
+              )}
 
-        <CardContent className="pt-0">
-          <div className="flex items-center justify-between">
-            <Button
-              size="sm"
-              disabled={!!switchingTo || switchingTo === account.id}
-              loading={switchingTo === account.id}
-              className="group-hover:bg-primary/90"
-            >
-              {switchingTo === account.id ? 'Switching...' : 'Continue'}
-            </Button>
-
-            <div className="flex items-center space-x-1">
               <Button
+                variant="outline"
                 size="sm"
-                variant="ghost"
                 onClick={(e) => {
                   e.stopPropagation();
-                  // Note: Settings requires full account data, so we switch first
-                  handleSwitchAccount(account.id).then(() => {
-                    router.push(`/accounts/${account.id}/settings`);
-                  });
+                  router.push(`/accounts/${account.id}/settings`);
                 }}
-                disabled={!!switchingTo}
-                title="Account Settings"
               >
                 <Settings className="w-4 h-4" />
               </Button>
+
               <Button
+                variant="outline"
                 size="sm"
-                variant="ghost"
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleLogout(account.id);
+                  handleLogoutAccount(account.id);
                 }}
-                disabled={!!switchingTo || actioningAccount === account.id}
-                loading={actioningAccount === account.id}
-                title="Sign Out"
+                className="text-destructive hover:text-destructive"
               >
                 <LogOut className="w-4 h-4" />
               </Button>
@@ -167,182 +172,113 @@ function AccountSelectionContent() {
     );
   };
 
-  return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <Link href="/" className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">A</span>
-                </div>
-                <span className="text-xl font-bold">{config.appName}</span>
-              </Link>
-            </div>
-            <div className="flex items-center space-x-2">
-              {config.homeUrl && (
-                <Link href={config.homeUrl}>
-                  <Button variant="ghost" size="sm">
-                    Back to {config.companyName || 'Home'}
-                  </Button>
-                </Link>
-              )}
-              <ThemeToggle />
-            </div>
+  const renderEmptyState = () => (
+    <Card className="text-center p-12">
+      <CardContent>
+        <div className="space-y-4">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
+            <Plus className="w-8 h-8 text-gray-400" />
           </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8 max-w-5xl">
-        <div className="space-y-8">
-          {/* Page Header */}
-          <div className="text-center space-y-4">
-            <div className="space-y-2">
-              <h1 className="text-3xl font-bold tracking-tight">Choose an account</h1>
-              <p className="text-muted-foreground text-lg">
-                {accounts.length > 0
-                  ? 'Select an account to continue or add a new one'
-                  : 'Get started by creating an account or signing in'}
-              </p>
-            </div>
-
-            {/* Quick Stats */}
-            {accounts.length > 0 && (
-              <div className="flex items-center justify-center space-x-6 text-sm text-muted-foreground">
-                <div className="flex items-center space-x-1">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span>
-                    {accounts.length} account{accounts.length !== 1 ? 's' : ''}
-                  </span>
-                </div>
-              </div>
-            )}
+          <div>
+            <h3 className="text-lg font-medium">No accounts found</h3>
+            <p className="text-sm text-muted-foreground">
+              You don&apos;t have any accounts yet. Create one to get started.
+            </p>
           </div>
-
-          {/* Active Accounts - Only show if we have accounts */}
-          {accounts.length > 0 && session.hasSession && (
-            <section className="space-y-6">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold">Your accounts</h2>
-                <Badge variant="secondary" className="bg-green-50 text-green-700 dark:bg-green-900 dark:text-green-200">
-                  Ready to use
-                </Badge>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {accounts.map((account) => (
-                  <SessionAccountCard key={account.id} account={account} />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* Add Account Section */}
-          <section className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold">{accounts.length > 0 ? 'Add another account' : 'Get started'}</h2>
-              <Badge
-                variant="outline"
-                className="border-blue-200 text-blue-700 dark:border-blue-800 dark:text-blue-400"
-              >
-                {accounts.length > 0 ? 'Add account' : 'Choose option'}
-              </Badge>
-            </div>
-
-            <div className="grid gap-6 md:grid-cols-2">
-              {/* OAuth Options */}
-              {config.enableOAuth && (
-                <Card className="cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-[1.02] border-2 hover:border-blue-200">
-                  <CardHeader>
-                    <CardTitle className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
-                        <Chrome className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                      </div>
-                      <div>
-                        <span className="text-lg">Continue with Google</span>
-                        <CardDescription className="text-sm mt-1">
-                          Sign in with your existing Google account
-                        </CardDescription>
-                      </div>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <Button
-                      className="w-full"
-                      variant="outline"
-                      onClick={() => handleAddOAuthAccount(OAuthProviders.Google)}
-                      disabled={!!switchingTo}
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      {accounts.length > 0 ? 'Add Google Account' : 'Sign in with Google'}
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Local Account Option */}
-              {config.enableLocalAuth && (
-                <Card className="cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-[1.02] border-2 hover:border-green-200">
-                  <CardHeader>
-                    <CardTitle className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
-                        <User className="w-5 h-5 text-green-600 dark:text-green-400" />
-                      </div>
-                      <div>
-                        <span className="text-lg">{accounts.length > 0 ? 'Create new account' : 'Create account'}</span>
-                        <CardDescription className="text-sm mt-1">Sign up with email and password</CardDescription>
-                      </div>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <Link href="/signup">
-                      <Button className="w-full" variant="outline" disabled={!!switchingTo}>
-                        <Plus className="w-4 h-4 mr-2" />
-                        Create Account
-                      </Button>
-                    </Link>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          </section>
-
-          {/* Footer Actions */}
-          <section className="border-t pt-8 space-y-4">
-            <div className="text-center">
-              <p className="text-sm text-muted-foreground mb-4">Already have an account?</p>
-              <Link href="/login">
-                <Button variant="ghost" disabled={!!switchingTo}>
-                  Sign in to existing account
-                </Button>
-              </Link>
-            </div>
-
-            {/* Help text */}
-            <div className="text-center text-xs text-muted-foreground max-w-2xl mx-auto">
-              <p>
-                For help,{' '}
-                {config.supportEmail ? (
-                  <Link href={`mailto:${config.supportEmail}`} className="text-primary hover:underline">
-                    contact support
-                  </Link>
-                ) : (
-                  'contact support'
-                )}
-                .
-              </p>
-            </div>
-          </section>
+          <Button onClick={handleAddAccount}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add Account
+          </Button>
         </div>
-      </main>
+      </CardContent>
+    </Card>
+  );
+
+  const renderAccountsHeader = () => (
+    <div className="flex items-center justify-between">
+      <div>
+        <h1 className="text-3xl font-bold">Your Accounts</h1>
+        <p className="text-muted-foreground">
+          Manage and switch between your {accounts.length} account{accounts.length !== 1 ? 's' : ''}
+        </p>
+      </div>
+      <div className="flex items-center space-x-4">
+        {accounts.length > 0 && (
+          <Button variant="outline" onClick={handleLogoutAll}>
+            <LogOut className="w-4 h-4 mr-2" />
+            Sign Out All
+          </Button>
+        )}
+        <Button onClick={handleAddAccount}>
+          <Plus className="w-4 h-4 mr-2" />
+          Add Account
+        </Button>
+      </div>
     </div>
   );
-}
 
-export default function AccountSelectionPage() {
+  const renderAccountsList = () => {
+    if (accounts.length === 0) {
+      return renderEmptyState();
+    }
+
+    return <div className="space-y-4">{accounts.map((account) => renderAccountCard(account))}</div>;
+  };
+
+  const renderAccountSummary = () => {
+    if (accounts.length === 0) return null;
+
+    const localAccounts = accounts.filter((acc) => acc.data?.accountType === 'local').length;
+    const oauthAccounts = accounts.filter((acc) => acc.data?.accountType === 'oauth').length;
+    const protectedAccounts = accounts.filter((acc) => acc.data?.security?.twoFactorEnabled).length;
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center space-x-2">
+              <div className="w-3 h-3 bg-blue-500 rounded-full" />
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Total Accounts</p>
+                <p className="text-2xl font-bold">{accounts.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center space-x-2">
+              <Shield className="w-4 h-4 text-green-600" />
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Protected with 2FA</p>
+                <p className="text-2xl font-bold">{protectedAccounts}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-muted-foreground">Account Types</p>
+              <div className="flex space-x-4">
+                <div className="text-center">
+                  <p className="text-lg font-bold">{localAccounts}</p>
+                  <p className="text-xs text-muted-foreground">Local</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold">{oauthAccounts}</p>
+                  <p className="text-xs text-muted-foreground">OAuth</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
   return (
     <AuthGuard
       allowGuests={false}
@@ -351,8 +287,59 @@ export default function AccountSelectionPage() {
       loadingComponent={LoadingSpinner}
       redirectingComponent={RedirectingDisplay}
       errorComponent={ErrorDisplay}
+      session={{
+        data: session.data,
+        loading: session.isLoading,
+        error: session.error,
+      }}
     >
-      <AccountSelectionContent />
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8 max-w-4xl">
+          <div className="space-y-8">
+            {/* Header */}
+            {renderAccountsHeader()}
+
+            {/* Account Summary */}
+            {renderAccountSummary()}
+
+            {/* Accounts List */}
+            {renderAccountsList()}
+
+            {/* Quick Actions */}
+            {accounts.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Quick Actions</CardTitle>
+                  <CardDescription>Common account management tasks</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Button
+                      variant="outline"
+                      className="justify-start h-auto p-4"
+                      onClick={() => router.push('/dashboard')}
+                    >
+                      <ArrowRight className="w-5 h-5 mr-3" />
+                      <div className="text-left">
+                        <div className="font-medium">Go to Dashboard</div>
+                        <div className="text-sm text-muted-foreground">View your current account dashboard</div>
+                      </div>
+                    </Button>
+
+                    <Button variant="outline" className="justify-start h-auto p-4" onClick={handleAddAccount}>
+                      <Plus className="w-5 h-5 mr-3" />
+                      <div className="text-left">
+                        <div className="font-medium">Add Another Account</div>
+                        <div className="text-sm text-muted-foreground">Sign in or create a new account</div>
+                      </div>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
+      </div>
     </AuthGuard>
   );
 }

@@ -4,8 +4,7 @@ import './globals.css';
 
 import { ThemeProvider } from '@/components/theme/theme-provider';
 import { Toaster } from '@/components/ui/toaster';
-import { AuthProvider } from '../../sdk/auth-react-sdk/src';
-import { authClient } from '@/lib/auth';
+import { AuthProvider } from '@/components/providers/auth-provider';
 import { getEnvironmentConfig } from '@/lib/utils';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -43,7 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <AuthProvider httpClient={authClient}>
+          <AuthProvider>
             {children}
             <Toaster />
           </AuthProvider>
