@@ -13,8 +13,11 @@ import {
   BackupCodesResponse,
   OAuthProviders,
   OAuthUrlResponse,
+  OAuthUrlRequest,
   PermissionUrlResponse,
+  PermissionUrlRequest,
   ReauthorizeUrlResponse,
+  ReauthorizeUrlRequest,
   TokenRevocationResponse,
   LogoutResponse,
   LogoutAllResponse,
@@ -89,6 +92,18 @@ const validateEmail = (email: string | null | undefined, context: string): void 
   if (trimmedEmail.length < 3) {
     // Minimum reasonable email length
     throw new Error(`Email too short for ${context}. Minimum 3 characters required.`);
+  }
+};
+
+const validateUrl = (url: string | null | undefined, context: string): void => {
+  if (!url || typeof url !== 'string' || url.trim() === '') {
+    throw new Error(`Valid URL is required for ${context}`);
+  }
+
+  try {
+    new URL(url.trim());
+  } catch {
+    throw new Error(`Invalid URL format for ${context}`);
   }
 };
 
@@ -209,6 +224,7 @@ export class AuthService {
   async requestEmailVerification(data: RequestEmailVerificationRequest): Promise<RequestEmailVerificationResponse> {
     validateRequired(data, 'signup data', 'email verification request');
     validateEmail(data.email, 'email verification request');
+    validateUrl(data.callbackUrl, 'email verification request');
 
     return this.httpClient.post('/auth/signup/request-email', data);
   }
@@ -217,6 +233,20 @@ export class AuthService {
     validateToken(token, 'verification token', 'email verification');
 
     return this.httpClient.get(`/auth/signup/verify-email?token=${encodeURIComponent(token)}`);
+  }
+
+  async redirectToEmailVerify(token: string, redirectUrl: string): Promise<void> {
+    validateToken(token, 'verification token', 'email verification');
+
+    const result = await this.httpClient.get<VerifyEmailSignupResponse>(
+      `/auth/signup/verify-email?token=${encodeURIComponent(token)}`,
+    );
+
+    // Email verified successfully - redirect to profile completion
+    const redirectTo = new URL(redirectUrl, window.location.origin);
+    redirectTo.searchParams.set('profileToken', result.profileToken);
+    redirectTo.searchParams.set('email', result.email);
+    window.location.href = redirectTo.toString();
   }
 
   async completeProfile(token: string, data: CompleteProfileRequest): Promise<CompleteProfileResponse> {
@@ -228,6 +258,27 @@ export class AuthService {
     validateRequired(data.confirmPassword, 'confirmPassword', 'profile completion');
 
     return this.httpClient.post(`/auth/signup/complete-profile?token=${encodeURIComponent(token)}`, data);
+  }
+
+  async redirectToCompleteProfile(token: string, data: CompleteProfileRequest, redirectUrl: string): Promise<void> {
+    validateToken(token, 'profile completion token', 'profile completion');
+    validateRequired(data, 'profile data', 'profile completion');
+    validateRequired(data.firstName, 'firstName', 'profile completion');
+    validateRequired(data.lastName, 'lastName', 'profile completion');
+    validateRequired(data.password, 'password', 'profile completion');
+    validateRequired(data.confirmPassword, 'confirmPassword', 'profile completion');
+
+    const result = await this.httpClient.post<CompleteProfileResponse>(
+      `/auth/signup/complete-profile?token=${encodeURIComponent(token)}`,
+      data,
+    );
+
+    // Profile completed successfully - redirect to login or dashboard
+    const redirectTo = new URL(redirectUrl, window.location.origin);
+    redirectTo.searchParams.set('accountCreated', 'true');
+    redirectTo.searchParams.set('accountId', result.accountId);
+    redirectTo.searchParams.set('message', encodeURIComponent('Account created successfully! Please log in.'));
+    window.location.href = redirectTo.toString();
   }
 
   async getSignupStatus(email?: string, token?: string): Promise<SignupStatusResponse> {
@@ -254,15 +305,56 @@ export class AuthService {
 
   async localLogin(data: LocalLoginRequest): Promise<LocalLoginResponse> {
     validateRequired(data, 'login data', 'local login');
-    validateEmail(data.email, 'local login');
+
+    // Validate email OR username (at least one required)
+    if (!data.email && !data.username) {
+      throw new Error('Either email or username is required for local login');
+    }
+
+    if (data.email) {
+      validateEmail(data.email, 'local login');
+    }
+
     validateRequired(data.password, 'password', 'local login');
 
     return this.httpClient.post('/auth/login', data);
   }
 
+  async redirectToLocalSignin(data: LocalLoginRequest, redirectUrl: string): Promise<void> {
+    validateRequired(data, 'login data', 'local login');
+
+    // Validate email OR username (at least one required)
+    if (!data.email && !data.username) {
+      throw new Error('Either email or username is required for local login');
+    }
+
+    if (data.email) {
+      validateEmail(data.email, 'local login');
+    }
+
+    validateRequired(data.password, 'password', 'local login');
+
+    const result = await this.httpClient.post<LocalLoginResponse>('/auth/login', data);
+
+    if (result.requiresTwoFactor && result.tempToken) {
+      // 2FA required - redirect to 2FA page with temp token
+      const redirectTo = new URL(redirectUrl, window.location.origin);
+      redirectTo.searchParams.set('tempToken', result.tempToken);
+      redirectTo.searchParams.set('accountId', result.accountId || '');
+      if (redirectUrl) {
+        redirectTo.searchParams.set('redirectUrl', redirectUrl);
+      }
+      window.location.href = redirectTo.toString();
+    } else {
+      // Login successful - redirect to specified URL or default
+      window.location.href = redirectUrl || '/';
+    }
+  }
+
   async requestPasswordReset(data: PasswordResetRequest): Promise<PasswordResetRequestResponse> {
     validateRequired(data, 'password reset request data', 'password reset request');
     validateEmail(data.email, 'password reset request');
+    validateUrl(data.callbackUrl, 'password reset request');
 
     return this.httpClient.post('/auth/reset-password-request', data);
   }
@@ -276,6 +368,24 @@ export class AuthService {
     return this.httpClient.post(`/auth/reset-password?token=${encodeURIComponent(token)}`, data);
   }
 
+  async redirectToResetPassword(token: string, data: ResetPasswordRequest, redirectUrl: string): Promise<void> {
+    validateToken(token, 'reset token', 'password reset');
+    validateRequired(data, 'password reset data', 'password reset');
+    validatePassword(data.password, 'password reset');
+    validateRequired(data.confirmPassword, 'confirmPassword', 'password reset');
+
+    await this.httpClient.post<ResetPasswordResponse>(`/auth/reset-password?token=${encodeURIComponent(token)}`, data);
+
+    // Password reset successful - redirect to login
+    const redirectTo = new URL(redirectUrl, window.location.origin);
+    redirectTo.searchParams.set('passwordReset', 'true');
+    redirectTo.searchParams.set(
+      'message',
+      encodeURIComponent('Password reset successfully! Please log in with your new password.'),
+    );
+    window.location.href = redirectTo.toString();
+  }
+
   async changePassword(accountId: string, data: PasswordChangeRequest): Promise<PasswordChangeResponse> {
     validateAccountId(accountId, 'password change');
     validateRequired(data, 'password change data', 'password change');
@@ -286,18 +396,12 @@ export class AuthService {
     return this.httpClient.post(`/${accountId}/auth/change-password`, data);
   }
 
-  /**
-   * Get 2FA status for any account type
-   */
   async getTwoFactorStatus(accountId: string): Promise<TwoFactorStatusResponse> {
     validateAccountId(accountId, '2FA status check');
 
     return this.httpClient.get(`/${accountId}/twofa/status`);
   }
 
-  /**
-   * Set up 2FA for any account type (unified endpoint)
-   */
   async setupTwoFactor(accountId: string, data: UnifiedTwoFactorSetupRequest): Promise<UnifiedTwoFactorSetupResponse> {
     validateAccountId(accountId, '2FA setup');
     validateRequired(data, '2FA setup data', '2FA setup');
@@ -314,9 +418,6 @@ export class AuthService {
     return this.httpClient.post(`/${accountId}/twofa/setup`, data);
   }
 
-  /**
-   * Verify and enable 2FA setup for any account type
-   */
   async verifyTwoFactorSetup(accountId: string, token: string): Promise<UnifiedTwoFactorSetupResponse> {
     validateAccountId(accountId, '2FA setup verification');
     validateToken(token, '2FA verification token', '2FA setup verification');
@@ -324,9 +425,6 @@ export class AuthService {
     return this.httpClient.post(`/${accountId}/twofa/verify-setup`, { token });
   }
 
-  /**
-   * Generate backup codes for any account type
-   */
   async generateBackupCodes(accountId: string, data: BackupCodesRequest): Promise<BackupCodesResponse> {
     validateAccountId(accountId, 'backup code generation');
     validateRequired(data, 'backup codes data', 'backup code generation');
@@ -339,9 +437,6 @@ export class AuthService {
     return this.httpClient.post(`/${accountId}/twofa/backup-codes`, data);
   }
 
-  /**
-   * Verify 2FA during login (unified for local and OAuth)
-   */
   async verifyTwoFactorLogin(data: UnifiedTwoFactorVerifyRequest): Promise<UnifiedTwoFactorVerifyResponse> {
     validateRequired(data, '2FA verification data', '2FA verification');
     validateRequired(data.token, '2FA token', '2FA verification');
@@ -350,36 +445,45 @@ export class AuthService {
     return this.httpClient.post('/twofa/verify-login', data);
   }
 
-  /**
-   * Get comprehensive token status for any account type
-   */
+  async redirectToTwoFactorVerify(data: UnifiedTwoFactorVerifyRequest, redirectUrl?: string): Promise<void> {
+    validateRequired(data, '2FA verification data', '2FA verification');
+    validateRequired(data.token, '2FA token', '2FA verification');
+    validateRequired(data.tempToken, 'temporary token', '2FA verification');
+
+    const result = await this.httpClient.post<UnifiedTwoFactorVerifyResponse>('/twofa/verify-login', data);
+
+    if (result.needsAdditionalScopes && result.missingScopes && result.missingScopes.length > 0) {
+      // OAuth account needs additional scopes - could redirect to permission request
+      // For now, just redirect to the specified URL with a query parameter
+      const redirectTo = new URL(redirectUrl || '/', window.location.origin);
+      redirectTo.searchParams.set('needsScopes', 'true');
+      redirectTo.searchParams.set('accountId', result.accountId);
+      redirectTo.searchParams.set('missingScopes', result.missingScopes.join(','));
+      window.location.href = redirectTo.toString();
+    } else {
+      // 2FA successful - redirect to specified URL or default
+      window.location.href = redirectUrl || '/';
+    }
+  }
+
   async getTokenStatus(accountId: string): Promise<TokenStatusResponse> {
     validateAccountId(accountId, 'token status');
 
     return this.httpClient.get(`/${accountId}/tokens/status`);
   }
 
-  /**
-   * Get access token information for any account type
-   */
   async getAccessTokenInfo(accountId: string): Promise<TokenInfoResponse> {
     validateAccountId(accountId, 'access token info');
 
     return this.httpClient.get(`/${accountId}/tokens/access`);
   }
 
-  /**
-   * Get refresh token information for any account type
-   */
   async getRefreshTokenInfo(accountId: string): Promise<TokenInfoResponse> {
     validateAccountId(accountId, 'refresh token info');
 
     return this.httpClient.get(`/${accountId}/tokens/refresh`);
   }
 
-  /**
-   * Refresh access token for any account type
-   */
   async refreshToken(accountId: string, redirectUrl: string): Promise<void> {
     validateAccountId(accountId, 'token refresh');
     validateRequired(redirectUrl, 'redirect URL', 'token refresh');
@@ -388,18 +492,12 @@ export class AuthService {
     window.location.href = `/${accountId}/tokens/refresh?redirectUrl=${encodeURIComponent(redirectUrl)}`;
   }
 
-  /**
-   * Revoke tokens for any account type
-   */
   async revokeTokens(accountId: string): Promise<TokenRevocationResponse> {
     validateAccountId(accountId, 'token revocation');
 
     return this.httpClient.post(`/${accountId}/tokens/revoke`);
   }
 
-  /**
-   * Validate token ownership and get info
-   */
   async validateToken(accountId: string, data: TokenValidationRequest): Promise<TokenValidationResponse> {
     validateAccountId(accountId, 'token validation');
     validateRequired(data, 'token validation data', 'token validation');
@@ -412,85 +510,104 @@ export class AuthService {
     return this.httpClient.post(`/${accountId}/tokens/validate`, data);
   }
 
-  async generateOAuthSignupUrl(provider: OAuthProviders): Promise<OAuthUrlResponse> {
+  async generateOAuthSignupUrl(provider: OAuthProviders, data: OAuthUrlRequest): Promise<OAuthUrlResponse> {
     validateProvider(provider, 'OAuth provider invalid to generate signup URL');
-
-    return this.httpClient.get(`/oauth/signup/${provider}`);
-  }
-
-  async generateOAuthSigninUrl(provider: OAuthProviders): Promise<OAuthUrlResponse> {
-    validateProvider(provider, 'OAuth provider invalid to generate signin URL');
-
-    return this.httpClient.get(`/oauth/signin/${provider}`);
-  }
-
-  async generatePermissionUrl(
-    provider: OAuthProviders,
-    accountId: string,
-    scopeNames: string[],
-  ): Promise<PermissionUrlResponse> {
-    validateProvider(provider, 'OAuth provider invalid to generate permission URL');
-    validateAccountId(accountId, 'permission URL generation');
-    validateArray(scopeNames, 'scope names', 'permission URL generation');
+    validateRequired(data, 'OAuth request data', 'OAuth signup URL generation');
+    validateUrl(data.callbackUrl, 'OAuth signup URL generation');
 
     const params = new URLSearchParams();
-    params.append('accountId', accountId);
-    params.append('scopeNames', JSON.stringify(scopeNames));
+    params.append('callbackUrl', data.callbackUrl);
+
+    return this.httpClient.get(`/oauth/signup/${provider}?${params.toString()}`);
+  }
+
+  async generateOAuthSigninUrl(provider: OAuthProviders, data: OAuthUrlRequest): Promise<OAuthUrlResponse> {
+    validateProvider(provider, 'OAuth provider invalid to generate signin URL');
+    validateRequired(data, 'OAuth request data', 'OAuth signin URL generation');
+    validateUrl(data.callbackUrl, 'OAuth signin URL generation');
+
+    const params = new URLSearchParams();
+    params.append('callbackUrl', data.callbackUrl);
+
+    return this.httpClient.get(`/oauth/signin/${provider}?${params.toString()}`);
+  }
+
+  async generatePermissionUrl(provider: OAuthProviders, data: PermissionUrlRequest): Promise<PermissionUrlResponse> {
+    validateProvider(provider, 'OAuth provider invalid to generate permission URL');
+    validateRequired(data, 'permission request data', 'permission URL generation');
+    validateAccountId(data.accountId, 'permission URL generation');
+    validateArray(data.scopeNames, 'scope names', 'permission URL generation');
+    validateUrl(data.callbackUrl, 'permission URL generation');
+
+    const params = new URLSearchParams();
+    params.append('accountId', data.accountId);
+    params.append('scopeNames', JSON.stringify(data.scopeNames));
+    params.append('callbackUrl', data.callbackUrl);
 
     return this.httpClient.get(`/oauth/permission/${provider}?${params.toString()}`);
   }
 
-  async generateReauthorizeUrl(provider: OAuthProviders, accountId: string): Promise<ReauthorizeUrlResponse> {
+  async generateReauthorizeUrl(provider: OAuthProviders, data: ReauthorizeUrlRequest): Promise<ReauthorizeUrlResponse> {
     validateProvider(provider, 'OAuth provider invalid to generate reauthorization URL');
-    validateAccountId(accountId, 'reauthorization URL generation');
+    validateRequired(data, 'reauthorization request data', 'reauthorization URL generation');
+    validateAccountId(data.accountId, 'reauthorization URL generation');
+    validateUrl(data.callbackUrl, 'reauthorization URL generation');
 
     const params = new URLSearchParams();
-    params.append('accountId', accountId);
+    params.append('accountId', data.accountId);
+    params.append('callbackUrl', data.callbackUrl);
 
     return this.httpClient.get(`/oauth/reauthorize/${provider}?${params.toString()}`);
   }
 
-  redirectToOAuthSignup(provider: OAuthProviders): void {
+  redirectToOAuthSignup(provider: OAuthProviders, callbackUrl: string): void {
     validateProvider(provider, 'OAuth signup redirect');
+    validateUrl(callbackUrl, 'OAuth signup redirect');
 
-    this.generateOAuthSignupUrl(provider)
+    this.generateOAuthSignupUrl(provider, { callbackUrl })
       .then((response) => {
         window.location.href = response.authorizationUrl;
       })
       .catch((error) => {
         console.error('Failed to generate OAuth signup URL:', error);
+        throw error;
       });
   }
 
-  redirectToOAuthSignin(provider: OAuthProviders): void {
+  redirectToOAuthSignin(provider: OAuthProviders, callbackUrl: string): void {
     validateProvider(provider, 'OAuth signin redirect');
+    validateUrl(callbackUrl, 'OAuth signin redirect');
 
-    this.generateOAuthSigninUrl(provider)
+    this.generateOAuthSigninUrl(provider, { callbackUrl })
       .then((response) => {
         window.location.href = response.authorizationUrl;
       })
       .catch((error) => {
         console.error('Failed to generate OAuth signin URL:', error);
+        throw error;
       });
   }
 
-  requestPermission(provider: OAuthProviders, accountId: string, scopeNames: string[]): void {
-    validateAccountId(accountId, 'Google permission request');
-    validateArray(scopeNames, 'scope names', 'Google permission request');
+  requestPermission(provider: OAuthProviders, accountId: string, scopeNames: string[], callbackUrl: string): void {
+    validateAccountId(accountId, 'permission request');
+    validateArray(scopeNames, 'scope names', 'permission request');
+    validateUrl(callbackUrl, 'permission request');
 
-    this.generatePermissionUrl(provider, accountId, scopeNames)
+    this.generatePermissionUrl(provider, { accountId, scopeNames, callbackUrl })
       .then((response) => {
         window.location.href = response.authorizationUrl;
       })
       .catch((error) => {
         console.error('Failed to generate permission URL:', error);
+        throw error;
       });
   }
 
-  reauthorizePermissions(provider: OAuthProviders, accountId: string): void {
+  reauthorizePermissions(provider: OAuthProviders, accountId: string, callbackUrl: string): void {
     validateAccountId(accountId, 'permission reauthorization');
+    validateUrl(callbackUrl, 'permission reauthorization');
 
-    this.generateReauthorizeUrl(provider, accountId)
+    this.generateReauthorizeUrl(provider, { accountId, callbackUrl })
       .then((response) => {
         if (response.authorizationUrl) {
           window.location.href = response.authorizationUrl;
@@ -500,6 +617,7 @@ export class AuthService {
       })
       .catch((error) => {
         console.error('Failed to generate reauthorization URL:', error);
+        throw error;
       });
   }
 

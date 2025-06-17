@@ -73,6 +73,19 @@ export interface SessionAccount {
 }
 
 // ============================================================================
+// Account Update Types (UPDATED - Direct Fields)
+// ============================================================================
+
+export interface AccountUpdateRequest {
+  firstName?: string;
+  lastName?: string;
+  name?: string;
+  imageUrl?: string;
+  birthdate?: string;
+  username?: string;
+}
+
+// ============================================================================
 // Session Management
 // ============================================================================
 
@@ -96,17 +109,18 @@ export interface SessionUpdateResponse {
 }
 
 // ============================================================================
-// Two-Step Signup Flow
+// Two-Step Signup Flow (UPDATED - Callback URLs)
 // ============================================================================
 
 export interface RequestEmailVerificationRequest {
   email: string;
+  callbackUrl: string; // NEW: Required callback URL
 }
 
 export interface RequestEmailVerificationResponse {
   message: string;
-  token: string;
   email: string;
+  callbackUrl: string; // NEW: Returned for reference
 }
 
 export interface VerifyEmailSignupResponse {
@@ -149,7 +163,7 @@ export interface CancelSignupResponse {
 }
 
 // ============================================================================
-// Local Authentication
+// Local Authentication (UPDATED - Callback URLs)
 // ============================================================================
 
 export interface LocalLoginRequest {
@@ -169,6 +183,7 @@ export interface LocalLoginResponse {
 
 export interface PasswordResetRequest {
   email: string;
+  callbackUrl: string; // NEW: Required callback URL
 }
 
 export interface ResetPasswordRequest {
@@ -183,14 +198,25 @@ export interface PasswordChangeRequest {
 }
 
 // ============================================================================
-// OAuth Authentication
+// OAuth Authentication (UPDATED - Callback URLs)
 // ============================================================================
+
+export interface OAuthUrlRequest {
+  callbackUrl: string; // NEW: Required callback URL
+}
 
 export interface OAuthUrlResponse {
   authorizationUrl: string;
   state: string;
   provider: string;
   authType: string;
+  callbackUrl: string; // NEW: Returned for reference
+}
+
+export interface PermissionUrlRequest {
+  accountId: string;
+  scopeNames: string[];
+  callbackUrl: string; // NEW: Required callback URL
 }
 
 export interface PermissionUrlResponse {
@@ -199,6 +225,12 @@ export interface PermissionUrlResponse {
   scopes: string[];
   accountId: string;
   userEmail: string;
+  callbackUrl: string; // NEW: Returned for reference
+}
+
+export interface ReauthorizeUrlRequest {
+  accountId: string;
+  callbackUrl: string; // NEW: Required callback URL
 }
 
 export interface ReauthorizeUrlResponse {
@@ -208,6 +240,7 @@ export interface ReauthorizeUrlResponse {
   accountId: string;
   userEmail?: string;
   message?: string;
+  callbackUrl?: string; // NEW: Returned for reference
 }
 
 // ============================================================================
@@ -307,11 +340,12 @@ export interface TokenValidationResponse extends TokenInfo {
 }
 
 // ============================================================================
-// Standard Response Types
+// Standard Response Types (UPDATED)
 // ============================================================================
 
 export interface PasswordResetRequestResponse {
   message: string;
+  callbackUrl: string; // NEW: Returned for reference
 }
 
 export interface ResetPasswordResponse {

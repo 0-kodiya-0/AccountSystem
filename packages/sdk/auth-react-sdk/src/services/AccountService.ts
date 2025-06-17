@@ -1,4 +1,4 @@
-import { Account, SecuritySettings } from '../types';
+import { Account, AccountUpdateRequest } from '../types';
 import { HttpClient } from '../client/HttpClient';
 
 // Validation utility functions
@@ -25,6 +25,62 @@ const validateRequired = (value: any, fieldName: string, context: string): void 
   }
 };
 
+const validateUrl = (url: string | null | undefined, context: string): void => {
+  if (!url || typeof url !== 'string' || url.trim() === '') {
+    throw new Error(`Valid URL is required for ${context}`);
+  }
+
+  try {
+    new URL(url);
+  } catch {
+    throw new Error(`Invalid URL format for ${context}`);
+  }
+};
+
+const validateStringLength = (
+  value: string | null | undefined,
+  fieldName: string,
+  context: string,
+  minLength: number = 1,
+  maxLength: number = 255,
+): void => {
+  if (!value || typeof value !== 'string') {
+    throw new Error(`${fieldName} must be a string for ${context}`);
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length < minLength) {
+    throw new Error(`${fieldName} must be at least ${minLength} characters for ${context}`);
+  }
+
+  if (trimmed.length > maxLength) {
+    throw new Error(`${fieldName} cannot exceed ${maxLength} characters for ${context}`);
+  }
+};
+
+const validateBirthdate = (birthdate: string | null | undefined, context: string): void => {
+  if (!birthdate || typeof birthdate !== 'string') {
+    throw new Error(`Birthdate must be a string for ${context}`);
+  }
+
+  // Validate YYYY-MM-DD format
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(birthdate)) {
+    throw new Error(`Invalid birthdate format for ${context}. Use YYYY-MM-DD format`);
+  }
+
+  // Additional date validation
+  const date = new Date(birthdate);
+  if (isNaN(date.getTime())) {
+    throw new Error(`Invalid birthdate for ${context}`);
+  }
+
+  // Check if date is not in the future
+  if (date > new Date()) {
+    throw new Error(`Birthdate cannot be in the future for ${context}`);
+  }
+};
+
 export class AccountService {
   constructor(private httpClient: HttpClient) {
     if (!httpClient) {
@@ -38,21 +94,62 @@ export class AccountService {
     return this.httpClient.get(`/${accountId}/account`);
   }
 
-  async updateAccount(accountId: string, updates: Partial<Account>): Promise<Account> {
+  /**
+   * Update account with direct field access (no nested userDetails)
+   * Only allows specific fields: firstName, lastName, name, imageUrl, birthdate, username
+   */
+  async updateAccount(accountId: string, updates: AccountUpdateRequest): Promise<Account> {
     validateAccountId(accountId, 'account update');
     validateRequired(updates, 'account updates', 'account update');
 
-    // Validate specific fields if they exist in updates
-    if (updates.userDetails?.email) {
-      validateEmail(updates.userDetails.email, 'account update');
+    // Validate that at least one allowed field is present
+    const allowedFields = ['firstName', 'lastName', 'name', 'imageUrl', 'birthdate', 'username'];
+    const providedFields = Object.keys(updates);
+    const validFields = providedFields.filter((field) => allowedFields.includes(field));
+
+    if (validFields.length === 0) {
+      throw new Error(
+        `At least one valid field must be provided for account update. Allowed fields: ${allowedFields.join(', ')}`,
+      );
     }
 
-    if (updates.userDetails?.firstName) {
-      validateRequired(updates.userDetails.firstName, 'firstName', 'account update');
+    // Validate each field if provided
+    if (updates.firstName !== undefined) {
+      validateStringLength(updates.firstName, 'firstName', 'account update', 1, 50);
     }
 
-    if (updates.userDetails?.lastName) {
-      validateRequired(updates.userDetails.lastName, 'lastName', 'account update');
+    if (updates.lastName !== undefined) {
+      validateStringLength(updates.lastName, 'lastName', 'account update', 1, 50);
+    }
+
+    if (updates.name !== undefined) {
+      validateStringLength(updates.name, 'name', 'account update', 1, 100);
+    }
+
+    if (updates.imageUrl !== undefined) {
+      if (updates.imageUrl !== '' && updates.imageUrl !== null) {
+        validateUrl(updates.imageUrl, 'account update');
+      }
+    }
+
+    if (updates.birthdate !== undefined) {
+      if (updates.birthdate !== '' && updates.birthdate !== null) {
+        validateBirthdate(updates.birthdate, 'account update');
+      }
+    }
+
+    if (updates.username !== undefined) {
+      if (updates.username !== '' && updates.username !== null) {
+        validateStringLength(updates.username, 'username', 'account update', 3, 30);
+      }
+    }
+
+    // Check for invalid fields
+    const invalidFields = providedFields.filter((field) => !allowedFields.includes(field));
+    if (invalidFields.length > 0) {
+      throw new Error(
+        `Invalid fields provided: ${invalidFields.join(', ')}. Only these fields can be updated: ${allowedFields.join(', ')}`,
+      );
     }
 
     return this.httpClient.patch(`/${accountId}/account`, updates);
@@ -62,32 +159,6 @@ export class AccountService {
     validateAccountId(accountId, 'get account email');
 
     return this.httpClient.get(`/${accountId}/account/email`);
-  }
-
-  async updateAccountSecurity(accountId: string, security: Partial<SecuritySettings>): Promise<Account> {
-    validateAccountId(accountId, 'security settings update');
-    validateRequired(security, 'security settings', 'security settings update');
-
-    // Validate security settings if they exist
-    if (security.sessionTimeout !== undefined) {
-      if (typeof security.sessionTimeout !== 'number' || security.sessionTimeout < 300) {
-        throw new Error('Session timeout must be a number greater than 300 seconds for security settings update');
-      }
-    }
-
-    if (security.twoFactorEnabled !== undefined) {
-      if (typeof security.twoFactorEnabled !== 'boolean') {
-        throw new Error('twoFactorEnabled must be a boolean for security settings update');
-      }
-    }
-
-    if (security.autoLock !== undefined) {
-      if (typeof security.autoLock !== 'boolean') {
-        throw new Error('autoLock must be a boolean for security settings update');
-      }
-    }
-
-    return this.httpClient.patch(`/${accountId}/account/security`, security);
   }
 
   async searchAccount(email: string): Promise<{ accountId?: string }> {
