@@ -18,10 +18,9 @@ import {
   verifyGoogleTokenOwnership,
 } from '../google/services/tokenInfo/tokenInfo.services';
 import { setupCompleteAccountSession } from '../session/session.utils';
-import { getCallbackUrl } from '../../utils/redirect';
 import { ValidationUtils } from '../../utils/validation';
 import { buildGoogleScopeUrls, validateScopeNames } from '../google/config';
-import { asyncHandler, oauthCallbackHandler } from '../../utils/response';
+import { asyncHandler } from '../../utils/response';
 import { logger } from '../../utils/logger';
 import { createOAuthAccessToken, createOAuthRefreshToken } from '../tokens';
 import { getBaseUrl, getProxyUrl } from '../../config/env.config';
@@ -37,14 +36,22 @@ import {
  */
 export const generateSignupUrl = asyncHandler(async (req, res, next) => {
   const provider = ValidationUtils.validateEnum(req.params.provider, OAuthProviders, 'OAuth provider');
+  const { callbackUrl } = req.query;
+
+  // Validate callback URL is provided
+  if (!callbackUrl) {
+    throw new BadRequestError('callbackUrl query parameter is required', 400, ApiErrorCode.MISSING_DATA);
+  }
+
+  ValidationUtils.validateUrl(callbackUrl as string, 'Callback URL');
 
   // Check if provider is implemented (only Google currently)
   if (provider !== OAuthProviders.Google) {
     throw new BadRequestError(`Provider ${provider} is not implemented yet`, 400, ApiErrorCode.INVALID_PROVIDER);
   }
 
-  // Generate state for signup
-  const state = await generateOAuthState(provider, AuthType.SIGN_UP);
+  // Generate state for signup with callback URL
+  const state = await generateOAuthState(provider, AuthType.SIGN_UP, callbackUrl as string);
 
   let authorizationUrl: string;
 
@@ -66,6 +73,7 @@ export const generateSignupUrl = asyncHandler(async (req, res, next) => {
       state,
       provider,
       authType: 'signup',
+      callbackUrl,
     }),
   );
 });
@@ -75,14 +83,22 @@ export const generateSignupUrl = asyncHandler(async (req, res, next) => {
  */
 export const generateSigninUrl = asyncHandler(async (req, res, next) => {
   const provider = ValidationUtils.validateEnum(req.params.provider, OAuthProviders, 'OAuth provider');
+  const { callbackUrl } = req.query;
+
+  // Validate callback URL is provided
+  if (!callbackUrl) {
+    throw new BadRequestError('callbackUrl query parameter is required', 400, ApiErrorCode.MISSING_DATA);
+  }
+
+  ValidationUtils.validateUrl(callbackUrl as string, 'Callback URL');
 
   // Check if provider is implemented (only Google currently)
   if (provider !== OAuthProviders.Google) {
     throw new BadRequestError(`Provider ${provider} is not implemented yet`, 400, ApiErrorCode.INVALID_PROVIDER);
   }
 
-  // Generate state for signin
-  const state = await generateOAuthState(provider, AuthType.SIGN_IN);
+  // Generate state for signin with callback URL
+  const state = await generateOAuthState(provider, AuthType.SIGN_IN, callbackUrl as string);
 
   let authorizationUrl: string;
 
@@ -104,36 +120,39 @@ export const generateSigninUrl = asyncHandler(async (req, res, next) => {
       state,
       provider,
       authType: 'signin',
+      callbackUrl,
     }),
   );
 });
 
 /**
  * Handle OAuth callback from provider
- * Updated to use unified 2FA service
+ * Updated to use callback URL from state
  */
-export const handleOAuthCallback = oauthCallbackHandler(
-  getCallbackUrl(),
-  CallbackCode.OAUTH_ERROR,
-  async (req, res, next) => {
-    const provider = ValidationUtils.validateEnum(req.params.provider, OAuthProviders, 'OAuth provider');
+export const handleOAuthCallback = asyncHandler(async (req, res, next) => {
+  const provider = ValidationUtils.validateEnum(req.params.provider, OAuthProviders, 'OAuth provider');
 
-    // Check if provider is implemented (only Google currently)
-    if (provider !== OAuthProviders.Google) {
-      throw new BadRequestError(`Provider ${provider} is not implemented yet`, 400, ApiErrorCode.INVALID_PROVIDER);
-    }
+  // Check if provider is implemented (only Google currently)
+  if (provider !== OAuthProviders.Google) {
+    throw new BadRequestError(`Provider ${provider} is not implemented yet`, 400, ApiErrorCode.INVALID_PROVIDER);
+  }
 
-    const { code, state } = req.query;
+  const { code, state } = req.query;
 
-    ValidationUtils.validateRequiredFields({ code, state }, ['code', 'state']);
+  ValidationUtils.validateRequiredFields({ code, state }, ['code', 'state']);
 
-    // Validate the state parameter and get OAuth state details
-    const stateDetails = (await validateState(
-      state as string,
-      (state) => validateOAuthState(state, provider),
-      res,
-    )) as OAuthState;
+  // Validate the state parameter and get OAuth state details
+  const stateDetails = (await validateState(
+    state as string,
+    (state) => validateOAuthState(state, provider),
+    res,
+  )) as OAuthState;
 
+  // Get the callback URL from the state
+  const callbackUrl = stateDetails.callbackUrl;
+
+  // Wrap the main logic with error handling that redirects to the correct callback URL
+  try {
     // Exchange authorization code for tokens based on provider
     let tokens;
     let userInfo;
@@ -199,7 +218,7 @@ export const handleOAuthCallback = oauthCallbackHandler(
         provider: stateDetails.provider,
       };
 
-      next(new Redirect(callbackData, getCallbackUrl()));
+      next(new Redirect(callbackData, callbackUrl));
     } else {
       // Process signin
       const signinResult = await AuthService.processSignIn({
@@ -218,7 +237,7 @@ export const handleOAuthCallback = oauthCallbackHandler(
           message: 'Please complete two-factor authentication to continue.',
         };
 
-        next(new Redirect(callbackData, getCallbackUrl()));
+        next(new Redirect(callbackData, callbackUrl));
         return;
       }
 
@@ -246,34 +265,47 @@ export const handleOAuthCallback = oauthCallbackHandler(
         missingScopes: signinResult.missingScopes,
       };
 
-      next(new Redirect(callbackData, getCallbackUrl()));
+      next(new Redirect(callbackData, callbackUrl));
     }
-  },
-);
+  } catch (error) {
+    logger.error('OAuth callback error:', error);
+
+    // Create error callback data
+    const callbackData: CallbackData = {
+      code: CallbackCode.OAUTH_ERROR,
+      error: error instanceof Error ? error.message : 'OAuth authentication failed',
+      provider: stateDetails.provider,
+    };
+
+    next(new Redirect(callbackData, callbackUrl));
+  }
+});
 
 /**
  * Handle permission code exchange
  */
-export const handlePermissionCallback = oauthCallbackHandler(
-  getCallbackUrl(),
-  CallbackCode.PERMISSION_ERROR,
-  async (req, res, next) => {
-    const { code, state } = req.query;
+export const handlePermissionCallback = asyncHandler(async (req, res, next) => {
+  const { code, state } = req.query;
 
-    ValidationUtils.validateRequiredFields({ code, state }, ['code', 'state']);
+  ValidationUtils.validateRequiredFields({ code, state }, ['code', 'state']);
 
-    // Validate the state parameter
-    const permissionDetails = (await validateState(
-      state as string,
-      (state) => validatePermissionState(state, OAuthProviders.Google),
-      res,
-    )) as PermissionState;
+  // Validate the state parameter
+  const permissionDetails = (await validateState(
+    state as string,
+    (state) => validatePermissionState(state, OAuthProviders.Google),
+    res,
+  )) as PermissionState;
 
+  // Get the callback URL from the permission state
+  const callbackUrl = permissionDetails.callbackUrl || `${getProxyUrl()}/auth/callback`;
+
+  // Wrap the main logic with error handling that redirects to the correct callback URL
+  try {
     const { accountId, service, scopeLevel } = permissionDetails;
 
     // Use existing Google code exchange function
     const redirectUri = `${getProxyUrl()}${getBaseUrl()}/oauth/permission/callback/google`;
-    const { tokens } = await exchangeGoogleCode(code as string, redirectUri); // Fix: Remove unused userInfo
+    const { tokens } = await exchangeGoogleCode(code as string, redirectUri);
 
     // Verify user account exists
     const exists = await AuthService.checkUserExists(accountId);
@@ -281,7 +313,7 @@ export const handlePermissionCallback = oauthCallbackHandler(
       throw new NotFoundError('User record not found in database', 404, ApiErrorCode.USER_NOT_FOUND);
     }
 
-    // Fix: Ensure accessToken is not null/undefined
+    // Ensure accessToken is not null/undefined
     if (!tokens.accessToken) {
       throw new BadRequestError('Missing access token from OAuth response', 400, ApiErrorCode.TOKEN_INVALID);
     }
@@ -308,7 +340,7 @@ export const handlePermissionCallback = oauthCallbackHandler(
     // Create JWT tokens for our system
     const jwtAccessToken = createOAuthAccessToken(accountId, tokens.accessToken, accessTokenInfo.expires_in);
 
-    // Fix: Ensure refreshToken is not null/undefined
+    // Ensure refreshToken is not null/undefined
     if (!tokens.refreshToken) {
       throw new BadRequestError('Missing refresh token from OAuth response', 400, ApiErrorCode.TOKEN_INVALID);
     }
@@ -337,16 +369,27 @@ export const handlePermissionCallback = oauthCallbackHandler(
       message: `Successfully granted ${service} ${scopeLevel} permissions`,
     };
 
-    next(new Redirect(callbackData, getCallbackUrl()));
-  },
-);
+    next(new Redirect(callbackData, callbackUrl));
+  } catch (error) {
+    logger.error('Permission callback error:', error);
+
+    // Create error callback data
+    const callbackData: CallbackData = {
+      code: CallbackCode.PERMISSION_ERROR,
+      error: error instanceof Error ? error.message : 'Permission grant failed',
+      provider: OAuthProviders.Google,
+    };
+
+    next(new Redirect(callbackData, callbackUrl));
+  }
+});
 
 /**
  * Generate permission request URL
  */
 export const generatePermissionUrl = asyncHandler(async (req, res, next) => {
   const requestedScopeNames = req.query.scopeNames as string;
-  const { accountId } = req.query;
+  const { accountId, callbackUrl } = req.query;
 
   const provider = ValidationUtils.validateEnum(req.params.provider, OAuthProviders, 'OAuth provider');
 
@@ -355,8 +398,9 @@ export const generatePermissionUrl = asyncHandler(async (req, res, next) => {
     throw new BadRequestError(`Provider ${provider} is not implemented yet`, 400, ApiErrorCode.INVALID_PROVIDER);
   }
 
-  ValidationUtils.validateRequiredFields(req.query, ['accountId']);
+  ValidationUtils.validateRequiredFields(req.query, ['accountId', 'callbackUrl']);
   ValidationUtils.validateObjectId(accountId as string, 'Account ID');
+  ValidationUtils.validateUrl(callbackUrl as string, 'Callback URL');
 
   // Get user account information
   const account = await AuthService.getUserAccount(accountId as string);
@@ -393,8 +437,14 @@ export const generatePermissionUrl = asyncHandler(async (req, res, next) => {
 
   const scopes = buildGoogleScopeUrls(scopeNames);
 
-  // Generate state and save permission state
-  const state = await generatePermissionState(provider, accountId as string, 'custom', requestedScopeNames);
+  // Generate state and save permission state with callback URL
+  const state = await generatePermissionState(
+    provider,
+    accountId as string,
+    'custom',
+    requestedScopeNames,
+    callbackUrl as string,
+  );
 
   // Use utility to build authorization URL
   const authorizationUrl = buildGooglePermissionUrl(state, scopes, userEmail);
@@ -410,6 +460,7 @@ export const generatePermissionUrl = asyncHandler(async (req, res, next) => {
       scopes: scopeNames,
       accountId,
       userEmail,
+      callbackUrl,
     }),
   );
 });
@@ -418,7 +469,7 @@ export const generatePermissionUrl = asyncHandler(async (req, res, next) => {
  * Generate reauthorization URL
  */
 export const generateReauthorizeUrl = asyncHandler(async (req, res, next) => {
-  const { accountId } = req.query;
+  const { accountId, callbackUrl } = req.query;
 
   const provider = ValidationUtils.validateEnum(req.params.provider, OAuthProviders, 'OAuth provider');
 
@@ -427,11 +478,12 @@ export const generateReauthorizeUrl = asyncHandler(async (req, res, next) => {
     throw new BadRequestError(`Provider ${provider} is not implemented yet`, 400, ApiErrorCode.INVALID_PROVIDER);
   }
 
-  if (!accountId) {
-    throw new BadRequestError('Missing required parameters');
+  if (!accountId || !callbackUrl) {
+    throw new BadRequestError('Missing required parameters: accountId and callbackUrl');
   }
 
   ValidationUtils.validateObjectId(accountId as string, 'Account ID');
+  ValidationUtils.validateUrl(callbackUrl as string, 'Callback URL');
 
   // Get the user's account details
   const account = await AuthService.getUserAccount(accountId as string);
@@ -449,13 +501,20 @@ export const generateReauthorizeUrl = asyncHandler(async (req, res, next) => {
         message: 'No additional scopes needed',
         authorizationUrl: null,
         accountId,
+        callbackUrl,
       }),
     );
     return;
   }
 
-  // Generate a unique state for this re-authorization
-  const state = await generatePermissionState(provider, accountId as string, 'reauthorize', 'all');
+  // Generate a unique state for this re-authorization with callback URL
+  const state = await generatePermissionState(
+    provider,
+    accountId as string,
+    'reauthorize',
+    'all',
+    callbackUrl as string,
+  );
 
   // Use utility to build authorization URL
   const authorizationUrl = buildGoogleReauthorizeUrl(state, storedScopes, account.userDetails.email);
@@ -470,6 +529,7 @@ export const generateReauthorizeUrl = asyncHandler(async (req, res, next) => {
       scopes: storedScopes,
       accountId,
       userEmail: account.userDetails.email,
+      callbackUrl,
     }),
   );
 });

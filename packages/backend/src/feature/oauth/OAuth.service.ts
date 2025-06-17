@@ -2,7 +2,6 @@ import db from '../../config/db';
 import { Account, AccountType, AccountStatus, OAuthProviders } from '../account/Account.types';
 import { ApiErrorCode, BadRequestError } from '../../types/response.types';
 import { AuthType, OAuthState, ProviderResponse, SignInState } from './OAuth.types';
-import { generateSignInState, generateSignupState } from './OAuth.utils';
 import { validateAccount } from '../account/Account.validation';
 import { findUserByEmail, findUserById } from '../account';
 import { createOAuthAccessToken, createOAuthRefreshToken } from '../tokens';
@@ -168,22 +167,18 @@ export async function processSignInSignupCallback(userData: ProviderResponse, st
   }
 
   const user = await findUserByEmail(userEmail);
-  let state: string;
 
   if (stateDetails.authType === AuthType.SIGN_UP) {
     if (user) {
       throw new BadRequestError('User already exists', 409, ApiErrorCode.USER_EXISTS);
     }
-    state = await generateSignupState(userData);
   } else {
     if (!user) {
       throw new BadRequestError('User not found', 404, ApiErrorCode.USER_NOT_FOUND);
     }
-    state = await generateSignInState(userData);
   }
 
   return {
-    state,
     authType: stateDetails.authType,
   };
 }

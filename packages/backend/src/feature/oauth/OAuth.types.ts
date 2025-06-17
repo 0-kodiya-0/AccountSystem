@@ -16,6 +16,7 @@ export interface OAuthState {
   provider: OAuthProviders;
   authType: AuthType;
   expiresAt: string;
+  callbackUrl: string; // NEW: Store callback URL in state
 }
 
 // Add a new type for permission requests
@@ -29,6 +30,7 @@ export interface SignUpState {
   state: string;
   oAuthResponse: ProviderResponse;
   expiresAt: string;
+  callbackUrl?: string; // NEW: Optional callback URL for signup states
 }
 
 export type SignUpDetails = 'device' | undefined | null;
@@ -37,6 +39,7 @@ export interface SignInState {
   state: string;
   oAuthResponse: ProviderResponse;
   expiresAt: string;
+  callbackUrl?: string; // NEW: Optional callback URL for signin states
 }
 
 export interface AuthUrls {
@@ -53,3 +56,5 @@ export interface ProviderResponse {
   tokenDetails: TokenDetails;
   permissionState?: PermissionState | null;
 }
+
+export type StateDetails = OAuthState | SignInState | SignUpState | null;
