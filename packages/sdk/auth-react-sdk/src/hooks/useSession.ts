@@ -8,6 +8,7 @@ import {
   UnifiedTwoFactorSetupRequest,
   BackupCodesRequest,
   AccountSessionInfo,
+  AccountUpdateRequest as AccountUpdate,
 } from '../types';
 import { parseApiError } from '../utils';
 
@@ -18,14 +19,13 @@ interface AccountOperations {
   verify2FA: (token: string) => Promise<any>;
   changePassword: (data: PasswordChangeRequest) => Promise<any>;
   generateBackupCodes: (data: BackupCodesRequest) => Promise<any>;
-  requestPermission: (provider: OAuthProviders, scopeNames: string[], callbackUrl?: string) => void;
-  getPermissionUrl: (provider: OAuthProviders, scopeNames: string[]) => Promise<string>;
-  reauthorizePermissions: (provider: OAuthProviders, callbackUrl?: string) => void;
-  getReauthorizeUrl: (provider: OAuthProviders) => Promise<string>;
+  requestPermission: (provider: OAuthProviders, scopeNames: string[], callbackUrl: string) => Promise<void>;
+  getPermissionUrl: (provider: OAuthProviders, scopeNames: string[], callbackUrl: string) => Promise<string>;
+  reauthorizePermissions: (provider: OAuthProviders, callbackUrl: string) => Promise<void>;
+  getReauthorizeUrl: (provider: OAuthProviders, callbackUrl: string) => Promise<string>;
   revokeTokens: () => Promise<any>;
   getTokenInformation: () => Promise<any>;
-  updateSecurity: (updates: any) => Promise<Account>;
-  updateAccount: (updates: Partial<Account>) => Promise<Account>;
+  updateAccount: (updates: AccountUpdate) => Promise<Account | null>;
   switchToThisAccount: () => Promise<void>;
 }
 
@@ -93,8 +93,8 @@ export function useSession(accountId?: string) {
         setAccountData(targetAccountId, account);
         return account;
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Failed to load account';
-        setAccountError(targetAccountId, errorMessage);
+        const apiError = parseApiError(error, 'Failed to load account');
+        setAccountError(targetAccountId, apiError.message);
         return null;
       }
     },
@@ -114,8 +114,8 @@ export function useSession(accountId?: string) {
           setAccountsData(accountsData as Account[]);
         }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Failed to logout';
-        setAccountError(targetAccountId, errorMessage);
+        const apiError = parseApiError(error, 'Failed to logout');
+        setAccountError(targetAccountId, apiError.message);
       }
     },
 
@@ -177,50 +177,86 @@ export function useSession(accountId?: string) {
       }
     },
 
-    requestPermission: (provider: OAuthProviders, scopeNames: string[], callbackUrl?: string) => {
-      if (callbackUrl) {
-        authService
-          .generatePermissionUrl(provider, targetAccountId, scopeNames)
-          .then((response) => {
-            const url = new URL(response.authorizationUrl);
-            url.searchParams.set('redirect_uri', callbackUrl);
-            window.location.href = url.toString();
-          })
-          .catch((error) => {
-            console.error('Failed to generate permission URL with callback:', error);
-          });
-      } else {
-        authService.requestPermission(provider, targetAccountId, scopeNames);
+    requestPermission: async (provider: OAuthProviders, scopeNames: string[], callbackUrl: string) => {
+      try {
+        if (!callbackUrl) {
+          throw new Error('Callback URL is required for permission request');
+        }
+
+        setAccountLoading(targetAccountId, true, 'requestPermission');
+
+        const response = await authService.generatePermissionUrl(provider, {
+          accountId: targetAccountId,
+          scopeNames,
+          callbackUrl,
+        });
+
+        window.location.href = response.authorizationUrl;
+        setAccountLoading(targetAccountId, false);
+      } catch (error) {
+        const apiError = parseApiError(error, 'Failed to request permission');
+        setAccountError(targetAccountId, apiError.message);
       }
     },
 
-    getPermissionUrl: async (provider: OAuthProviders, scopeNames: string[]) => {
-      const response = await authService.generatePermissionUrl(provider, targetAccountId, scopeNames);
-      return response.authorizationUrl;
-    },
+    getPermissionUrl: async (provider: OAuthProviders, scopeNames: string[], callbackUrl: string) => {
+      try {
+        if (!callbackUrl) {
+          throw new Error('Callback URL is required for permission URL generation');
+        }
 
-    reauthorizePermissions: (provider: OAuthProviders, callbackUrl?: string) => {
-      if (callbackUrl) {
-        authService
-          .generateReauthorizeUrl(provider, targetAccountId)
-          .then((response) => {
-            if (response.authorizationUrl) {
-              const url = new URL(response.authorizationUrl);
-              url.searchParams.set('redirect_uri', callbackUrl);
-              window.location.href = url.toString();
-            }
-          })
-          .catch((error) => {
-            console.error('Failed to generate reauthorize URL with callback:', error);
-          });
-      } else {
-        authService.reauthorizePermissions(provider, targetAccountId);
+        const response = await authService.generatePermissionUrl(provider, {
+          accountId: targetAccountId,
+          scopeNames,
+          callbackUrl,
+        });
+        return response.authorizationUrl;
+      } catch (error) {
+        const apiError = parseApiError(error, 'Failed to get permission URL');
+        setAccountError(targetAccountId, apiError.message);
+        return '';
       }
     },
 
-    getReauthorizeUrl: async (provider: OAuthProviders) => {
-      const response = await authService.generateReauthorizeUrl(provider, targetAccountId);
-      return response.authorizationUrl || '';
+    reauthorizePermissions: async (provider: OAuthProviders, callbackUrl: string) => {
+      try {
+        if (!callbackUrl) {
+          throw new Error('Callback URL is required for reauthorization');
+        }
+
+        setAccountLoading(targetAccountId, true, 'reauthorizePermissions');
+
+        const response = await authService.generateReauthorizeUrl(provider, {
+          accountId: targetAccountId,
+          callbackUrl,
+        });
+
+        if (response.authorizationUrl) {
+          window.location.href = response.authorizationUrl;
+        }
+        setAccountLoading(targetAccountId, false);
+      } catch (error) {
+        const apiError = parseApiError(error, 'Failed to reauthorize permissions');
+        setAccountError(targetAccountId, apiError.message);
+      }
+    },
+
+    getReauthorizeUrl: async (provider: OAuthProviders, callbackUrl: string) => {
+      try {
+        if (!callbackUrl) {
+          throw new Error('Callback URL is required for reauthorization URL generation');
+        }
+
+        const response = await authService.generateReauthorizeUrl(provider, {
+          accountId: targetAccountId,
+          callbackUrl,
+        });
+        return response.authorizationUrl || '';
+      } catch (error) {
+        const apiError = parseApiError(error, 'Failed to get reauthorize URL');
+        setAccountError(targetAccountId, apiError.message);
+        return '';
+      }
     },
 
     revokeTokens: async () => {
@@ -249,20 +285,7 @@ export function useSession(accountId?: string) {
       }
     },
 
-    updateSecurity: async (updates: any) => {
-      try {
-        setAccountLoading(targetAccountId, true, 'updateSecurity');
-        const result = await accountService.updateAccountSecurity(targetAccountId, updates);
-        setAccountData(targetAccountId, result);
-        return result;
-      } catch (error) {
-        const apiError = parseApiError(error, 'Failed to update security');
-        setAccountError(targetAccountId, apiError.message);
-        throw error;
-      }
-    },
-
-    updateAccount: async (updates: Partial<Account>) => {
+    updateAccount: async (updates: AccountUpdate) => {
       try {
         setAccountLoading(targetAccountId, true, 'updateAccount');
         const result = await accountService.updateAccount(targetAccountId, updates);
@@ -271,7 +294,7 @@ export function useSession(accountId?: string) {
       } catch (error) {
         const apiError = parseApiError(error, 'Failed to update account');
         setAccountError(targetAccountId, apiError.message);
-        throw error;
+        return null;
       }
     },
 
@@ -287,8 +310,8 @@ export function useSession(accountId?: string) {
 
         setSessionLoading(false);
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Failed to switch to this account';
-        setSessionError(errorMessage);
+        const apiError = parseApiError(error, 'Failed to switch to this account');
+        setSessionError(apiError.message);
       }
     },
   });
@@ -307,8 +330,8 @@ export function useSession(accountId?: string) {
           setAccountsData(accountsData as Account[]);
         }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Failed to load session';
-        setSessionError(errorMessage);
+        const apiError = parseApiError(error, 'Failed to load session');
+        setSessionError(apiError.message);
       }
     },
 
@@ -322,8 +345,8 @@ export function useSession(accountId?: string) {
 
         clearSession();
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Failed to logout all';
-        setSessionError(errorMessage);
+        const apiError = parseApiError(error, 'Failed to logout all');
+        setSessionError(apiError.message);
       }
     },
 
@@ -339,8 +362,8 @@ export function useSession(accountId?: string) {
 
         setSessionLoading(false);
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Failed to set current account';
-        setSessionError(errorMessage);
+        const apiError = parseApiError(error, 'Failed to set current account');
+        setSessionError(apiError.message);
       }
     },
   };

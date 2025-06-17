@@ -13,11 +13,10 @@ export { AuthGuard } from './components/AuthGuard';
 
 // NEW HOOKS - Main authentication hooks
 export { useSession } from './hooks/useSession';
-export { useSignin } from './hooks/useSignin';
-export { useSignup } from './hooks/useSignup';
-export { useEmailVerification } from './hooks/useEmailVerification';
-export { useTwoFactorVerification } from './hooks/useTwoFactorVerification';
-export { useAuthCallback } from './hooks/useAuthCallback';
+export { useLocalSignin } from './hooks/useLocalSignin';
+export { useOAuthSignin } from './hooks/useOAuthSignin';
+export { useLocalSignup } from './hooks/useLocalSignup';
+export { useOAuthSignup } from './hooks/useOAuthSignup';
 
 // Store exports
 export { useAppStore } from './store/useAppStore';
