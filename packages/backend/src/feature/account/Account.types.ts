@@ -69,3 +69,12 @@ export interface Account {
   // OAuth specific fields
   provider?: OAuthProviders; // Required when accountType === 'oauth'
 }
+
+export interface AllowedAccountUpdates {
+  firstName?: string;
+  lastName?: string;
+  name?: string;
+  imageUrl?: string;
+  birthdate?: string;
+  username?: string;
+}

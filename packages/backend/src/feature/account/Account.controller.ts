@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
-import { JsonSuccess } from '../../types/response.types';
+import { JsonSuccess, BadRequestError, ApiErrorCode } from '../../types/response.types';
 import { AccountDocument } from './Account.model';
 import { asyncHandler } from '../../utils/response';
 import * as AccountService from './Account.service';
@@ -67,11 +67,36 @@ export const getAccount = asyncHandler(async (req, res, next) => {
 });
 
 /**
- * Update account
+ * Update account (only specific fields allowed)
  */
 export const updateAccount = asyncHandler(async (req, res, next) => {
   const account = req.account as AccountDocument;
   const updates = req.body;
+
+  // Validate that request body exists and is an object
+  if (!updates || typeof updates !== 'object') {
+    throw new BadRequestError('Request body must be a valid JSON object', 400, ApiErrorCode.INVALID_REQUEST);
+  }
+
+  // Define allowed fields
+  const allowedFields = ['firstName', 'lastName', 'name', 'imageUrl', 'birthdate', 'username'];
+  const providedFields = Object.keys(updates);
+
+  // Check for invalid fields
+  const invalidFields = providedFields.filter((field) => !allowedFields.includes(field));
+
+  if (invalidFields.length > 0) {
+    throw new BadRequestError(
+      `Invalid fields provided: ${invalidFields.join(', ')}. Allowed fields: ${allowedFields.join(', ')}`,
+      400,
+      ApiErrorCode.INVALID_REQUEST,
+    );
+  }
+
+  // Ensure at least one field is being updated
+  if (providedFields.length === 0) {
+    throw new BadRequestError('At least one field must be provided for update', 400, ApiErrorCode.INVALID_REQUEST);
+  }
 
   const updatedAccount = await AccountService.updateAccount(account, updates);
 
@@ -87,15 +112,3 @@ export const getAccountEmail = (req: Request, res: Response, next: NextFunction)
 
   next(new JsonSuccess({ email }, 200));
 };
-
-/**
- * Update account security settings
- */
-export const updateAccountSecurity = asyncHandler(async (req, res, next) => {
-  const securityUpdates = req.body;
-  const account = req.account as AccountDocument;
-
-  const updatedAccount = await AccountService.updateAccountSecurity(account, securityUpdates);
-
-  next(new JsonSuccess(updatedAccount, 200));
-});

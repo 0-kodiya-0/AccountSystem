@@ -23,6 +23,3 @@ authRequiredRouter.patch('/', AccountController.updateAccount);
 
 // Get account email
 authRequiredRouter.get('/email', AccountController.getAccountEmail);
-
-// Update OAuth account security settings
-authRequiredRouter.patch('/security', AccountController.updateAccountSecurity);
