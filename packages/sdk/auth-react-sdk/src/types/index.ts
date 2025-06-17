@@ -20,13 +20,6 @@ export enum OAuthProviders {
   Facebook = 'facebook',
 }
 
-export enum LoadingState {
-  IDLE = 'idle',
-  LOADING = 'loading',
-  READY = 'ready',
-  ERROR = 'error',
-}
-
 // ============================================================================
 // Core Data Models
 // ============================================================================
@@ -714,3 +707,5 @@ export interface CallbackData {
   // Additional context data
   [key: string]: any;
 }
+
+export type LoadingState = 'idle' | 'loading' | 'updating' | 'saving' | 'deleting' | 'error' | 'success';

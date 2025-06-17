@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
-import { Account, AccountSessionInfo } from '../types';
+import { Account, AccountSessionInfo, LoadingState } from '../types';
 import { enableMapSet } from 'immer';
 
 enableMapSet();
@@ -9,7 +9,8 @@ enableMapSet();
 // Session state structure
 interface SessionState {
   data: AccountSessionInfo | null;
-  loading: boolean;
+  status: LoadingState;
+  currentOperation: string | null;
   error: string | null;
   lastLoaded: number | null;
 }
@@ -17,10 +18,10 @@ interface SessionState {
 // Account state structure
 interface AccountState {
   data: Account | null;
-  loading: boolean;
+  status: LoadingState;
+  currentOperation: string | null;
   error: string | null;
   lastLoaded: number | null;
-  currentOperation: string | null; // Track which operation is running
 }
 
 // Main store state
@@ -33,15 +34,17 @@ interface AppState {
 // Store actions
 interface AppActions {
   // Session actions
-  setSessionLoading: (loading: boolean) => void;
+  setSessionStatus: (status: LoadingState, operation?: string) => void;
   setSessionData: (data: AccountSessionInfo) => void;
   setSessionError: (error: string | null) => void;
+  setSessionOperation: (operation: string | null) => void;
   clearSession: () => void;
 
   // Account actions
-  setAccountLoading: (accountId: string, loading: boolean, operation?: string) => void;
+  setAccountStatus: (accountId: string, status: LoadingState, operation?: string) => void;
   setAccountData: (accountId: string, data: Account) => void;
   setAccountError: (accountId: string, error: string | null) => void;
+  setAccountOperation: (accountId: string, operation: string | null) => void;
   setAccountsData: (accounts: Account[]) => void;
   updateAccountData: (accountId: string, updates: Partial<Account>) => void;
   removeAccount: (accountId: string) => void;
@@ -61,17 +64,18 @@ interface AppActions {
 // Helper functions
 const createSessionState = (): SessionState => ({
   data: null,
-  loading: false,
+  status: 'idle',
+  currentOperation: null,
   error: null,
   lastLoaded: null,
 });
 
 const createAccountState = (): AccountState => ({
   data: null,
-  loading: false,
+  status: 'idle',
+  currentOperation: null,
   error: null,
   lastLoaded: null,
-  currentOperation: null,
 });
 
 export const useAppStore = create<AppState & AppActions>()(
@@ -83,10 +87,11 @@ export const useAppStore = create<AppState & AppActions>()(
       tempToken: null,
 
       // Session actions
-      setSessionLoading: (loading: boolean) => {
+      setSessionStatus: (status: LoadingState, operation?: string) => {
         set((state) => {
-          state.session.loading = loading;
-          if (loading) {
+          state.session.status = status;
+          state.session.currentOperation = operation || null;
+          if (status !== 'error') {
             state.session.error = null;
           }
         });
@@ -95,7 +100,8 @@ export const useAppStore = create<AppState & AppActions>()(
       setSessionData: (data: AccountSessionInfo) => {
         set((state) => {
           state.session.data = data;
-          state.session.loading = false;
+          state.session.status = 'success';
+          state.session.currentOperation = null;
           state.session.error = null;
           state.session.lastLoaded = Date.now();
         });
@@ -104,7 +110,14 @@ export const useAppStore = create<AppState & AppActions>()(
       setSessionError: (error: string | null) => {
         set((state) => {
           state.session.error = error;
-          state.session.loading = false;
+          state.session.status = error ? 'error' : 'idle';
+          state.session.currentOperation = null;
+        });
+      },
+
+      setSessionOperation: (operation: string | null) => {
+        set((state) => {
+          state.session.currentOperation = operation;
         });
       },
 
@@ -117,14 +130,14 @@ export const useAppStore = create<AppState & AppActions>()(
       },
 
       // Account actions
-      setAccountLoading: (accountId: string, loading: boolean, operation?: string) => {
+      setAccountStatus: (accountId: string, status: LoadingState, operation?: string) => {
         set((state) => {
           if (!state.accounts[accountId]) {
             state.accounts[accountId] = createAccountState();
           }
-          state.accounts[accountId].loading = loading;
-          state.accounts[accountId].currentOperation = loading ? operation || null : null;
-          if (loading) {
+          state.accounts[accountId].status = status;
+          state.accounts[accountId].currentOperation = operation || null;
+          if (status !== 'error') {
             state.accounts[accountId].error = null;
           }
         });
@@ -136,10 +149,10 @@ export const useAppStore = create<AppState & AppActions>()(
             state.accounts[accountId] = createAccountState();
           }
           state.accounts[accountId].data = data;
-          state.accounts[accountId].loading = false;
+          state.accounts[accountId].status = 'success';
+          state.accounts[accountId].currentOperation = null;
           state.accounts[accountId].error = null;
           state.accounts[accountId].lastLoaded = Date.now();
-          state.accounts[accountId].currentOperation = null;
         });
       },
 
@@ -149,8 +162,17 @@ export const useAppStore = create<AppState & AppActions>()(
             state.accounts[accountId] = createAccountState();
           }
           state.accounts[accountId].error = error;
-          state.accounts[accountId].loading = false;
+          state.accounts[accountId].status = error ? 'error' : 'idle';
           state.accounts[accountId].currentOperation = null;
+        });
+      },
+
+      setAccountOperation: (accountId: string, operation: string | null) => {
+        set((state) => {
+          if (!state.accounts[accountId]) {
+            state.accounts[accountId] = createAccountState();
+          }
+          state.accounts[accountId].currentOperation = operation;
         });
       },
 
@@ -161,8 +183,8 @@ export const useAppStore = create<AppState & AppActions>()(
               state.accounts[account.id] = createAccountState();
             }
             state.accounts[account.id].data = account;
+            state.accounts[account.id].status = 'success';
             state.accounts[account.id].lastLoaded = Date.now();
-            state.accounts[account.id].loading = false;
             state.accounts[account.id].error = null;
           });
         });
@@ -197,7 +219,13 @@ export const useAppStore = create<AppState & AppActions>()(
         set((state) => {
           if (state.accounts[accountId]) {
             state.accounts[accountId].currentOperation = null;
-            state.accounts[accountId].loading = false;
+            if (
+              state.accounts[accountId].status === 'updating' ||
+              state.accounts[accountId].status === 'saving' ||
+              state.accounts[accountId].status === 'deleting'
+            ) {
+              state.accounts[accountId].status = 'idle';
+            }
           }
         });
       },
@@ -227,8 +255,10 @@ export const useAppStore = create<AppState & AppActions>()(
       shouldLoadAccount: (accountId: string, maxAge: number = 5 * 60 * 1000) => {
         const accountState = get().accounts[accountId];
 
-        // Don't load if already loading
-        if (accountState?.loading) return false;
+        // Don't load if currently loading or updating
+        if (accountState?.status === 'loading' || accountState?.status === 'updating') {
+          return false;
+        }
 
         // Load if no data
         if (!accountState?.data) return true;
@@ -243,8 +273,8 @@ export const useAppStore = create<AppState & AppActions>()(
       shouldLoadSession: (maxAge: number = 5 * 60 * 1000) => {
         const sessionState = get().session;
 
-        // Don't load if already loading
-        if (sessionState.loading) return false;
+        // Don't load if currently loading
+        if (sessionState.status === 'loading') return false;
 
         // Load if no data
         if (!sessionState.data) return true;

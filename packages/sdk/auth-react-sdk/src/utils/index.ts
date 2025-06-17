@@ -1,4 +1,4 @@
-import { ApiErrorCode, AuthSDKError } from '../types';
+import { ApiErrorCode, AuthSDKError, LoadingState } from '../types';
 
 /**
  * Parse error from any source into AuthSDKError
@@ -65,3 +65,14 @@ export function getRetryDelay(error: AuthSDKError, attempt: number): number {
   // Exponential backoff: 1s, 2s, 4s, 8s, 16s
   return Math.min(1000 * Math.pow(2, attempt), 16000);
 }
+
+// Status helper functions
+export const getStatusHelpers = (status: LoadingState) => ({
+  isLoading: status === 'loading',
+  isUpdating: status === 'updating',
+  isSaving: status === 'saving',
+  isDeleting: status === 'deleting',
+  isIdle: status === 'idle',
+  hasError: status === 'error',
+  isSuccess: status === 'success',
+});

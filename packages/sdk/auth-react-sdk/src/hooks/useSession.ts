@@ -8,9 +8,10 @@ import {
   UnifiedTwoFactorSetupRequest,
   BackupCodesRequest,
   AccountSessionInfo,
+  LoadingState,
   AccountUpdateRequest as AccountUpdate,
 } from '../types';
-import { parseApiError } from '../utils';
+import { getStatusHelpers, parseApiError } from '../utils';
 
 interface AccountOperations {
   load: () => Promise<Account | null>;
@@ -32,10 +33,19 @@ interface AccountOperations {
 interface AccountObject {
   id: string;
   data: Account | null;
-  loading: boolean;
-  error: string | null;
+  status: LoadingState;
   currentOperation: string | null;
+  error: string | null;
   operations: AccountOperations;
+
+  // Convenience getters
+  isLoading: boolean;
+  isUpdating: boolean;
+  isSaving: boolean;
+  isDeleting: boolean;
+  isIdle: boolean;
+  hasError: boolean;
+  isSuccess: boolean;
 }
 
 interface SessionOperations {
@@ -47,8 +57,18 @@ interface SessionOperations {
 interface SessionReturn {
   session: {
     data: AccountSessionInfo | null;
-    loading: boolean;
+    status: LoadingState;
+    currentOperation: string | null;
     error: string | null;
+
+    // Convenience getters
+    isLoading: boolean;
+    isUpdating: boolean;
+    isSaving: boolean;
+    isDeleting: boolean;
+    isIdle: boolean;
+    hasError: boolean;
+    isSuccess: boolean;
   };
   accounts: AccountObject[];
   currentAccount: AccountObject | null;
@@ -58,10 +78,19 @@ interface SessionReturn {
 interface SingleAccountReturn {
   id: string;
   data: Account | null;
-  loading: boolean;
-  error: string | null;
+  status: LoadingState;
   currentOperation: string | null;
+  error: string | null;
   operations: AccountOperations;
+
+  // Convenience getters
+  isLoading: boolean;
+  isUpdating: boolean;
+  isSaving: boolean;
+  isDeleting: boolean;
+  isIdle: boolean;
+  hasError: boolean;
+  isSuccess: boolean;
 }
 
 // Overloaded function signatures
@@ -73,12 +102,12 @@ export function useSession(accountId?: string) {
 
   // Store state
   const sessionState = useAppStore((state) => state.getSessionState());
-  const setSessionLoading = useAppStore((state) => state.setSessionLoading);
+  const setSessionStatus = useAppStore((state) => state.setSessionStatus);
   const setSessionData = useAppStore((state) => state.setSessionData);
   const setSessionError = useAppStore((state) => state.setSessionError);
   const clearSession = useAppStore((state) => state.clearSession);
 
-  const setAccountLoading = useAppStore((state) => state.setAccountLoading);
+  const setAccountStatus = useAppStore((state) => state.setAccountStatus);
   const setAccountData = useAppStore((state) => state.setAccountData);
   const setAccountError = useAppStore((state) => state.setAccountError);
   const setAccountsData = useAppStore((state) => state.setAccountsData);
@@ -88,7 +117,7 @@ export function useSession(accountId?: string) {
   const createAccountOperations = (targetAccountId: string): AccountOperations => ({
     load: async () => {
       try {
-        setAccountLoading(targetAccountId, true, 'load');
+        setAccountStatus(targetAccountId, 'loading', 'load');
         const account = await accountService.getAccount(targetAccountId);
         setAccountData(targetAccountId, account);
         return account;
@@ -101,7 +130,7 @@ export function useSession(accountId?: string) {
 
     logout: async () => {
       try {
-        setAccountLoading(targetAccountId, true, 'logout');
+        setAccountStatus(targetAccountId, 'updating', 'logout');
         await authService.logout(targetAccountId);
 
         // Refresh session after logout
@@ -121,9 +150,9 @@ export function useSession(accountId?: string) {
 
     setup2FA: async (data: UnifiedTwoFactorSetupRequest) => {
       try {
-        setAccountLoading(targetAccountId, true, 'setup2FA');
+        setAccountStatus(targetAccountId, 'updating', 'setup2FA');
         const result = await authService.setupTwoFactor(targetAccountId, data);
-        setAccountLoading(targetAccountId, false);
+        setAccountStatus(targetAccountId, 'success');
         return result;
       } catch (error) {
         const apiError = parseApiError(error, 'Failed to setup 2FA');
@@ -134,7 +163,7 @@ export function useSession(accountId?: string) {
 
     verify2FA: async (token: string) => {
       try {
-        setAccountLoading(targetAccountId, true, 'verify2FA');
+        setAccountStatus(targetAccountId, 'updating', 'verify2FA');
         const result = await authService.verifyTwoFactorSetup(targetAccountId, token);
 
         // Update account security state
@@ -142,7 +171,7 @@ export function useSession(accountId?: string) {
           security: { twoFactorEnabled: true } as any,
         });
 
-        setAccountLoading(targetAccountId, false);
+        setAccountStatus(targetAccountId, 'success');
         return result;
       } catch (error) {
         const apiError = parseApiError(error, 'Failed to verify 2FA');
@@ -153,9 +182,9 @@ export function useSession(accountId?: string) {
 
     changePassword: async (data: PasswordChangeRequest) => {
       try {
-        setAccountLoading(targetAccountId, true, 'changePassword');
+        setAccountStatus(targetAccountId, 'updating', 'changePassword');
         const result = await authService.changePassword(targetAccountId, data);
-        setAccountLoading(targetAccountId, false);
+        setAccountStatus(targetAccountId, 'success');
         return result;
       } catch (error) {
         const apiError = parseApiError(error, 'Failed to change password');
@@ -166,9 +195,9 @@ export function useSession(accountId?: string) {
 
     generateBackupCodes: async (data: BackupCodesRequest) => {
       try {
-        setAccountLoading(targetAccountId, true, 'generateBackupCodes');
+        setAccountStatus(targetAccountId, 'updating', 'generateBackupCodes');
         const result = await authService.generateBackupCodes(targetAccountId, data);
-        setAccountLoading(targetAccountId, false);
+        setAccountStatus(targetAccountId, 'success');
         return result;
       } catch (error) {
         const apiError = parseApiError(error, 'Failed to generate backup codes');
@@ -183,7 +212,7 @@ export function useSession(accountId?: string) {
           throw new Error('Callback URL is required for permission request');
         }
 
-        setAccountLoading(targetAccountId, true, 'requestPermission');
+        setAccountStatus(targetAccountId, 'updating', 'requestPermission');
 
         const response = await authService.generatePermissionUrl(provider, {
           accountId: targetAccountId,
@@ -192,7 +221,7 @@ export function useSession(accountId?: string) {
         });
 
         window.location.href = response.authorizationUrl;
-        setAccountLoading(targetAccountId, false);
+        setAccountStatus(targetAccountId, 'success');
       } catch (error) {
         const apiError = parseApiError(error, 'Failed to request permission');
         setAccountError(targetAccountId, apiError.message);
@@ -224,7 +253,7 @@ export function useSession(accountId?: string) {
           throw new Error('Callback URL is required for reauthorization');
         }
 
-        setAccountLoading(targetAccountId, true, 'reauthorizePermissions');
+        setAccountStatus(targetAccountId, 'updating', 'reauthorizePermissions');
 
         const response = await authService.generateReauthorizeUrl(provider, {
           accountId: targetAccountId,
@@ -234,7 +263,7 @@ export function useSession(accountId?: string) {
         if (response.authorizationUrl) {
           window.location.href = response.authorizationUrl;
         }
-        setAccountLoading(targetAccountId, false);
+        setAccountStatus(targetAccountId, 'success');
       } catch (error) {
         const apiError = parseApiError(error, 'Failed to reauthorize permissions');
         setAccountError(targetAccountId, apiError.message);
@@ -261,9 +290,9 @@ export function useSession(accountId?: string) {
 
     revokeTokens: async () => {
       try {
-        setAccountLoading(targetAccountId, true, 'revokeTokens');
+        setAccountStatus(targetAccountId, 'updating', 'revokeTokens');
         const result = await authService.revokeTokens(targetAccountId);
-        setAccountLoading(targetAccountId, false);
+        setAccountStatus(targetAccountId, 'success');
         return result;
       } catch (error) {
         const apiError = parseApiError(error, 'Failed to revoke tokens');
@@ -274,9 +303,9 @@ export function useSession(accountId?: string) {
 
     getTokenInformation: async () => {
       try {
-        setAccountLoading(targetAccountId, true, 'getTokenInformation');
+        setAccountStatus(targetAccountId, 'loading', 'getTokenInformation');
         const result = await authService.getTokenStatus(targetAccountId);
-        setAccountLoading(targetAccountId, false);
+        setAccountStatus(targetAccountId, 'success');
         return result;
       } catch (error) {
         const apiError = parseApiError(error, 'Failed to get token information');
@@ -287,7 +316,7 @@ export function useSession(accountId?: string) {
 
     updateAccount: async (updates: AccountUpdate) => {
       try {
-        setAccountLoading(targetAccountId, true, 'updateAccount');
+        setAccountStatus(targetAccountId, 'saving', 'updateAccount');
         const result = await accountService.updateAccount(targetAccountId, updates);
         setAccountData(targetAccountId, result);
         return result;
@@ -300,15 +329,13 @@ export function useSession(accountId?: string) {
 
     switchToThisAccount: async () => {
       try {
-        setSessionLoading(true);
+        setSessionStatus('updating', 'switchAccount');
 
         await authService.setCurrentAccountInSession(targetAccountId);
 
         // Refresh session to get updated current account
         const sessionResponse = await authService.getAccountSession();
         setSessionData(sessionResponse.session);
-
-        setSessionLoading(false);
       } catch (error) {
         const apiError = parseApiError(error, 'Failed to switch to this account');
         setSessionError(apiError.message);
@@ -320,7 +347,7 @@ export function useSession(accountId?: string) {
   const sessionOperations: SessionOperations = {
     load: async () => {
       try {
-        setSessionLoading(true);
+        setSessionStatus('loading', 'loadSession');
 
         const sessionResponse = await authService.getAccountSession();
         setSessionData(sessionResponse.session);
@@ -337,7 +364,7 @@ export function useSession(accountId?: string) {
 
     logoutAll: async () => {
       try {
-        setSessionLoading(true);
+        setSessionStatus('updating', 'logoutAll');
 
         if (sessionState.data?.accountIds.length) {
           await authService.logoutAll(sessionState.data.accountIds);
@@ -352,15 +379,13 @@ export function useSession(accountId?: string) {
 
     setCurrentAccount: async (accountId: string | null) => {
       try {
-        setSessionLoading(true);
+        setSessionStatus('updating', 'setCurrentAccount');
 
         await authService.setCurrentAccountInSession(accountId);
 
         // Refresh session to get updated current account
         const sessionResponse = await authService.getAccountSession();
         setSessionData(sessionResponse.session);
-
-        setSessionLoading(false);
       } catch (error) {
         const apiError = parseApiError(error, 'Failed to set current account');
         setSessionError(apiError.message);
@@ -382,10 +407,11 @@ export function useSession(accountId?: string) {
     return {
       id: accountId,
       data: accountState.data,
-      loading: accountState.loading,
-      error: accountState.error,
+      status: accountState.status,
       currentOperation: accountState.currentOperation,
+      error: accountState.error,
       operations: createAccountOperations(accountId),
+      ...getStatusHelpers(accountState.status),
     };
   }
 
@@ -393,14 +419,21 @@ export function useSession(accountId?: string) {
   const allAccounts = useAppStore((state) => state.accounts);
   const accounts: AccountObject[] = useMemo(() => {
     return (sessionState.data?.accountIds || []).map((id) => {
-      const accountState = allAccounts[id] || { data: null, loading: false, error: null, currentOperation: null };
+      const accountState = allAccounts[id] || {
+        data: null,
+        status: 'idle' as LoadingState,
+        currentOperation: null,
+        error: null,
+        lastLoaded: null,
+      };
       return {
         id,
         data: accountState.data,
-        loading: accountState.loading,
-        error: accountState.error,
+        status: accountState.status,
         currentOperation: accountState.currentOperation,
+        error: accountState.error,
         operations: createAccountOperations(id),
+        ...getStatusHelpers(accountState.status),
       };
     });
   }, [sessionState.data?.accountIds, allAccounts]);
@@ -413,8 +446,10 @@ export function useSession(accountId?: string) {
   return {
     session: {
       data: sessionState.data,
-      loading: sessionState.loading,
+      status: sessionState.status,
+      currentOperation: sessionState.currentOperation,
       error: sessionState.error,
+      ...getStatusHelpers(sessionState.status),
     },
     accounts,
     currentAccount,
