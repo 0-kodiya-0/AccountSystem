@@ -291,12 +291,12 @@ export const extractRefreshToken = (req: Request, accountId: string): string | n
 /**
  * Clear all session data for multiple accounts
  */
-export const clearAllSessions = (res: Response, accountIds: string[]) => {
+export const clearAllSessions = (req: Request, res: Response, accountIds: string[]) => {
   // Clear auth cookies
   accountIds.forEach((accountId) => {
-    res.clearCookie(`access_token_${accountId}`, { path: `/${accountId}` });
+    res.clearCookie(`access_token_${accountId}`, { path: `${getStrippedPathPrefix(req)}/${accountId}` });
     res.clearCookie(`refresh_token_${accountId}`, {
-      path: `/${accountId}/account/refreshToken`,
+      path: `${getStrippedPathPrefix(req)}/${accountId}/token/refresh`,
     });
   });
 };
@@ -304,10 +304,10 @@ export const clearAllSessions = (res: Response, accountIds: string[]) => {
 /**
  * Clear session data for a specific account
  */
-export const clearSession = (res: Response, accountId: string) => {
-  res.clearCookie(`access_token_${accountId}`, { path: `/${accountId}` });
+export const clearSession = (req: Request, res: Response, accountId: string) => {
+  res.clearCookie(`access_token_${accountId}`, { path: `${getStrippedPathPrefix(req)}/${accountId}` });
   res.clearCookie(`refresh_token_${accountId}`, {
-    path: `/${accountId}/account/refreshToken`,
+    path: `${getStrippedPathPrefix(req)}/${accountId}/token/refresh`,
   });
 };
 
@@ -316,7 +316,7 @@ export const clearSession = (res: Response, accountId: string) => {
  */
 export const clearAccountWithSession = (req: Request, res: Response, accountId: string): void => {
   // Clear auth cookies
-  clearSession(res, accountId);
+  clearSession(req, res, accountId);
 
   // Remove from account session
   removeAccountFromSession(req, res, accountId);
@@ -327,7 +327,7 @@ export const clearAccountWithSession = (req: Request, res: Response, accountId: 
  */
 export const clearAllAccountsWithSession = (req: Request, res: Response, accountIds: string[]): void => {
   // Clear auth cookies
-  clearAllSessions(res, accountIds);
+  clearAllSessions(req, res, accountIds);
 
   // Clear from account session
   clearAccountSession(req, res, accountIds);
