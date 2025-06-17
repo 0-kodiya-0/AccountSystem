@@ -1,4 +1,4 @@
-import React, { createContext, useContext, ReactNode } from 'react';
+import React, { createContext, useContext, ReactNode, JSX } from 'react';
 import { HttpClient } from '../client/HttpClient';
 import { AuthService } from '../services/AuthService';
 import { AccountService } from '../services/AccountService';
@@ -58,7 +58,7 @@ interface ServicesProviderProps {
 /**
  * Provider component that creates and provides services to the component tree
  */
-export const ServicesProvider: React.FC<ServicesProviderProps> = ({ children, config }) => {
+export const ServicesProvider = ({ children, config }: ServicesProviderProps): JSX.Element | null => {
   const [services] = React.useState(() => createServices(config));
 
   return <ServicesContext.Provider value={services}>{children}</ServicesContext.Provider>;
