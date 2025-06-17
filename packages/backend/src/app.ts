@@ -86,11 +86,6 @@ function createMainApp(): express.Application {
     logger.info('Notification routes disabled');
   }
 
-  if (process.env.DISABLE_OAUTH !== 'true') {
-    app.use('/:accountId/oauth', autoTrackParentUrl(), oauthRouter.authRequiredRouter);
-    logger.info('OAuth authenticated routes enabled');
-  }
-
   // Local auth authenticated routes (enabled unless specifically disabled)
   if (process.env.DISABLE_LOCAL_AUTH !== 'true') {
     app.use('/:accountId/auth', autoTrackParentUrl(), localAuthRouter.authRequiredRouter);

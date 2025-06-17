@@ -1,8 +1,6 @@
 import { Request } from 'express';
 import * as path from 'path';
 import { logger } from './logger';
-import { getProxyUrl } from '../config/env.config';
-
 /**
  * Get the path prefix that was stripped by the proxy
  */
@@ -126,10 +124,3 @@ export const createRedirectUrl = (
 
   return finalUrl;
 };
-
-/**
- * Build unified callback URL with code and data
- */
-export function getCallbackUrl(): string {
-  return `${getProxyUrl()}/auth/callback`;
-}
