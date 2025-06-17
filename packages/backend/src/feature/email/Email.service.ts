@@ -4,16 +4,10 @@ import path from 'path';
 import { ServerError, ValidationError } from '../../types/response.types';
 import { getTemplateMetadata, getTemplateFilePath } from './Email.utils';
 import { EmailTemplate } from './Email.types';
-import {
-  getAppName,
-  getBaseUrl,
-  getNodeEnv,
-  getProxyUrl,
-  getSenderEmail,
-  getSenderName,
-} from '../../config/env.config';
+import { getAppName, getNodeEnv, getSenderEmail, getSenderName } from '../../config/env.config';
 import { getTransporter, resetTransporter } from './Email.transporter';
 import { logger } from '../../utils/logger';
+import { ValidationUtils } from '../../utils/validation';
 
 // Template cache to avoid reading files repeatedly
 const templateCache = new Map<EmailTemplate, string>();
@@ -160,14 +154,23 @@ export async function sendCustomEmail(
 }
 
 /**
- * Send password reset email - now throws on failure
+ * Send password reset email with callback URL - UPDATED
  */
-export async function sendPasswordResetEmail(email: string, firstName: string, token: string): Promise<void> {
-  if (!email || !firstName || !token) {
-    throw new ValidationError('Email, firstName, and token are required for password reset email');
+export async function sendPasswordResetEmail(
+  email: string,
+  firstName: string,
+  token: string,
+  callbackUrl: string,
+): Promise<void> {
+  if (!email || !firstName || !token || !callbackUrl) {
+    throw new ValidationError('Email, firstName, token, and callbackUrl are required for password reset email');
   }
 
-  const resetUrl = `${getProxyUrl()}${getBaseUrl()}/reset-password?token=${token}`;
+  // Validate callback URL
+  ValidationUtils.validateUrl(callbackUrl, 'Callback URL');
+
+  // Construct reset URL with token as query parameter
+  const resetUrl = `${callbackUrl}?token=${encodeURIComponent(token)}`;
 
   await sendCustomEmail(email, `Reset your password for ${getAppName()}`, EmailTemplate.PASSWORD_RESET, {
     FIRST_NAME: firstName,
@@ -237,14 +240,18 @@ export async function sendTwoFactorEnabledNotification(email: string, firstName:
 }
 
 /**
- * Send email verification for two-step signup (email only verification)
+ * Send email verification for two-step signup with callback URL - UPDATED
  */
-export async function sendSignupEmailVerification(email: string, token: string): Promise<void> {
-  if (!email || !token) {
-    throw new ValidationError('Email and token are required for signup email verification');
+export async function sendSignupEmailVerification(email: string, token: string, callbackUrl: string): Promise<void> {
+  if (!email || !token || !callbackUrl) {
+    throw new ValidationError('Email, token, and callbackUrl are required for signup email verification');
   }
 
-  const verificationUrl = `${getProxyUrl()}${getBaseUrl()}/auth/signup/verify-email?token=${token}`;
+  // Validate callback URL
+  ValidationUtils.validateUrl(callbackUrl, 'Callback URL');
+
+  // Construct verification URL with token as query parameter
+  const verificationUrl = `${callbackUrl}?token=${encodeURIComponent(token)}`;
 
   await sendCustomEmail(
     email,

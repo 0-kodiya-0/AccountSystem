@@ -78,29 +78,6 @@ export const removePasswordResetToken = (token: string): void => {
   passwordResetCache.delete(token);
 };
 
-// Helper method to clean up all tokens for a specific account
-export const removeAllTokensForAccount = (accountId: string): void => {
-  // Clean password reset tokens
-  for (const [token, data] of passwordResetCache.entries()) {
-    if (data.accountId === accountId) {
-      passwordResetCache.delete(token);
-    }
-  }
-
-  // Clean verification tokens
-  for (const [token, data] of emailVerificationCache.entries()) {
-    if (data.accountId === accountId) {
-      emailVerificationCache.delete(token);
-    }
-  }
-};
-
-// Clear all tokens (useful for testing)
-export const clearAllTokens = (): void => {
-  passwordResetCache.clear();
-  emailVerificationCache.clear();
-};
-
 // Get cache stats (useful for monitoring)
 export const getCacheStats = () => {
   return {

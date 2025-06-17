@@ -10,6 +10,12 @@ export interface LocalAuthRequest {
 
 export interface PasswordResetRequest {
   email: string;
+  callbackUrl: string; // NEW: Required callback URL for password reset
+}
+
+export interface EmailVerificationRequest {
+  email: string;
+  callbackUrl: string; // NEW: Required callback URL for email verification
 }
 
 export interface PasswordChangeRequest {

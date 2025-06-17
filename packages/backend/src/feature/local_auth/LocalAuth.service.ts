@@ -32,8 +32,9 @@ import {
 } from './LocalAuth.types';
 import { saveTwoFactorLoginToken } from '../twofa/TwoFA.service';
 
-export async function requestEmailVerification(email: string): Promise<{ token: string }> {
+export async function requestEmailVerification(email: string, callbackUrl: string): Promise<{ token: string }> {
   ValidationUtils.validateEmail(email);
+  ValidationUtils.validateUrl(callbackUrl, 'Callback URL');
 
   // Check if email already exists in database
   const models = await db.getModels();
@@ -55,8 +56,8 @@ export async function requestEmailVerification(email: string): Promise<{ token: 
     // Resend verification email with existing token
     try {
       await sendCriticalEmail(
-        sendSignupEmailVerification, // Use new email function
-        [email, existingVerification.verificationToken],
+        sendSignupEmailVerification,
+        [email, existingVerification.verificationToken, callbackUrl],
         { maxAttempts: 3, delayMs: 2000 },
       );
       logger.info(`Verification email resent to ${email}`);
@@ -71,13 +72,12 @@ export async function requestEmailVerification(email: string): Promise<{ token: 
   // Save email for verification and get token
   const verificationToken = saveEmailForVerification(email);
 
-  // Send verification email
+  // Send verification email with callback URL
   try {
-    await sendCriticalEmail(
-      sendSignupEmailVerification, // Use new email function
-      [email, verificationToken],
-      { maxAttempts: 3, delayMs: 2000 },
-    );
+    await sendCriticalEmail(sendSignupEmailVerification, [email, verificationToken, callbackUrl], {
+      maxAttempts: 3,
+      delayMs: 2000,
+    });
     logger.info(`Verification email sent to ${email}`);
   } catch (emailError) {
     logger.error('Failed to send verification email:', emailError);
@@ -331,13 +331,14 @@ export async function authenticateLocalUser(
 }
 
 /**
- * Request a password reset - now handles email failures properly
+ * Request a password reset with callback URL
  */
 export async function requestPasswordReset(data: PasswordResetRequest): Promise<boolean> {
   const models = await db.getModels();
 
-  ValidationUtils.validateRequiredFields(data, ['email']);
+  ValidationUtils.validateRequiredFields(data, ['email', 'callbackUrl']);
   ValidationUtils.validateEmail(data.email);
+  ValidationUtils.validateUrl(data.callbackUrl, 'Callback URL');
 
   // Find account by email
   const account = await models.accounts.Account.findOne({
@@ -355,7 +356,7 @@ export async function requestPasswordReset(data: PasswordResetRequest): Promise<
   // Generate reset token using cache
   const resetToken = savePasswordResetToken(account._id.toString(), account.userDetails.email as string);
 
-  // Send password reset email - CRITICAL: Now we handle failures
+  // Send password reset email with callback URL
   try {
     await sendCriticalEmail(
       sendPasswordResetEmail,
@@ -363,6 +364,7 @@ export async function requestPasswordReset(data: PasswordResetRequest): Promise<
         account.userDetails.email as string,
         account.userDetails.firstName || account.userDetails.name.split(' ')[0],
         resetToken,
+        data.callbackUrl,
       ],
       { maxAttempts: 3, delayMs: 2000 },
     );

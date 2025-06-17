@@ -177,7 +177,6 @@ export enum CallbackCode {
 
   // NEW: 2FA required codes (only for signin)
   OAUTH_SIGNIN_REQUIRES_2FA = 'oauth_signin_requires_2fa',
-  LOCAL_SIGNIN_REQUIRES_2FA = 'local_signin_requires_2fa',
 
   // Error codes
   OAUTH_ERROR = 'oauth_error',

@@ -1,45 +1,31 @@
 import { asyncHandler } from '../../utils/response';
-import {
-  JsonSuccess,
-  ValidationError,
-  ApiErrorCode,
-  BadRequestError,
-  CallbackData,
-  CallbackCode,
-  Redirect,
-} from '../../types/response.types';
+import { JsonSuccess, ValidationError, ApiErrorCode, BadRequestError } from '../../types/response.types';
 import * as LocalAuthService from './LocalAuth.service';
 import { validateLoginRequest, validatePasswordChangeRequest } from './LocalAuth.validation';
-import {
-  LocalAuthRequest,
-  PasswordResetRequest,
-  PasswordChangeRequest,
-  CompleteProfileRequest,
-} from './LocalAuth.types';
+import { LocalAuthRequest, PasswordChangeRequest, CompleteProfileRequest } from './LocalAuth.types';
 import { setupCompleteAccountSession } from '../session/session.utils';
 import { ValidationUtils } from '../../utils/validation';
 import { createLocalAccessToken, createLocalRefreshToken } from '../tokens';
 import { Account } from '../account';
 import { getEmailVerificationData, getProfileCompletionData } from './LocalAuth.cache';
-import { getCallbackUrl } from '../../utils/redirect';
 
 /**
- * Step 1: Request email verification
+ * Step 1: Request email verification - UPDATED to require callback URL
  */
 export const requestEmailVerification = asyncHandler(async (req, res, next) => {
-  const { email } = req.body;
+  const { email, callbackUrl } = req.body;
 
-  if (!email) {
-    throw new BadRequestError('Email is required', 400, ApiErrorCode.MISSING_DATA);
+  if (!email || !callbackUrl) {
+    throw new BadRequestError('Email and callbackUrl are required', 400, ApiErrorCode.MISSING_DATA);
   }
 
-  const result = await LocalAuthService.requestEmailVerification(email);
+  await LocalAuthService.requestEmailVerification(email, callbackUrl);
 
   next(
     new JsonSuccess({
       message: 'Verification email sent. Please check your email to continue.',
-      token: result.token,
       email: email,
+      callbackUrl: callbackUrl,
     }),
   );
 });
@@ -172,15 +158,14 @@ export const login = asyncHandler(async (req, res, next) => {
 
   // Check if 2FA is required
   if ('requiresTwoFactor' in result && result.requiresTwoFactor) {
-    const callbackData: CallbackData = {
-      code: CallbackCode.LOCAL_SIGNIN_REQUIRES_2FA,
-      requiresTwoFactor: true,
-      accountId: result.accountId,
-      tempToken: result.tempToken,
-      message: 'Please complete two-factor authentication to continue.',
-    };
-
-    next(new Redirect(callbackData, getCallbackUrl()));
+    next(
+      new JsonSuccess({
+        requiresTwoFactor: true,
+        accountId: result.accountId,
+        tempToken: result.tempToken,
+        message: 'Please complete two-factor authentication to continue.',
+      }),
+    );
     return;
   }
 
@@ -215,22 +200,23 @@ export const login = asyncHandler(async (req, res, next) => {
 });
 
 /**
- * Request password reset - now uses cache
+ * Request password reset - UPDATED to require callback URL
  */
 export const requestPasswordReset = asyncHandler(async (req, res, next) => {
-  const data = req.body as PasswordResetRequest;
+  const { email, callbackUrl } = req.body;
 
-  if (!data.email) {
-    throw new BadRequestError('Email is required', 400, ApiErrorCode.MISSING_DATA);
+  if (!email || !callbackUrl) {
+    throw new BadRequestError('Email and callbackUrl are required', 400, ApiErrorCode.MISSING_DATA);
   }
 
-  // Request password reset using cached tokens
-  await LocalAuthService.requestPasswordReset(data);
+  // Request password reset using cached tokens with callback URL
+  await LocalAuthService.requestPasswordReset({ email, callbackUrl });
 
   // Return success response (even if email not found for security)
   next(
     new JsonSuccess({
       message: 'If your email is registered, you will receive instructions to reset your password.',
+      callbackUrl: callbackUrl,
     }),
   );
 });
