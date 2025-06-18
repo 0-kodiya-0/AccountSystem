@@ -13,6 +13,13 @@ import {
 import { getStatusHelpers, parseApiError } from '../utils';
 import { useEffect } from 'react';
 
+const DEFAULT_ACCOUNT_STATE = {
+  data: null,
+  status: 'idle' as LoadingState,
+  currentOperation: null,
+  error: null,
+};
+
 interface AccountOperations {
   load: () => Promise<Account | null>;
   logout: () => Promise<void>;
@@ -83,6 +90,7 @@ export function useAccount(
 
   const { autoLoad = true, autoLoadSession = true } = finalOptions;
 
+  // Always call hooks in the same order
   const { currentAccountId, operations: sessionOperations } = useSession({ autoLoad: autoLoadSession });
   const authService = useAuthService();
   const accountService = useAccountService();
@@ -90,22 +98,24 @@ export function useAccount(
   // Determine target account ID
   const targetAccountId = accountId || currentAccountId;
 
-  // If no account ID, return null (no current account)
-  if (!targetAccountId) {
-    return null;
-  }
-
-  // Get account state from store
-  const accountState = useAppStore((state) => state.getAccountState(targetAccountId));
+  // Always call store hooks, even if targetAccountId is null
+  const accountState = useAppStore((state) => {
+    if (!targetAccountId) {
+      return DEFAULT_ACCOUNT_STATE;
+    }
+    return state.getAccountState(targetAccountId) || DEFAULT_ACCOUNT_STATE;
+  });
 
   const setAccountStatus = useAppStore((state) => state.setAccountStatus);
   const setAccountData = useAppStore((state) => state.setAccountData);
   const setAccountError = useAppStore((state) => state.setAccountError);
   const updateAccountData = useAppStore((state) => state.updateAccountData);
 
-  // Create account operations
+  // Create account operations (these will be no-ops if no targetAccountId)
   const accountOperations: AccountOperations = {
     load: async () => {
+      if (!targetAccountId) return null;
+
       try {
         setAccountStatus(targetAccountId, 'loading', 'load');
         const account = await accountService.getAccount(targetAccountId);
@@ -119,6 +129,8 @@ export function useAccount(
     },
 
     logout: async () => {
+      if (!targetAccountId) return;
+
       try {
         setAccountStatus(targetAccountId, 'updating', 'logout');
         await authService.logout(targetAccountId);
@@ -132,6 +144,8 @@ export function useAccount(
     },
 
     setup2FA: async (data: UnifiedTwoFactorSetupRequest) => {
+      if (!targetAccountId) return null;
+
       try {
         setAccountStatus(targetAccountId, 'updating', 'setup2FA');
         const result = await authService.setupTwoFactor(targetAccountId, data);
@@ -145,6 +159,8 @@ export function useAccount(
     },
 
     verify2FA: async (token: string) => {
+      if (!targetAccountId) return null;
+
       try {
         setAccountStatus(targetAccountId, 'updating', 'verify2FA');
         const result = await authService.verifyTwoFactorSetup(targetAccountId, token);
@@ -164,6 +180,8 @@ export function useAccount(
     },
 
     changePassword: async (data: PasswordChangeRequest) => {
+      if (!targetAccountId) return null;
+
       try {
         setAccountStatus(targetAccountId, 'updating', 'changePassword');
         const result = await authService.changePassword(targetAccountId, data);
@@ -177,6 +195,8 @@ export function useAccount(
     },
 
     generateBackupCodes: async (data: BackupCodesRequest) => {
+      if (!targetAccountId) return null;
+
       try {
         setAccountStatus(targetAccountId, 'updating', 'generateBackupCodes');
         const result = await authService.generateBackupCodes(targetAccountId, data);
@@ -190,6 +210,8 @@ export function useAccount(
     },
 
     requestPermission: async (provider: OAuthProviders, scopeNames: string[], callbackUrl: string) => {
+      if (!targetAccountId) return;
+
       try {
         if (!callbackUrl) {
           throw new Error('Callback URL is required for permission request');
@@ -212,6 +234,8 @@ export function useAccount(
     },
 
     getPermissionUrl: async (provider: OAuthProviders, scopeNames: string[], callbackUrl: string) => {
+      if (!targetAccountId) return '';
+
       try {
         if (!callbackUrl) {
           throw new Error('Callback URL is required for permission URL generation');
@@ -231,6 +255,8 @@ export function useAccount(
     },
 
     reauthorizePermissions: async (provider: OAuthProviders, callbackUrl: string) => {
+      if (!targetAccountId) return;
+
       try {
         if (!callbackUrl) {
           throw new Error('Callback URL is required for reauthorization');
@@ -254,6 +280,8 @@ export function useAccount(
     },
 
     getReauthorizeUrl: async (provider: OAuthProviders, callbackUrl: string) => {
+      if (!targetAccountId) return '';
+
       try {
         if (!callbackUrl) {
           throw new Error('Callback URL is required for reauthorization URL generation');
@@ -272,6 +300,8 @@ export function useAccount(
     },
 
     revokeTokens: async () => {
+      if (!targetAccountId) return null;
+
       try {
         setAccountStatus(targetAccountId, 'updating', 'revokeTokens');
         const result = await authService.revokeTokens(targetAccountId);
@@ -285,9 +315,11 @@ export function useAccount(
     },
 
     getTokenInformation: async () => {
+      if (!targetAccountId) return null;
+
       try {
         setAccountStatus(targetAccountId, 'loading', 'getTokenInformation');
-        const result = await authService.getTokenStatus(targetAccountId);
+        const result = await authService.getAccessTokenInfo(targetAccountId);
         setAccountStatus(targetAccountId, 'success');
         return result;
       } catch (error) {
@@ -298,6 +330,8 @@ export function useAccount(
     },
 
     updateAccount: async (updates: AccountUpdateRequest) => {
+      if (!targetAccountId) return null;
+
       try {
         setAccountStatus(targetAccountId, 'saving', 'updateAccount');
         const result = await accountService.updateAccount(targetAccountId, updates);
@@ -311,6 +345,8 @@ export function useAccount(
     },
 
     switchToThisAccount: async () => {
+      if (!targetAccountId) return;
+
       try {
         await sessionOperations.setCurrentAccount(targetAccountId);
       } catch (error) {
@@ -324,12 +360,17 @@ export function useAccount(
   const exists = !!accountState.data;
   const isCurrent = currentAccountId === targetAccountId;
 
-  // Auto-load account data on mount (if enabled)
+  // Auto-load account data on mount (if enabled and targetAccountId exists)
   useEffect(() => {
-    if (autoLoad && useAppStore.getState().shouldLoadAccount(targetAccountId)) {
+    if (autoLoad && targetAccountId && useAppStore.getState().shouldLoadAccount(targetAccountId)) {
       accountOperations.load();
     }
   }, [autoLoad, targetAccountId]);
+
+  // Return null only after all hooks have been called
+  if (!targetAccountId) {
+    return null;
+  }
 
   return {
     // Account identification

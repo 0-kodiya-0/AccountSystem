@@ -1,28 +1,10 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
-import { Account, AccountSessionInfo, LoadingState } from '../types';
+import { Account, AccountSessionInfo, AccountState, LoadingState, SessionState } from '../types';
 import { enableMapSet } from 'immer';
 
 enableMapSet();
-
-// Session state structure
-interface SessionState {
-  data: AccountSessionInfo | null;
-  status: LoadingState;
-  currentOperation: string | null;
-  error: string | null;
-  lastLoaded: number | null;
-}
-
-// Account state structure
-interface AccountState {
-  data: Account | null;
-  status: LoadingState;
-  currentOperation: string | null;
-  error: string | null;
-  lastLoaded: number | null;
-}
 
 // Main store state
 interface AppState {
@@ -62,7 +44,7 @@ interface AppActions {
 }
 
 // Helper functions
-const createSessionState = (): SessionState => ({
+const createDefaultSessionState = (): SessionState => ({
   data: null,
   status: 'idle',
   currentOperation: null,
@@ -70,7 +52,7 @@ const createSessionState = (): SessionState => ({
   lastLoaded: null,
 });
 
-const createAccountState = (): AccountState => ({
+const createDefaultAccountState = (): AccountState => ({
   data: null,
   status: 'idle',
   currentOperation: null,
@@ -82,7 +64,7 @@ export const useAppStore = create<AppState & AppActions>()(
   subscribeWithSelector(
     immer((set, get) => ({
       // Initial state
-      session: createSessionState(),
+      session: createDefaultSessionState(),
       accounts: {},
       tempToken: null,
 
@@ -123,7 +105,7 @@ export const useAppStore = create<AppState & AppActions>()(
 
       clearSession: () => {
         set((state) => {
-          state.session = createSessionState();
+          state.session = createDefaultSessionState();
           state.accounts = {};
           state.tempToken = null;
         });
@@ -133,7 +115,7 @@ export const useAppStore = create<AppState & AppActions>()(
       setAccountStatus: (accountId: string, status: LoadingState, operation?: string) => {
         set((state) => {
           if (!state.accounts[accountId]) {
-            state.accounts[accountId] = createAccountState();
+            state.accounts[accountId] = createDefaultAccountState();
           }
           state.accounts[accountId].status = status;
           state.accounts[accountId].currentOperation = operation || null;
@@ -146,7 +128,7 @@ export const useAppStore = create<AppState & AppActions>()(
       setAccountData: (accountId: string, data: Account) => {
         set((state) => {
           if (!state.accounts[accountId]) {
-            state.accounts[accountId] = createAccountState();
+            state.accounts[accountId] = createDefaultAccountState();
           }
           state.accounts[accountId].data = data;
           state.accounts[accountId].status = 'success';
@@ -159,7 +141,7 @@ export const useAppStore = create<AppState & AppActions>()(
       setAccountError: (accountId: string, error: string | null) => {
         set((state) => {
           if (!state.accounts[accountId]) {
-            state.accounts[accountId] = createAccountState();
+            state.accounts[accountId] = createDefaultAccountState();
           }
           state.accounts[accountId].error = error;
           state.accounts[accountId].status = error ? 'error' : 'idle';
@@ -170,7 +152,7 @@ export const useAppStore = create<AppState & AppActions>()(
       setAccountOperation: (accountId: string, operation: string | null) => {
         set((state) => {
           if (!state.accounts[accountId]) {
-            state.accounts[accountId] = createAccountState();
+            state.accounts[accountId] = createDefaultAccountState();
           }
           state.accounts[accountId].currentOperation = operation;
         });
@@ -180,7 +162,7 @@ export const useAppStore = create<AppState & AppActions>()(
         set((state) => {
           accounts.forEach((account) => {
             if (!state.accounts[account.id]) {
-              state.accounts[account.id] = createAccountState();
+              state.accounts[account.id] = createDefaultAccountState();
             }
             state.accounts[account.id].data = account;
             state.accounts[account.id].status = 'success';
@@ -249,7 +231,7 @@ export const useAppStore = create<AppState & AppActions>()(
       },
 
       getAccountState: (accountId: string) => {
-        return get().accounts[accountId] || createAccountState();
+        return get().accounts[accountId];
       },
 
       shouldLoadAccount: (accountId: string, maxAge: number = 5 * 60 * 1000) => {

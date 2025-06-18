@@ -708,3 +708,21 @@ export interface CallbackData {
 }
 
 export type LoadingState = 'idle' | 'loading' | 'updating' | 'saving' | 'deleting' | 'error' | 'success';
+
+// Session state structure
+export interface SessionState {
+  data: AccountSessionInfo | null;
+  status: LoadingState;
+  currentOperation: string | null;
+  error: string | null;
+  lastLoaded: number | null;
+}
+
+// Account state structure
+export interface AccountState {
+  data: Account | null;
+  status: LoadingState;
+  currentOperation: string | null;
+  error: string | null;
+  lastLoaded: number | null;
+}
