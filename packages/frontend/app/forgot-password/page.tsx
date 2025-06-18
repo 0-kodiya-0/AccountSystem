@@ -251,11 +251,6 @@ export default function ForgotPasswordPage() {
       loadingComponent={LoadingSpinner}
       redirectingComponent={RedirectingDisplay}
       errorComponent={ErrorDisplay}
-      session={{
-        data: null,
-        loading: false,
-        error: null,
-      }}
     >
       <AuthLayout title={getTitle()} description={getDescription()} showBackToHome={true}>
         {isCompleted ? (

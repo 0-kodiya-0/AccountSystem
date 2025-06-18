@@ -59,6 +59,17 @@ export default function LoginPage() {
   const accountName = localAccountName || oauthAccountName;
   const isCompleted = localPhase === 'completed' || oauthPhase === 'completed';
 
+  useEffect(() => {
+    console.log('OAuth Debug:', {
+      oauthPhase,
+      oauthLoading,
+      localLoading,
+      isLoading,
+      oauthError,
+      localError,
+    });
+  }, [oauthPhase, oauthLoading, localLoading, isLoading, oauthError, localError]);
+
   // Handle form input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
@@ -93,7 +104,7 @@ export default function LoginPage() {
     clearOAuthError();
     const callbackUrl = `${window.location.origin}/login`;
 
-    await startOAuthSignin(provider, callbackUrl);
+    console.log(await startOAuthSignin(provider, callbackUrl));
   };
 
   // Handle 2FA verification
@@ -221,7 +232,7 @@ export default function LoginPage() {
           placeholder="Enter 6-digit code"
           maxLength={6}
           required
-          disabled={isLoading}
+          disabled={oauthLoading}
           className="text-center text-lg tracking-widest"
         />
       </div>
@@ -229,7 +240,7 @@ export default function LoginPage() {
       {currentError && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{currentError}</div>}
 
       <div className="space-y-3">
-        <Button type="submit" className="w-full" loading={isLoading}>
+        <Button type="submit" className="w-full" loading={oauthLoading}>
           Verify Code
         </Button>
         <Button type="button" variant="outline" className="w-full" onClick={resetAll}>
@@ -256,7 +267,7 @@ export default function LoginPage() {
             type="button"
             variant="outline"
             onClick={() => handleOAuthSignin(OAuthProviders.Google)}
-            disabled={isLoading}
+            disabled={oauthLoading}
             className="w-full"
           >
             <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
@@ -306,11 +317,6 @@ export default function LoginPage() {
       loadingComponent={LoadingSpinner}
       redirectingComponent={RedirectingDisplay}
       errorComponent={ErrorDisplay}
-      session={{
-        data: null,
-        loading: false,
-        error: null,
-      }}
     >
       <AuthLayout title="Welcome back" description="Sign in to your account to continue" showBackToHome={true}>
         {isCompleted ? (

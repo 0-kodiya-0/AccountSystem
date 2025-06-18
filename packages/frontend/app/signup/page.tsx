@@ -397,11 +397,6 @@ export default function SignupPage() {
       loadingComponent={LoadingSpinner}
       redirectingComponent={RedirectingDisplay}
       errorComponent={ErrorDisplay}
-      session={{
-        data: null,
-        loading: false,
-        error: null,
-      }}
     >
       <AuthLayout
         title="Create your account"
