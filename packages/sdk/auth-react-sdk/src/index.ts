@@ -13,6 +13,7 @@ export { AuthGuard } from './components/AuthGuard';
 
 // NEW HOOKS - Main authentication hooks
 export { useSession } from './hooks/useSession';
+export { useAccount } from './hooks/useAccount';
 export { useLocalSignin } from './hooks/useLocalSignin';
 export { useOAuthSignin } from './hooks/useOAuthSignin';
 export { useLocalSignup } from './hooks/useLocalSignup';

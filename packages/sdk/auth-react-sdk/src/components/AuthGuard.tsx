@@ -1,24 +1,11 @@
-import React, { JSX } from 'react';
+import React, { JSX, useEffect } from 'react';
+import { useSession } from '../hooks/useSession';
 import DefaultLoadingSpinner from './DefaultLoadingSpinner';
 import DefaultGlobalErrorDisplay from './DefaultGlobalErrorDisplay';
 import DefaultErrorDisplay from './DefaultErrorDisplay';
 
-interface SessionState {
-  data: {
-    hasSession: boolean;
-    isValid: boolean;
-    accountIds: string[];
-    currentAccountId: string | null;
-  } | null;
-  loading: boolean;
-  error: string | null;
-}
-
 interface BaseAuthGuardProps {
   children?: React.ReactNode;
-
-  // Session state props
-  session: SessionState;
 
   // Optional operation states
   switchingAccount?: {
@@ -47,6 +34,9 @@ interface BaseAuthGuardProps {
     clearError?: () => void;
     retry?: () => void;
   }>;
+
+  // Session loading options
+  autoLoadSession?: boolean; // Whether to auto-load session (default: true)
 }
 
 interface GuestNoAccountProps extends BaseAuthGuardProps {
@@ -84,13 +74,13 @@ type AuthGuardProps = GuestNoAccountProps | GuestWithAccountProps | ProtectedWit
 export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
   const {
     children,
-    session,
     switchingAccount,
     redirectDelay,
     loadingComponent: LoadingComponent,
     redirectingComponent: RedirectingComponent,
     errorComponent: ErrorComponent,
     globalErrorComponent: GlobalErrorComponent,
+    autoLoadSession = true,
   } = props;
 
   const allowGuests = 'allowGuests' in props ? props.allowGuests : false;
@@ -100,13 +90,18 @@ export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
   const redirectToAccountSelection =
     'redirectToAccountSelection' in props ? props.redirectToAccountSelection : undefined;
 
-  // Derived state from session props
-  const isAuthenticated = !!(session.data?.hasSession && session.data?.isValid && session.data?.accountIds.length > 0);
-  const currentAccountId = session.data?.currentAccountId || null;
-  const hasAccount = !!currentAccountId;
+  // Get session state using the new useSession hook
+  const {
+    data: sessionData,
+    status: sessionStatus,
+    error: sessionError,
+    isAuthenticated,
+    hasAccount,
+    isLoading: sessionLoading,
+  } = useSession({ autoLoad: autoLoadSession });
 
   // Session is initializing (no data and loading)
-  if (!session.data && session.loading) {
+  if (!sessionData && sessionLoading) {
     if (LoadingComponent) {
       return <LoadingComponent reason="Initializing session" loading={true} />;
     }
@@ -114,7 +109,7 @@ export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
   }
 
   // Session is loading
-  if (session.loading) {
+  if (sessionLoading) {
     if (LoadingComponent) {
       return <LoadingComponent reason="Loading session" loading={true} />;
     }
@@ -130,11 +125,11 @@ export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
   }
 
   // Session has error
-  if (session.error) {
+  if (sessionError) {
     if (ErrorComponent) {
-      return <ErrorComponent error={session.error} loading={false} retry={() => window.location.reload()} />;
+      return <ErrorComponent error={sessionError} loading={false} retry={() => window.location.reload()} />;
     }
-    return <DefaultErrorDisplay error={session.error} retry={() => window.location.reload()} />;
+    return <DefaultErrorDisplay error={sessionError} retry={() => window.location.reload()} />;
   }
 
   // Account switching error
@@ -146,7 +141,7 @@ export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
   }
 
   // Session is ready - handle auth logic
-  if (session.data) {
+  if (sessionData) {
     // Handle guest pages (login, signup, forgot password)
     if (allowGuests) {
       if (isAuthenticated && !children) {
