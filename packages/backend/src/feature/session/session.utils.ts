@@ -238,7 +238,7 @@ export const setRefreshTokenCookie = (req: Request, res: Response, accountId: st
     httpOnly: true,
     secure: getNodeEnv() === 'production',
     maxAge: COOKIE_MAX_AGE,
-    path: `${getStrippedPathPrefix(req)}/${accountId}/token/refresh`,
+    path: `${getStrippedPathPrefix(req)}/${accountId}/tokens/refresh`,
     sameSite: 'lax',
   });
 };
@@ -296,7 +296,7 @@ export const clearAllSessions = (req: Request, res: Response, accountIds: string
   accountIds.forEach((accountId) => {
     res.clearCookie(`access_token_${accountId}`, { path: `${getStrippedPathPrefix(req)}/${accountId}` });
     res.clearCookie(`refresh_token_${accountId}`, {
-      path: `${getStrippedPathPrefix(req)}/${accountId}/token/refresh`,
+      path: `${getStrippedPathPrefix(req)}/${accountId}/tokens/refresh`,
     });
   });
 };
@@ -307,7 +307,7 @@ export const clearAllSessions = (req: Request, res: Response, accountIds: string
 export const clearSession = (req: Request, res: Response, accountId: string) => {
   res.clearCookie(`access_token_${accountId}`, { path: `${getStrippedPathPrefix(req)}/${accountId}` });
   res.clearCookie(`refresh_token_${accountId}`, {
-    path: `${getStrippedPathPrefix(req)}/${accountId}/token/refresh`,
+    path: `${getStrippedPathPrefix(req)}/${accountId}/tokens/refresh`,
   });
 };
 
