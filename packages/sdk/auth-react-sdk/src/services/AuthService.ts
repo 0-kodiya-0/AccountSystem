@@ -38,7 +38,6 @@ import {
   TokenInfoResponse,
   TokenValidationRequest,
   TokenValidationResponse,
-  TokenStatusResponse,
 } from '../types';
 import { HttpClient } from '../client/HttpClient';
 
@@ -466,30 +465,16 @@ export class AuthService {
     }
   }
 
-  async getTokenStatus(accountId: string): Promise<TokenStatusResponse> {
-    validateAccountId(accountId, 'token status');
-
-    return this.httpClient.get(`/${accountId}/tokens/status`);
-  }
-
   async getAccessTokenInfo(accountId: string): Promise<TokenInfoResponse> {
     validateAccountId(accountId, 'access token info');
 
-    return this.httpClient.get(`/${accountId}/tokens/access`);
+    return this.httpClient.get(`/${accountId}/tokens/access/info`);
   }
 
   async getRefreshTokenInfo(accountId: string): Promise<TokenInfoResponse> {
     validateAccountId(accountId, 'refresh token info');
 
-    return this.httpClient.get(`/${accountId}/tokens/refresh`);
-  }
-
-  async refreshToken(accountId: string, redirectUrl: string): Promise<void> {
-    validateAccountId(accountId, 'token refresh');
-    validateRequired(redirectUrl, 'redirect URL', 'token refresh');
-
-    // This endpoint redirects, so we don't return data
-    window.location.href = `/${accountId}/tokens/refresh?redirectUrl=${encodeURIComponent(redirectUrl)}`;
+    return this.httpClient.get(`/${accountId}/tokens/refresh/info`);
   }
 
   async revokeTokens(accountId: string): Promise<TokenRevocationResponse> {

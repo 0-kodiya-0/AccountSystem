@@ -294,31 +294,15 @@ export interface TokenInfo {
   timeRemaining?: number;
   accountId?: string;
   error?: string;
-  // OAuth specific
-  oauthAccessToken?: string;
-  oauthRefreshToken?: string;
-}
-
-export interface TokenStatusResponse {
-  accountId: string;
-  accountType: AccountType;
-  hasAccessToken: boolean;
-  hasRefreshToken: boolean;
-  accessToken?: TokenInfo;
-  refreshToken?: TokenInfo;
 }
 
 export interface TokenInfoResponse extends TokenInfo {}
 
-export interface TokenRefreshResponse {
-  accessToken: string;
-  expiresIn: number;
-  refreshToken?: string;
-}
-
 export interface TokenRevocationResponse {
-  accessTokenRevoked: boolean;
-  refreshTokenRevoked: boolean;
+  totalTokens: number;
+  successfulRevocations: number;
+  failedRevocations: number;
+  errors?: string[];
   message?: string;
 }
 
@@ -618,61 +602,6 @@ export class AuthSDKError extends Error {
       details: this.details,
     };
   }
-}
-
-// ============================================================================
-// Google Specific Types (for scope checking)
-// ============================================================================
-
-export type ServiceType = 'gmail' | 'calendar' | 'drive' | 'docs' | 'sheets' | 'people' | 'meet';
-export type ScopeLevel = 'readonly' | 'full' | 'send' | 'compose' | 'events' | 'file' | 'create' | 'edit';
-
-export interface ScopeCheckResult {
-  hasAccess: boolean;
-  scopeName: string;
-  scopeUrl: string;
-}
-
-export interface TokenCheckResponse {
-  summary: {
-    totalRequested: number;
-    totalGranted: number;
-    allGranted: boolean;
-  };
-  requestedScopeNames: string[];
-  requestedScopeUrls: string[];
-  results: Record<string, ScopeCheckResult>;
-}
-
-export interface GoogleScopeResult {
-  hasAccess: boolean;
-  scopeName: string;
-  scopeUrl: string;
-}
-
-export interface GoogleScopeCheckResult {
-  summary: {
-    totalRequested: number;
-    totalGranted: number;
-    allGranted: boolean;
-  };
-  requestedScopeNames: string[];
-  requestedScopeUrls: string[];
-  results: Record<string, GoogleScopeResult>;
-}
-
-export interface GoogleTokenState {
-  data: TokenStatusResponse | null;
-  loading: boolean;
-  error: AuthSDKError | null;
-  lastLoaded: number | null;
-}
-
-export interface GoogleScopeState {
-  data: GoogleScopeCheckResult | null;
-  loading: boolean;
-  error: AuthSDKError | null;
-  lastChecked: number | null;
 }
 
 export enum CallbackCode {
