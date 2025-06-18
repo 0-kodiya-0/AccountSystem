@@ -9,6 +9,7 @@ type PasswordResetPhase =
   | 'requesting_reset'
   | 'reset_email_sent'
   | 'token_verifying'
+  | 'token_verified'
   | 'resetting_password'
   | 'completed'
   | 'failed';
@@ -116,7 +117,7 @@ export const usePasswordReset = (): UsePasswordResetReturn => {
   // Extract and verify reset token from URL
   const extractResetToken = useCallback(async (): Promise<boolean> => {
     const urlParams = new URLSearchParams(window.location.search);
-    const tokenFromUrl = urlParams.get('token') || urlParams.get('resetToken');
+    const tokenFromUrl = urlParams.get('token');
 
     // Check if we should process this token
     if (!tokenFromUrl) {
@@ -140,15 +141,23 @@ export const usePasswordReset = (): UsePasswordResetReturn => {
         resetToken: tokenFromUrl,
       }));
 
-      // Token is valid for reset - just store it, don't validate with server yet
-      safeSetState((prev) => ({
-        ...prev,
-        phase: 'reset_email_sent',
-        loading: false,
-        resetToken: tokenFromUrl,
-      }));
+      const result = await authService.verifyPasswordReset({ token: tokenFromUrl });
 
-      return true;
+      if (result.resetToken) {
+        safeSetState((prev) => ({
+          ...prev,
+          phase: 'token_verified',
+          loading: false,
+          error: null,
+          resetToken: result.resetToken,
+        }));
+
+        processingTokenRef.current = result.resetToken;
+
+        return true;
+      } else {
+        throw new Error('Password reset verification failed - no reset token received');
+      }
     } catch (error) {
       handleError(error, 'Invalid reset token');
       return false;
@@ -157,7 +166,6 @@ export const usePasswordReset = (): UsePasswordResetReturn => {
 
       const url = new URL(window.location.href);
       url.searchParams.delete('token');
-      url.searchParams.delete('resetToken');
       window.history.replaceState({}, '', url.toString());
     }
   }, [handleError, safeSetState]);
@@ -370,7 +378,7 @@ export const usePasswordReset = (): UsePasswordResetReturn => {
     (!state.lastAttemptTimestamp || Date.now() - state.lastAttemptTimestamp >= RETRY_COOLDOWN_MS);
 
   const hasValidToken = !!state.resetToken;
-  const canResetPassword = state.phase === 'reset_email_sent' && hasValidToken;
+  const canResetPassword = state.phase === 'token_verified' && hasValidToken;
 
   // Progress calculation
   const getProgress = (): number => {

@@ -38,6 +38,8 @@ import {
   TokenInfoResponse,
   TokenValidationRequest,
   TokenValidationResponse,
+  PasswordResetVerificationRequest,
+  PasswordResetVerificationResponse,
 } from '../types';
 import { HttpClient } from '../client/HttpClient';
 
@@ -356,6 +358,12 @@ export class AuthService {
     validateUrl(data.callbackUrl, 'password reset request');
 
     return this.httpClient.post('/auth/reset-password-request', data);
+  }
+
+  async verifyPasswordReset(data: PasswordResetVerificationRequest): Promise<PasswordResetVerificationResponse> {
+    validateRequired(data.token, 'password token verify request data', 'password token verify request');
+
+    return this.httpClient.post('/auth/verify-password-request', data);
   }
 
   async resetPassword(token: string, data: ResetPasswordRequest): Promise<ResetPasswordResponse> {
