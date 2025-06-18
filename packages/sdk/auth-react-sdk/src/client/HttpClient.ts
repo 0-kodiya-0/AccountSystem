@@ -30,18 +30,18 @@ export class HttpClient {
 
     const response = await fetch(url, options);
 
+    const result = await response.json();
+
+    if (!result.success && result.error) {
+      throw new AuthSDKError(result.error?.message || 'API error', result.error?.code || ApiErrorCode.SERVER_ERROR);
+    }
+
     if (!response.ok) {
       throw new AuthSDKError(
         `HTTP ${response.status}: ${response.statusText}`,
         ApiErrorCode.NETWORK_ERROR,
         response.status,
       );
-    }
-
-    const result = await response.json();
-
-    if (!result.success) {
-      throw new AuthSDKError(result.error?.message || 'API error', result.error?.code || ApiErrorCode.SERVER_ERROR);
     }
 
     return result.data;
