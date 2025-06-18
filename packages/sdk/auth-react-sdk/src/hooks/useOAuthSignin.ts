@@ -101,7 +101,6 @@ export const useOAuthSignin = (): UseOAuthSigninReturn => {
   const [state, setState] = useState<OAuthSigninState>(INITIAL_STATE);
 
   // Refs for cleanup and state tracking
-  const mountedRef = useRef(true);
   const lastCallbackUrlRef = useRef<string | null>(null);
   const processingCallbackRef = useRef(false);
 
@@ -109,18 +108,9 @@ export const useOAuthSignin = (): UseOAuthSigninReturn => {
   const storeTempToken = useAppStore((state) => state.setTempToken);
   const clearStoreTempToken = useAppStore((state) => state.clearTempToken);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
   // Safe state update that checks if component is still mounted
   const safeSetState = useCallback((updater: (prev: OAuthSigninState) => OAuthSigninState) => {
-    if (mountedRef.current) {
-      setState(updater);
-    }
+    setState(updater);
   }, []);
 
   // Enhanced error handling
@@ -150,17 +140,6 @@ export const useOAuthSignin = (): UseOAuthSigninReturn => {
 
     const urlParams = new URLSearchParams(window.location.search);
 
-    // Check for callback parameters
-    const code = urlParams.get('code');
-    const error = urlParams.get('error');
-    const state = urlParams.get('state');
-    const callbackCode = urlParams.get('callbackCode') || urlParams.get('callback_code');
-
-    // No OAuth callback parameters found
-    if (!code && !error && !callbackCode) {
-      return false;
-    }
-
     // Mark as processing to prevent double execution
     processingCallbackRef.current = true;
 
@@ -171,23 +150,6 @@ export const useOAuthSignin = (): UseOAuthSigninReturn => {
         loading: true,
         error: null,
       }));
-
-      // Handle different callback scenarios
-      if (error) {
-        // OAuth provider returned an error
-        const errorDescription =
-          urlParams.get('error_description') || urlParams.get('error_message') || `OAuth ${error}`;
-
-        safeSetState((prev) => ({
-          ...prev,
-          phase: 'failed',
-          loading: false,
-          error: errorDescription,
-          lastAttemptTimestamp: Date.now(),
-        }));
-
-        return false;
-      }
 
       // Parse all callback data
       const callbackData: CallbackData = {};
@@ -209,11 +171,13 @@ export const useOAuthSignin = (): UseOAuthSigninReturn => {
         }
       });
 
+      if (urlParams.size >= 0) {
+        return false;
+      }
+
       // Handle based on callback code
       switch (callbackData.code) {
         case CallbackCode.OAUTH_SIGNIN_SUCCESS: {
-          if (!mountedRef.current) return false;
-
           // Check if needs additional scopes
           if (callbackData.needsAdditionalScopes && callbackData.missingScopes) {
             safeSetState((prev) => ({
@@ -242,17 +206,10 @@ export const useOAuthSignin = (): UseOAuthSigninReturn => {
             }));
           }
 
-          // Clean up URL parameters
-          const url = new URL(window.location.href);
-          url.search = '';
-          window.history.replaceState({}, '', url.toString());
-
           return true;
         }
 
         case CallbackCode.OAUTH_SIGNIN_REQUIRES_2FA: {
-          if (!mountedRef.current) return false;
-
           // Two-factor authentication required
           if (callbackData.tempToken) {
             storeTempToken(callbackData.tempToken);
@@ -268,11 +225,6 @@ export const useOAuthSignin = (): UseOAuthSigninReturn => {
             accountName: callbackData.name || null,
             callbackMessage: callbackData.message || 'Two-factor authentication required',
           }));
-
-          // Clean up URL parameters
-          const url = new URL(window.location.href);
-          url.search = '';
-          window.history.replaceState({}, '', url.toString());
 
           return true;
         }
@@ -293,13 +245,15 @@ export const useOAuthSignin = (): UseOAuthSigninReturn => {
         }
       }
     } catch (error) {
-      if (!mountedRef.current) return false;
-
       const errorMessage = handleError(error, 'Failed to process OAuth callback');
       console.error('OAuth callback processing error:', error);
       return false;
     } finally {
       processingCallbackRef.current = false;
+
+      const url = new URL(window.location.href);
+      url.search = '';
+      window.history.replaceState({}, '', url.toString());
     }
   }, [safeSetState, handleError, storeTempToken]);
 
@@ -338,8 +292,6 @@ export const useOAuthSignin = (): UseOAuthSigninReturn => {
         lastCallbackUrlRef.current = callbackUrl;
 
         const response = await authService.generateOAuthSigninUrl(provider, { callbackUrl });
-
-        if (!mountedRef.current) return { success: false, message: 'Component unmounted' };
 
         if (response.authorizationUrl) {
           // Set processing state before redirect
@@ -421,8 +373,6 @@ export const useOAuthSignin = (): UseOAuthSigninReturn => {
           token: token.trim(),
           tempToken: state.tempToken,
         });
-
-        if (!mountedRef.current) return { success: false, message: 'Component unmounted' };
 
         if (result.accountId) {
           // 2FA verification successful

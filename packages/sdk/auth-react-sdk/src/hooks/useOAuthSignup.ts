@@ -76,22 +76,12 @@ export const useOAuthSignup = (): UseOAuthSignupReturn => {
   const [state, setState] = useState<OAuthSignupState>(INITIAL_STATE);
 
   // Refs for cleanup and state tracking
-  const mountedRef = useRef(true);
   const lastCallbackUrlRef = useRef<string | null>(null);
   const processingCallbackRef = useRef(false);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
   // Safe state update that checks if component is still mounted
   const safeSetState = useCallback((updater: (prev: OAuthSignupState) => OAuthSignupState) => {
-    if (mountedRef.current) {
-      setState(updater);
-    }
+    setState(updater);
   }, []);
 
   // Enhanced error handling
@@ -121,17 +111,6 @@ export const useOAuthSignup = (): UseOAuthSignupReturn => {
 
     const urlParams = new URLSearchParams(window.location.search);
 
-    // Check for callback parameters
-    const code = urlParams.get('code');
-    const error = urlParams.get('error');
-    const state = urlParams.get('state');
-    const callbackCode = urlParams.get('callbackCode') || urlParams.get('callback_code');
-
-    // No OAuth callback parameters found
-    if (!code && !error && !callbackCode) {
-      return false;
-    }
-
     // Mark as processing to prevent double execution
     processingCallbackRef.current = true;
 
@@ -142,23 +121,6 @@ export const useOAuthSignup = (): UseOAuthSignupReturn => {
         loading: true,
         error: null,
       }));
-
-      // Handle different callback scenarios
-      if (error) {
-        // OAuth provider returned an error
-        const errorDescription =
-          urlParams.get('error_description') || urlParams.get('error_message') || `OAuth ${error}`;
-
-        safeSetState((prev) => ({
-          ...prev,
-          phase: 'failed',
-          loading: false,
-          error: errorDescription,
-          lastAttemptTimestamp: Date.now(),
-        }));
-
-        return false;
-      }
 
       // Parse all callback data
       const callbackData: CallbackData = {};
@@ -180,11 +142,13 @@ export const useOAuthSignup = (): UseOAuthSignupReturn => {
         }
       });
 
+      if (urlParams.size >= 0) {
+        return false;
+      }
+
       // Handle based on callback code
       switch (callbackData.code) {
         case CallbackCode.OAUTH_SIGNUP_SUCCESS: {
-          if (!mountedRef.current) return false;
-
           safeSetState((prev) => ({
             ...prev,
             phase: 'completed',
@@ -194,11 +158,6 @@ export const useOAuthSignup = (): UseOAuthSignupReturn => {
             accountName: callbackData.name || null,
             callbackMessage: callbackData.message || 'OAuth signup completed successfully!',
           }));
-
-          // Clean up URL parameters
-          const url = new URL(window.location.href);
-          url.search = '';
-          window.history.replaceState({}, '', url.toString());
 
           return true;
         }
@@ -219,13 +178,16 @@ export const useOAuthSignup = (): UseOAuthSignupReturn => {
         }
       }
     } catch (error) {
-      if (!mountedRef.current) return false;
-
       const errorMessage = handleError(error, 'Failed to process OAuth callback');
       console.error('OAuth callback processing error:', error);
       return false;
     } finally {
       processingCallbackRef.current = false;
+
+      // Clean up URL parameters
+      const url = new URL(window.location.href);
+      url.search = '';
+      window.history.replaceState({}, '', url.toString());
     }
   }, [safeSetState, handleError]);
 
@@ -264,8 +226,6 @@ export const useOAuthSignup = (): UseOAuthSignupReturn => {
         lastCallbackUrlRef.current = callbackUrl;
 
         const response = await authService.generateOAuthSignupUrl(provider, { callbackUrl });
-
-        if (!mountedRef.current) return { success: false, message: 'Component unmounted' };
 
         if (response.authorizationUrl) {
           // Set processing state before redirect

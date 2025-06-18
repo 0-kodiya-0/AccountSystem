@@ -87,22 +87,12 @@ export const usePasswordReset = (): UsePasswordResetReturn => {
   const [state, setState] = useState<PasswordResetState>(INITIAL_STATE);
 
   // Refs for cleanup and state tracking
-  const mountedRef = useRef(true);
   const lastRequestDataRef = useRef<PasswordResetRequest | null>(null);
   const processingTokenRef = useRef<string | null>(null);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
   // Safe state update that checks if component is still mounted
   const safeSetState = useCallback((updater: (prev: PasswordResetState) => PasswordResetState) => {
-    if (mountedRef.current) {
-      setState(updater);
-    }
+    setState(updater);
   }, []);
 
   // Enhanced error handling
@@ -158,18 +148,17 @@ export const usePasswordReset = (): UsePasswordResetReturn => {
         resetToken: tokenFromUrl,
       }));
 
-      // Clean up URL without page reload
-      const url = new URL(window.location.href);
-      url.searchParams.delete('token');
-      url.searchParams.delete('resetToken');
-      window.history.replaceState({}, '', url.toString());
-
       return true;
     } catch (error) {
       handleError(error, 'Invalid reset token');
       return false;
     } finally {
       processingTokenRef.current = null;
+
+      const url = new URL(window.location.href);
+      url.searchParams.delete('token');
+      url.searchParams.delete('resetToken');
+      window.history.replaceState({}, '', url.toString());
     }
   }, [handleError, safeSetState]);
 
@@ -208,8 +197,6 @@ export const usePasswordReset = (): UsePasswordResetReturn => {
         lastRequestDataRef.current = data;
 
         const result = await authService.requestPasswordReset(data);
-
-        if (!mountedRef.current) return { success: false, message: 'Component unmounted' };
 
         if (result.message) {
           safeSetState((prev) => ({
@@ -284,8 +271,6 @@ export const usePasswordReset = (): UsePasswordResetReturn => {
         }));
 
         const result = await authService.resetPassword(state.resetToken, data);
-
-        if (!mountedRef.current) return { success: false, message: 'Component unmounted' };
 
         if (result.message) {
           safeSetState((prev) => ({

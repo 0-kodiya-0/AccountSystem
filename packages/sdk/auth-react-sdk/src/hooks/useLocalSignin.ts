@@ -82,25 +82,15 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
   const [state, setState] = useState<LocalSigninState>(INITIAL_STATE);
 
   // Refs for cleanup and state tracking
-  const mountedRef = useRef(true);
   const lastSigninDataRef = useRef<LocalLoginRequest | null>(null);
 
   // Store integration for temp token management
   const storeTempToken = useAppStore((state) => state.setTempToken);
   const clearStoreTempToken = useAppStore((state) => state.clearTempToken);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
   // Safe state update that checks if component is still mounted
   const safeSetState = useCallback((updater: (prev: LocalSigninState) => LocalSigninState) => {
-    if (mountedRef.current) {
-      setState(updater);
-    }
+    setState(updater);
   }, []);
 
   // Enhanced error handling
@@ -162,8 +152,6 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
         lastSigninDataRef.current = data;
 
         const result = await authService.localLogin(data);
-
-        if (!mountedRef.current) return { success: false, message: 'Component unmounted' };
 
         if (result.requiresTwoFactor && result.tempToken) {
           // Two-factor authentication required
@@ -234,8 +222,6 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
           token: token.trim(),
           tempToken: state.tempToken,
         });
-
-        if (!mountedRef.current) return { success: false, message: 'Component unmounted' };
 
         if (result.accountId) {
           // 2FA verification successful

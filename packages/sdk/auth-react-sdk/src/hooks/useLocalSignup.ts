@@ -84,7 +84,6 @@ export const useLocalSignup = (): UseLocalSignupReturn => {
   const [state, setState] = useState<SignupState>(INITIAL_STATE);
 
   // Refs for cleanup and state tracking
-  const mountedRef = useRef(true);
   const phaseRef = useRef<SignupPhase>('idle');
   const processingTokenRef = useRef<string | null>(null);
 
@@ -93,18 +92,9 @@ export const useLocalSignup = (): UseLocalSignupReturn => {
     phaseRef.current = state.phase;
   }, [state.phase]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
   // Safe state update that checks if component is still mounted
   const safeSetState = useCallback((updater: (prev: SignupState) => SignupState) => {
-    if (mountedRef.current) {
-      setState(updater);
-    }
+    setState(updater);
   }, []);
 
   // Enhanced error handling with categorization
@@ -159,8 +149,6 @@ export const useLocalSignup = (): UseLocalSignupReturn => {
       }));
 
       const result = await authService.verifyEmailForSignup(tokenFromUrl);
-
-      if (!mountedRef.current) return false;
 
       if (result.profileToken) {
         safeSetState((prev) => ({
@@ -223,8 +211,6 @@ export const useLocalSignup = (): UseLocalSignupReturn => {
 
         const result = await authService.requestEmailVerification(data);
 
-        if (!mountedRef.current) return { success: false, message: 'Component unmounted' };
-
         if (result.message) {
           safeSetState((prev) => ({
             ...prev,
@@ -267,8 +253,6 @@ export const useLocalSignup = (): UseLocalSignupReturn => {
       }));
 
       const result = await authService.cancelSignup({ email: state.email });
-
-      if (!mountedRef.current) return { success: false, message: 'Component unmounted' };
 
       if (result) {
         safeSetState((prev) => ({
@@ -341,8 +325,6 @@ export const useLocalSignup = (): UseLocalSignupReturn => {
         }));
 
         const result = await authService.completeProfile(state.profileToken, data);
-
-        if (!mountedRef.current) return { success: false, message: 'Component unmounted' };
 
         if (result.accountId) {
           safeSetState((prev) => ({
