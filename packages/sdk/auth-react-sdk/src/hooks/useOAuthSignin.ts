@@ -102,7 +102,6 @@ export const useOAuthSignin = (): UseOAuthSigninReturn => {
 
   // Refs for cleanup and state tracking
   const lastCallbackUrlRef = useRef<string | null>(null);
-  const processingCallbackRef = useRef(false);
 
   // Store integration for temp token management
   const storeTempToken = useAppStore((state) => state.setTempToken);
@@ -133,15 +132,30 @@ export const useOAuthSignin = (): UseOAuthSigninReturn => {
 
   // Handle OAuth callback from URL parameters
   const handleOAuthCallback = useCallback(async (): Promise<boolean> => {
-    // Prevent double processing
-    if (processingCallbackRef.current) {
-      return false;
-    }
-
     const urlParams = new URLSearchParams(window.location.search);
 
-    // Mark as processing to prevent double execution
-    processingCallbackRef.current = true;
+    const callbackData: CallbackData = {};
+    urlParams.forEach((value, key) => {
+      const decodedValue = decodeURIComponent(value);
+
+      // Handle arrays - if value contains commas, split into array
+      if (decodedValue.includes(',')) {
+        callbackData[key] = decodedValue.split(',').map((s) => s.trim());
+      } else {
+        // Handle boolean values
+        if (decodedValue === 'true') {
+          callbackData[key] = true;
+        } else if (decodedValue === 'false') {
+          callbackData[key] = false;
+        } else {
+          callbackData[key] = decodedValue;
+        }
+      }
+    });
+
+    if (urlParams.size <= 0) {
+      return false;
+    }
 
     try {
       safeSetState((prev) => ({
@@ -150,30 +164,6 @@ export const useOAuthSignin = (): UseOAuthSigninReturn => {
         loading: true,
         error: null,
       }));
-
-      // Parse all callback data
-      const callbackData: CallbackData = {};
-      urlParams.forEach((value, key) => {
-        const decodedValue = decodeURIComponent(value);
-
-        // Handle arrays - if value contains commas, split into array
-        if (decodedValue.includes(',')) {
-          callbackData[key] = decodedValue.split(',').map((s) => s.trim());
-        } else {
-          // Handle boolean values
-          if (decodedValue === 'true') {
-            callbackData[key] = true;
-          } else if (decodedValue === 'false') {
-            callbackData[key] = false;
-          } else {
-            callbackData[key] = decodedValue;
-          }
-        }
-      });
-
-      if (urlParams.size >= 0) {
-        return false;
-      }
 
       // Handle based on callback code
       switch (callbackData.code) {
@@ -245,12 +235,10 @@ export const useOAuthSignin = (): UseOAuthSigninReturn => {
         }
       }
     } catch (error) {
-      const errorMessage = handleError(error, 'Failed to process OAuth callback');
+      handleError(error, 'Failed to process OAuth callback');
       console.error('OAuth callback processing error:', error);
       return false;
     } finally {
-      processingCallbackRef.current = false;
-
       const url = new URL(window.location.href);
       url.search = '';
       window.history.replaceState({}, '', url.toString());
@@ -456,9 +444,6 @@ export const useOAuthSignin = (): UseOAuthSigninReturn => {
       error: null,
     }));
 
-    // Reset processing flag for retry
-    processingCallbackRef.current = false;
-
     // Retry the previous signin attempt
     return startSignin(state.provider, lastCallbackUrlRef.current);
   }, [state.retryCount, state.lastAttemptTimestamp, state.provider, startSignin, safeSetState]);
@@ -470,7 +455,6 @@ export const useOAuthSignin = (): UseOAuthSigninReturn => {
 
   const reset = useCallback(() => {
     lastCallbackUrlRef.current = null;
-    processingCallbackRef.current = false;
     clearStoreTempToken();
     setState(INITIAL_STATE);
   }, [clearStoreTempToken]);

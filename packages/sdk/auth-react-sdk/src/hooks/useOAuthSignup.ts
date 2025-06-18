@@ -77,7 +77,6 @@ export const useOAuthSignup = (): UseOAuthSignupReturn => {
 
   // Refs for cleanup and state tracking
   const lastCallbackUrlRef = useRef<string | null>(null);
-  const processingCallbackRef = useRef(false);
 
   // Safe state update that checks if component is still mounted
   const safeSetState = useCallback((updater: (prev: OAuthSignupState) => OAuthSignupState) => {
@@ -104,15 +103,30 @@ export const useOAuthSignup = (): UseOAuthSignupReturn => {
 
   // Handle OAuth callback from URL parameters
   const handleOAuthCallback = useCallback(async (): Promise<boolean> => {
-    // Prevent double processing
-    if (processingCallbackRef.current) {
-      return false;
-    }
-
     const urlParams = new URLSearchParams(window.location.search);
 
-    // Mark as processing to prevent double execution
-    processingCallbackRef.current = true;
+    const callbackData: CallbackData = {};
+    urlParams.forEach((value, key) => {
+      const decodedValue = decodeURIComponent(value);
+
+      // Handle arrays - if value contains commas, split into array
+      if (decodedValue.includes(',')) {
+        callbackData[key] = decodedValue.split(',').map((s) => s.trim());
+      } else {
+        // Handle boolean values
+        if (decodedValue === 'true') {
+          callbackData[key] = true;
+        } else if (decodedValue === 'false') {
+          callbackData[key] = false;
+        } else {
+          callbackData[key] = decodedValue;
+        }
+      }
+    });
+
+    if (urlParams.size <= 0) {
+      return false;
+    }
 
     try {
       safeSetState((prev) => ({
@@ -121,30 +135,6 @@ export const useOAuthSignup = (): UseOAuthSignupReturn => {
         loading: true,
         error: null,
       }));
-
-      // Parse all callback data
-      const callbackData: CallbackData = {};
-      urlParams.forEach((value, key) => {
-        const decodedValue = decodeURIComponent(value);
-
-        // Handle arrays - if value contains commas, split into array
-        if (decodedValue.includes(',')) {
-          callbackData[key] = decodedValue.split(',').map((s) => s.trim());
-        } else {
-          // Handle boolean values
-          if (decodedValue === 'true') {
-            callbackData[key] = true;
-          } else if (decodedValue === 'false') {
-            callbackData[key] = false;
-          } else {
-            callbackData[key] = decodedValue;
-          }
-        }
-      });
-
-      if (urlParams.size >= 0) {
-        return false;
-      }
 
       // Handle based on callback code
       switch (callbackData.code) {
@@ -178,12 +168,10 @@ export const useOAuthSignup = (): UseOAuthSignupReturn => {
         }
       }
     } catch (error) {
-      const errorMessage = handleError(error, 'Failed to process OAuth callback');
+      handleError(error, 'Failed to process OAuth callback');
       console.error('OAuth callback processing error:', error);
       return false;
     } finally {
-      processingCallbackRef.current = false;
-
       // Clean up URL parameters
       const url = new URL(window.location.href);
       url.search = '';
@@ -306,9 +294,6 @@ export const useOAuthSignup = (): UseOAuthSignupReturn => {
       error: null,
     }));
 
-    // Reset processing flag for retry
-    processingCallbackRef.current = false;
-
     // Retry the previous signup attempt
     return startSignup(state.provider, lastCallbackUrlRef.current);
   }, [state.retryCount, state.lastAttemptTimestamp, state.provider, startSignup, safeSetState]);
@@ -344,7 +329,6 @@ export const useOAuthSignup = (): UseOAuthSignupReturn => {
 
   const reset = useCallback(() => {
     lastCallbackUrlRef.current = null;
-    processingCallbackRef.current = false;
     setState(INITIAL_STATE);
   }, []);
 

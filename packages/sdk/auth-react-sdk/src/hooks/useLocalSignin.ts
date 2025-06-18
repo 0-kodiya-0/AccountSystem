@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { useAuthService } from '../context/ServicesProvider';
 import { LocalLoginRequest } from '../types';

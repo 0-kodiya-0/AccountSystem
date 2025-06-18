@@ -85,7 +85,6 @@ export const useLocalSignup = (): UseLocalSignupReturn => {
 
   // Refs for cleanup and state tracking
   const phaseRef = useRef<SignupPhase>('idle');
-  const processingTokenRef = useRef<string | null>(null);
 
   // Update phase ref when state changes
   useEffect(() => {
@@ -125,19 +124,11 @@ export const useLocalSignup = (): UseLocalSignupReturn => {
       return false;
     }
 
-    // Prevent double processing of the same token
-    if (processingTokenRef.current === tokenFromUrl) {
-      return false;
-    }
-
     // Check current phase using ref to avoid stale closure
     const currentPhase = phaseRef.current;
     if (currentPhase === 'email_verified' || currentPhase === 'email_verifying') {
       return false;
     }
-
-    // Mark token as being processed
-    processingTokenRef.current = tokenFromUrl;
 
     try {
       safeSetState((prev) => ({
@@ -159,11 +150,6 @@ export const useLocalSignup = (): UseLocalSignupReturn => {
           error: null,
         }));
 
-        // Clean up URL without page reload
-        const url = new URL(window.location.href);
-        url.searchParams.delete('token');
-        window.history.replaceState({}, '', url.toString());
-
         return true;
       } else {
         throw new Error('Email verification failed - no profile token received');
@@ -172,8 +158,10 @@ export const useLocalSignup = (): UseLocalSignupReturn => {
       handleError(error, 'Email verification failed');
       return false;
     } finally {
-      // Clear processing flag
-      processingTokenRef.current = null;
+      // Clean up URL without page reload
+      const url = new URL(window.location.href);
+      url.searchParams.delete('token');
+      window.history.replaceState({}, '', url.toString());
     }
   }, [authService, handleError, safeSetState]);
 
@@ -376,9 +364,6 @@ export const useLocalSignup = (): UseLocalSignupReturn => {
       error: null,
     }));
 
-    // Clear processing flag to allow retry
-    processingTokenRef.current = null;
-
     const success = await extractAndVerifyToken();
     return {
       success,
@@ -392,7 +377,6 @@ export const useLocalSignup = (): UseLocalSignupReturn => {
   }, [safeSetState]);
 
   const reset = useCallback(() => {
-    processingTokenRef.current = null;
     setState(INITIAL_STATE);
   }, []);
 
