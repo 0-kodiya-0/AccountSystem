@@ -2,7 +2,9 @@
 
 import React from 'react';
 import { ServicesProvider } from '../../../sdk/auth-react-sdk/src';
-import { authClient } from '@/lib/auth';
+import { getEnvironmentConfig } from '@/lib/utils';
+
+const config = getEnvironmentConfig();
 
 interface AuthProviderProps {
   children: React.ReactNode;
@@ -13,7 +15,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     <ServicesProvider
       config={{
         sdkConfig: {
-          backendUrl: authClient.getRedirectBaseUrl(),
+          backendUrl: `${config.backendUrl}${config.proxyPath}`,
           timeout: 30000,
           withCredentials: true,
         },

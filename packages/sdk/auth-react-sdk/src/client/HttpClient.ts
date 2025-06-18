@@ -62,17 +62,4 @@ export class HttpClient {
   async delete<T>(endpoint: string, data?: any): Promise<T> {
     return this.request<T>('DELETE', endpoint, data);
   }
-
-  /**
-   * Get the redirect URL for OAuth and token operations
-   * Uses proxyPath if provided, otherwise uses baseURL
-   */
-  getRedirectBaseUrl(): string {
-    if (this.proxyPath) {
-      // Use current origin + proxy path
-      return `${window.location.origin}${this.proxyPath}`;
-    }
-    // Fall back to configured baseURL
-    return window.location.origin;
-  }
 }
