@@ -1,6 +1,5 @@
 import { asyncHandler } from '../../utils/response';
 import { JsonSuccess, BadRequestError, ApiErrorCode, Redirect } from '../../types/response.types';
-import { ValidationUtils } from '../../utils/validation';
 import { extractAccessToken, extractRefreshToken } from '../session/session.utils';
 import { AccountDocument } from '../account/Account.model';
 import * as TokenService from './Token.service';
@@ -81,8 +80,6 @@ export const refreshAccessToken = asyncHandler(async (req, res, next) => {
   if (!redirectUrl) {
     throw new BadRequestError('Missing redirectUrl query parameter', 400, ApiErrorCode.MISSING_DATA);
   }
-
-  ValidationUtils.validateUrl(redirectUrl as string, 'Redirect URL');
 
   next(new Redirect(result, redirectUrl as string));
 });

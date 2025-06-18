@@ -147,7 +147,7 @@ export const validateTokenAccess = asyncHandler(async (req, res, next) => {
         },
         refreshPath,
         302,
-        `${getProxyUrl()}${getBaseUrl()}/${req.originalUrl}`, // Pass original URL for redirect after refresh
+        `${getProxyUrl()}${getBaseUrl()}${req.originalUrl}`, // Pass original URL for redirect after refresh
       );
     }
   }
