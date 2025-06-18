@@ -21,6 +21,7 @@ authNotRequiredRouter.post('/login', LocalAuthController.login);
 
 // Password reset routes
 authNotRequiredRouter.post('/reset-password-request', LocalAuthController.requestPasswordReset);
+authNotRequiredRouter.post('/verify-password-request', LocalAuthController.verifyPasswordResetRequest);
 authNotRequiredRouter.post('/reset-password', LocalAuthController.resetPassword);
 
 /**

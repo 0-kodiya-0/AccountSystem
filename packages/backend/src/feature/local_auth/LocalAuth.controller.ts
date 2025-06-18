@@ -221,6 +221,23 @@ export const requestPasswordReset = asyncHandler(async (req, res, next) => {
   );
 });
 
+export const verifyPasswordResetRequest = asyncHandler(async (req, res, next) => {
+  const { token } = req.body;
+
+  if (!token) {
+    throw new BadRequestError('Token is required', 400, ApiErrorCode.MISSING_DATA);
+  }
+
+  const result = await LocalAuthService.verifyPasswordResetRequest({ token });
+
+  next(
+    new JsonSuccess({
+      ...result,
+      message: 'If your email is registered, you will receive instructions to reset your password.',
+    }),
+  );
+});
+
 /**
  * Reset password with token - now uses cache
  */

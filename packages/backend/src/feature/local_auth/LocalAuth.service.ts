@@ -29,6 +29,8 @@ import {
   LocalAuthRequest,
   PasswordChangeRequest,
   PasswordResetRequest,
+  PasswordResetVerificationRequest,
+  PasswordResetVerificationResponse,
 } from './LocalAuth.types';
 import { saveTwoFactorLoginToken } from '../twofa/TwoFA.service';
 
@@ -384,6 +386,47 @@ export async function requestPasswordReset(data: PasswordResetRequest): Promise<
       ApiErrorCode.SERVER_ERROR,
     );
   }
+}
+
+export async function verifyPasswordResetRequest(
+  data: PasswordResetVerificationRequest,
+): Promise<PasswordResetVerificationResponse> {
+  ValidationUtils.validateRequiredFields(data, ['token']);
+
+  // Get token from cache
+  const tokenData = getPasswordResetToken(data.token);
+
+  if (!tokenData) {
+    throw new ValidationError('Password reset token is invalid or has expired', 400, ApiErrorCode.TOKEN_INVALID);
+  }
+
+  // Verify token hasn't expired
+  const expiresAt = new Date(tokenData.expiresAt).getTime();
+  const currentTime = Date.now();
+  if (expiresAt < currentTime) {
+    removePasswordResetToken(data.token);
+    throw new ValidationError('Password reset token has expired', 400, ApiErrorCode.TOKEN_EXPIRED);
+  }
+
+  // Cache the new reset token
+  const resetToken = savePasswordResetToken(tokenData.accountId, tokenData.email);
+
+  // Optional: Remove the verification token since it's been used
+  removePasswordResetToken(data.token);
+
+  // Log the verification for security audit
+  logger.info('Password reset token verified successfully', {
+    accountId: tokenData.accountId,
+    email: tokenData.email,
+    timestamp: currentTime,
+  });
+
+  return {
+    success: true,
+    message: 'Token verified successfully. You can now reset your password.',
+    resetToken: resetToken,
+    expiresAt: tokenData.expiresAt,
+  };
 }
 
 /**

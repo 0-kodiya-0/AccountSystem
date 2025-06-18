@@ -13,6 +13,17 @@ export interface PasswordResetRequest {
   callbackUrl: string; // NEW: Required callback URL for password reset
 }
 
+export interface PasswordResetVerificationRequest {
+  token: string;
+}
+
+export interface PasswordResetVerificationResponse {
+  success: boolean;
+  message: string;
+  resetToken: string; // New token for the actual password reset
+  expiresAt: string; // Timestamp when the reset token expires
+}
+
 export interface EmailVerificationRequest {
   email: string;
   callbackUrl: string; // NEW: Required callback URL for email verification
