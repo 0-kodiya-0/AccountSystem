@@ -8,7 +8,7 @@ import { validateTokenOwnership } from './Token.jwt';
 
 /**
  * Get access token information for any account type
- * Route: GET /:accountId/tokens/access
+ * Route: GET /:accountId/tokens/info/access
  */
 export const getAccessTokenInfo = asyncHandler(async (req, res, next) => {
   const accountId = req.params.accountId;
@@ -35,7 +35,7 @@ export const getAccessTokenInfo = asyncHandler(async (req, res, next) => {
 
 /**
  * Get refresh token information for any account type
- * Route: GET /:accountId/tokens/refresh
+ * Route: GET /:accountId/tokens/info/refresh
  */
 export const getRefreshTokenInfo = asyncHandler(async (req, res, next) => {
   const accountId = req.params.accountId;
@@ -66,7 +66,6 @@ export const getRefreshTokenInfo = asyncHandler(async (req, res, next) => {
  */
 export const refreshAccessToken = asyncHandler(async (req, res, next) => {
   const accountId = req.params.accountId;
-  const account = req.account as AccountDocument;
   const { redirectUrl } = req.query;
 
   // Extract refresh token
@@ -100,12 +99,12 @@ export const revokeTokens = asyncHandler(async (req, res, next) => {
   const accessToken = req.accessToken;
   const refreshToken = req.refreshToken;
 
-  if (!accessToken || !refreshToken) {
+  if (!accessToken && !refreshToken) {
     throw new BadRequestError('Access and refresh tokens are required', 400, ApiErrorCode.TOKEN_INVALID);
   }
 
   // Use centralized revocation logic
-  const result = await TokenService.revokeTokens(accountId, account.accountType, accessToken, refreshToken, res);
+  const result = await TokenService.revokeTokens(req, res, accountId, account.accountType, accessToken, refreshToken);
 
   next(new JsonSuccess(result, undefined, 'Tokens revoked successfully'));
 });
@@ -134,33 +133,4 @@ export const validateToken = asyncHandler(async (req, res, next) => {
       belongsToAccount: isOwner,
     }),
   );
-});
-
-/**
- * Get comprehensive token status for account
- * Route: GET /:accountId/tokens/status
- */
-export const getTokenStatus = asyncHandler(async (req, res, next) => {
-  const accountId = req.params.accountId;
-  const account = req.account as AccountDocument;
-
-  const accessToken = extractAccessToken(req, accountId);
-  const refreshToken = extractRefreshToken(req, accountId);
-
-  const response: any = {
-    accountId,
-    accountType: account.accountType,
-    hasAccessToken: !!accessToken,
-    hasRefreshToken: !!refreshToken,
-  };
-
-  if (accessToken) {
-    response.accessToken = TokenService.getTokenInfo(accessToken, false);
-  }
-
-  if (refreshToken) {
-    response.refreshToken = TokenService.getTokenInfo(refreshToken, true);
-  }
-
-  next(new JsonSuccess(response));
 });

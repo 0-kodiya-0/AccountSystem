@@ -45,19 +45,17 @@ export interface TokenInfo {
   timeRemaining?: number;
   accountId?: string;
   error?: string;
-  // OAuth specific
-  oauthAccessToken?: string;
-  oauthRefreshToken?: string;
 }
 
 export interface RefreshTokenResult {
   accessToken: string;
   expiresIn: number;
-  refreshToken?: string;
 }
 
 export interface TokenRevocationResult {
-  accessTokenRevoked: boolean;
-  refreshTokenRevoked: boolean;
+  totalTokens: number;
+  successfulRevocations: number;
+  failedRevocations: number;
+  errors?: string[];
   message?: string;
 }

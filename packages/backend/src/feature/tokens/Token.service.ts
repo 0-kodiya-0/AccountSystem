@@ -47,12 +47,6 @@ export function getTokenInfo(token: string, isRefreshToken: boolean = false): To
       accountId: result.accountId,
     };
 
-    // Add OAuth specific fields
-    if (result.accountType === AccountType.OAuth) {
-      tokenInfo.oauthAccessToken = result.oauthAccessToken;
-      tokenInfo.oauthRefreshToken = result.oauthRefreshToken;
-    }
-
     return tokenInfo;
   } catch (error) {
     return {
@@ -109,7 +103,7 @@ export async function refreshAccessToken(
       throw new BadRequestError('Unsupported account type', 400, ApiErrorCode.INVALID_REQUEST);
     }
   } catch {
-    clearSession(res, accountId);
+    clearSession(req, res, accountId);
     throw new BadRequestError(
       'Refresh token expired or invalid. Please sign in again.',
       401,
@@ -167,26 +161,32 @@ async function refreshOAuthAccessToken(
  * Revoke tokens based on account type
  */
 export async function revokeTokens(
+  req: Request,
+  res: Response,
   accountId: string,
   accountType: AccountType,
-  accessToken: string,
-  refreshToken: string,
-  res: Response,
+  accessToken?: string,
+  refreshToken?: string,
 ): Promise<TokenRevocationResult> {
   ValidationUtils.validateObjectId(accountId, 'Account ID');
 
   if (accountType === AccountType.OAuth) {
     // For OAuth, we need to extract the actual OAuth tokens and revoke them with the provider
     try {
-      const accessResult = verifyAccessToken(accessToken);
-      const refreshResult = verifyRefreshToken(refreshToken);
+      const token = [];
+      if (accessToken) {
+        token.push(verifyAccessToken(accessToken).oauthAccessToken);
+      }
+      if (refreshToken) {
+        token.push(verifyRefreshToken(refreshToken).oauthRefreshToken);
+      }
 
-      if (!accessResult.oauthAccessToken || !refreshResult.oauthRefreshToken) {
+      if (token.length <= 0) {
         throw new AuthError('OAuth tokens not found in JWT payload', 400, ApiErrorCode.TOKEN_INVALID);
       }
 
-      const result = await revokeGoogleTokens(accessResult.oauthAccessToken, refreshResult.oauthRefreshToken);
-      clearSession(res, accountId);
+      const result = await revokeGoogleTokens(token);
+      clearSession(req, res, accountId);
 
       return {
         ...result,
@@ -194,21 +194,23 @@ export async function revokeTokens(
       };
     } catch (error) {
       logger.error('Error revoking OAuth tokens:', error);
-      clearSession(res, accountId);
+      clearSession(req, res, accountId);
 
       return {
-        accessTokenRevoked: false,
-        refreshTokenRevoked: false,
+        totalTokens: 0,
+        successfulRevocations: 0,
+        failedRevocations: 0,
         message: 'Failed to revoke OAuth tokens, but session cleared',
       };
     }
   } else {
     // For local accounts, just clear the session (no external revocation needed)
-    clearSession(res, accountId);
+    clearSession(req, res, accountId);
 
     return {
-      accessTokenRevoked: true,
-      refreshTokenRevoked: true,
+      totalTokens: 0,
+      successfulRevocations: 0,
+      failedRevocations: 0,
       message: 'Local session cleared successfully',
     };
   }

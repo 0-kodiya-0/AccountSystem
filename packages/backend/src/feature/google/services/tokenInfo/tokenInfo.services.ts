@@ -166,46 +166,54 @@ export async function refreshGoogleToken(refreshToken: string) {
 }
 
 /**
- * Revoke an access token and optionally a refresh token
- * @param accessToken The access token to revoke
- * @param refreshToken Optional refresh token to revoke
+ * Revoke multiple Google OAuth tokens
+ * @param tokens Array of tokens to revoke (can be access or refresh tokens)
  */
-export async function revokeGoogleTokens(accessToken: string, refreshToken?: string) {
-  ValidationUtils.validateAccessToken(accessToken, 'revokeTokens');
-
-  if (refreshToken) {
-    ValidationUtils.validateRefreshToken(refreshToken, 'revokeTokens');
+export async function revokeGoogleTokens(tokens: (string | undefined)[]) {
+  if (!tokens || tokens.length === 0) {
+    throw new Error('No tokens provided for revocation');
   }
 
   try {
     const oAuth2Client = new google.auth.OAuth2(getGoogleClientId(), getGoogleClientSecret());
 
     const results = {
-      accessTokenRevoked: false,
-      refreshTokenRevoked: false,
+      totalTokens: tokens.length,
+      successfulRevocations: 0,
+      failedRevocations: 0,
+      errors: [] as string[],
     };
 
-    // Try to revoke access token
-    try {
-      await oAuth2Client.revokeToken(accessToken.trim());
-      results.accessTokenRevoked = true;
-    } catch (error) {
-      logger.error('Error revoking access token:', error);
-    }
+    // Revoke each token
+    for (const token of tokens) {
+      if (!token || !token.trim()) {
+        results.failedRevocations++;
+        results.errors.push('Empty or invalid token provided');
+        continue;
+      }
 
-    // Try to revoke refresh token if provided
-    if (refreshToken) {
       try {
-        await oAuth2Client.revokeToken(refreshToken.trim());
-        results.refreshTokenRevoked = true;
+        await oAuth2Client.revokeToken(token.trim());
+        results.successfulRevocations++;
+        logger.info(`Successfully revoked token: ${token.substring(0, 10)}...`);
       } catch (error) {
-        logger.error('Error revoking refresh token:', error);
+        results.failedRevocations++;
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        results.errors.push(`Failed to revoke token ${token.substring(0, 10)}...: ${errorMessage}`);
+        logger.error(`Error revoking token ${token.substring(0, 10)}...:`, error);
       }
     }
 
-    // At least one token should be revoked
-    if (!results.accessTokenRevoked && !results.refreshTokenRevoked) {
-      throw new Error('Failed to revoke any tokens');
+    // Log summary
+    logger.info(
+      `Token revocation completed: ${results.successfulRevocations}/${results.totalTokens} tokens successfully revoked`,
+    );
+
+    // Throw error if no tokens were successfully revoked
+    if (results.successfulRevocations === 0) {
+      throw new Error(
+        `Failed to revoke any of the ${tokens.length} provided tokens. Errors: ${results.errors.join(', ')}`,
+      );
     }
 
     return results;
