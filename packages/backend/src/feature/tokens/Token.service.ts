@@ -3,7 +3,7 @@ import { AccountType } from '../account/Account.types';
 import { ValidationUtils } from '../../utils/validation';
 import { BadRequestError, AuthError, ApiErrorCode } from '../../types/response.types';
 import { refreshGoogleToken, revokeGoogleTokens } from '../google/services/tokenInfo/tokenInfo.services';
-import { setAccessTokenCookie, clearSession } from '../session/session.utils';
+import { setAccessTokenCookie, clearAccountWithSession } from '../session/session.utils';
 import { logger } from '../../utils/logger';
 import { TokenInfo, RefreshTokenResult, TokenRevocationResult } from './Token.types';
 import {
@@ -103,7 +103,7 @@ export async function refreshAccessToken(
       throw new BadRequestError('Unsupported account type', 400, ApiErrorCode.INVALID_REQUEST);
     }
   } catch {
-    clearSession(req, res, accountId);
+    clearAccountWithSession(req, res, accountId);
     throw new BadRequestError(
       'Refresh token expired or invalid. Please sign in again.',
       401,
@@ -186,7 +186,7 @@ export async function revokeTokens(
       }
 
       const result = await revokeGoogleTokens(token);
-      clearSession(req, res, accountId);
+      clearAccountWithSession(req, res, accountId);
 
       return {
         ...result,
@@ -194,7 +194,7 @@ export async function revokeTokens(
       };
     } catch (error) {
       logger.error('Error revoking OAuth tokens:', error);
-      clearSession(req, res, accountId);
+      clearAccountWithSession(req, res, accountId);
 
       return {
         totalTokens: 0,
@@ -205,7 +205,7 @@ export async function revokeTokens(
     }
   } else {
     // For local accounts, just clear the session (no external revocation needed)
-    clearSession(req, res, accountId);
+    clearAccountWithSession(req, res, accountId);
 
     return {
       totalTokens: 0,

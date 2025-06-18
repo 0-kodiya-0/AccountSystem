@@ -3,11 +3,12 @@ import { ApiErrorCode, BadRequestError, NotFoundError, Redirect, ServerError } f
 import db from '../config/db';
 import { asyncHandler } from '../utils/response';
 import { validateAccount } from '../feature/account/Account.validation';
-import { extractAccessToken, extractRefreshToken } from '../feature/session/session.utils';
+import { clearAccountWithSession, extractAccessToken, extractRefreshToken } from '../feature/session/session.utils';
 import { AccountType } from '../feature/account/Account.types';
 import { AccountDocument } from '../feature/account/Account.model';
 import { ValidationUtils } from '../utils/validation';
 import { verifyAccessToken, verifyRefreshToken } from '../feature/tokens';
+import { getBaseUrl, getProxyUrl } from '../config/env.config';
 
 /**
  * Middleware to verify token from cookies and add accountId to request
@@ -75,6 +76,7 @@ export const validateTokenAccess = asyncHandler(async (req, res, next) => {
   try {
     if (!token) {
       if (isRefreshTokenPath) {
+        clearAccountWithSession(req, res, accountId);
         return next(new BadRequestError('Missing refresh token'));
       } else {
         throw new Error('Token not found');
@@ -145,7 +147,7 @@ export const validateTokenAccess = asyncHandler(async (req, res, next) => {
         },
         refreshPath,
         302,
-        `./${req.originalUrl}`, // Pass original URL for redirect after refresh
+        `${getProxyUrl()}${getBaseUrl()}/${req.originalUrl}`, // Pass original URL for redirect after refresh
       );
     }
   }
