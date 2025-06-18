@@ -34,6 +34,7 @@ export default function SignupPage() {
   const {
     start: startLocalSignup,
     complete: completeLocalSignup,
+    cancel: cancelLocal,
     phase: localPhase,
     loading: localLoading,
     error: localError,
@@ -154,6 +155,21 @@ export default function SignupPage() {
     });
   };
 
+  // Cancel email verification and reset
+  const handleCancelEmailVerification = async () => {
+    if (formData.email && isEmailSent) {
+      try {
+        // Cancel the signup process on the backend
+        await cancelLocal();
+      } catch (error) {
+        console.error('Failed to cancel email verification:', error);
+        // Continue with reset even if cancellation fails
+      }
+    }
+    // Reset all states
+    resetAll();
+  };
+
   const renderEmailForm = () => (
     <form onSubmit={handleEmailSignup} className="space-y-4">
       <div className="space-y-2">
@@ -190,7 +206,7 @@ export default function SignupPage() {
           Click the link in the email to continue creating your account.
         </p>
       </div>
-      <Button variant="outline" onClick={resetAll}>
+      <Button variant="outline" onClick={handleCancelEmailVerification} disabled={isLoading}>
         Use a different email
       </Button>
     </div>
