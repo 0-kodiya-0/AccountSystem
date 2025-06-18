@@ -682,7 +682,6 @@ export enum CallbackCode {
   OAUTH_PERMISSION_SUCCESS = 'oauth_permission_success',
 
   // Two-factor authentication required codes
-  LOCAL_SIGNIN_REQUIRES_2FA = 'local_signin_requires_2fa',
   OAUTH_SIGNIN_REQUIRES_2FA = 'oauth_signin_requires_2fa',
 
   // Error codes
