@@ -1,4 +1,4 @@
-import React, { JSX, useEffect } from 'react';
+import React, { JSX } from 'react';
 import { useSession } from '../hooks/useSession';
 import DefaultLoadingSpinner from './DefaultLoadingSpinner';
 import DefaultGlobalErrorDisplay from './DefaultGlobalErrorDisplay';
@@ -97,11 +97,15 @@ export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
     error: sessionError,
     isAuthenticated,
     hasAccount,
+    isIdle,
     isLoading: sessionLoading,
   } = useSession({ autoLoad: autoLoadSession });
 
+  // FIXED: Proper children check using React.Children.count
+  const hasChildren = React.Children.count(children) > 0;
+
   // Session is initializing (no data and loading)
-  if (!sessionData && sessionLoading) {
+  if (isIdle) {
     if (LoadingComponent) {
       return <LoadingComponent reason="Initializing session" loading={true} />;
     }
@@ -141,110 +145,18 @@ export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
   }
 
   // Session is ready - handle auth logic
-  if (sessionData) {
-    // Handle guest pages (login, signup, forgot password)
-    if (allowGuests) {
-      if (isAuthenticated && !children) {
-        if (redirectOnAuthenticated) {
-          // Authenticated user on guest page - redirect them away (only if no children)
-          if (RedirectingComponent) {
-            return (
-              <RedirectingComponent
-                destination={redirectOnAuthenticated}
-                delay={redirectDelay}
-                reason="User already authenticated"
-              />
-            );
-          }
-
-          if (typeof window !== 'undefined') {
-            window.location.href = redirectOnAuthenticated;
-          }
-
-          return <DefaultLoadingSpinner message="Redirecting..." />;
-        }
-
-        console.error('redirectOnAuthenticated url is needed for guest page with authenticated user');
-        return (
-          <DefaultGlobalErrorDisplay
-            error="Configuration error: redirectOnAuthenticated is required"
-            retry={() => window.location.reload()}
-          />
-        );
-      }
-
-      // Allow guests (authenticated or not) to see the page
-      return <>{children}</>;
-    }
-
-    // Handle protected pages (allowGuests: false)
-    if (!allowGuests) {
-      // User not authenticated
-      if (!isAuthenticated) {
-        if (redirectToLogin) {
-          if (RedirectingComponent) {
-            return (
-              <RedirectingComponent
-                destination={redirectToLogin}
-                delay={redirectDelay}
-                reason="User not authenticated"
-              />
-            );
-          }
-
-          if (typeof window !== 'undefined') {
-            window.location.href = redirectToLogin;
-          }
-
-          return <DefaultLoadingSpinner message="Redirecting to login..." />;
-        }
-
-        console.error('redirectToLogin url is needed for protected page');
-        return (
-          <DefaultGlobalErrorDisplay
-            error="Configuration error: redirectToLogin is required"
-            retry={() => window.location.reload()}
-          />
-        );
-      }
-
-      // User authenticated but account selection required
-      if (requireAccount && !hasAccount) {
-        if (redirectToAccountSelection) {
-          if (RedirectingComponent) {
-            return (
-              <RedirectingComponent
-                destination={redirectToAccountSelection}
-                delay={redirectDelay}
-                reason="Account selection required"
-              />
-            );
-          }
-
-          if (typeof window !== 'undefined') {
-            window.location.href = redirectToAccountSelection;
-          }
-
-          return <DefaultLoadingSpinner message="Redirecting to account selection..." />;
-        }
-
-        console.error('redirectToAccountSelection url is needed when requireAccount is true');
-        return (
-          <DefaultGlobalErrorDisplay
-            error="Configuration error: redirectToAccountSelection is required"
-            retry={() => window.location.reload()}
-          />
-        );
-      }
-
-      // Handle redirect-only pages (no children) - redirect on success
-      if (!children && redirectOnAuthenticated) {
+  // Handle guest pages (login, signup, forgot password)
+  if (allowGuests) {
+    // FIXED: Use hasChildren instead of !children
+    if (isAuthenticated && !hasChildren) {
+      if (redirectOnAuthenticated) {
+        // Authenticated user on guest page - redirect them away (only if no children)
         if (RedirectingComponent) {
           return (
             <RedirectingComponent
               destination={redirectOnAuthenticated}
               delay={redirectDelay}
-              reason="Authentication successful"
+              reason="User already authenticated"
             />
           );
         }
@@ -256,9 +168,96 @@ export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
         return <DefaultLoadingSpinner message="Redirecting..." />;
       }
 
-      // All checks passed - show protected content
-      return <>{children}</>;
+      console.error('redirectOnAuthenticated url is needed for guest page with authenticated user');
+      return (
+        <DefaultGlobalErrorDisplay
+          error="Configuration error: redirectOnAuthenticated is required"
+          retry={() => window.location.reload()}
+        />
+      );
     }
+
+    // Allow guests (authenticated or not) to see the page
+    return <>{children}</>;
+  }
+
+  // Handle protected pages (allowGuests: false)
+  if (!allowGuests) {
+    // User not authenticated
+    if (!isAuthenticated) {
+      if (redirectToLogin) {
+        if (RedirectingComponent) {
+          return (
+            <RedirectingComponent destination={redirectToLogin} delay={redirectDelay} reason="User not authenticated" />
+          );
+        }
+
+        if (typeof window !== 'undefined') {
+          window.location.href = redirectToLogin;
+        }
+
+        return <DefaultLoadingSpinner message="Redirecting to login..." />;
+      }
+
+      console.error('redirectToLogin url is needed for protected page');
+      return (
+        <DefaultGlobalErrorDisplay
+          error="Configuration error: redirectToLogin is required"
+          retry={() => window.location.reload()}
+        />
+      );
+    }
+
+    // User authenticated but account selection required
+    if (requireAccount && !hasAccount) {
+      if (redirectToAccountSelection) {
+        if (RedirectingComponent) {
+          return (
+            <RedirectingComponent
+              destination={redirectToAccountSelection}
+              delay={redirectDelay}
+              reason="Account selection required"
+            />
+          );
+        }
+
+        if (typeof window !== 'undefined') {
+          window.location.href = redirectToAccountSelection;
+        }
+
+        return <DefaultLoadingSpinner message="Redirecting to account selection..." />;
+      }
+
+      console.error('redirectToAccountSelection url is needed when requireAccount is true');
+      return (
+        <DefaultGlobalErrorDisplay
+          error="Configuration error: redirectToAccountSelection is required"
+          retry={() => window.location.reload()}
+        />
+      );
+    }
+
+    // FIXED: Handle redirect-only pages (no children) - use hasChildren instead of !children
+    if (!hasChildren && redirectOnAuthenticated) {
+      if (RedirectingComponent) {
+        return (
+          <RedirectingComponent
+            destination={redirectOnAuthenticated}
+            delay={redirectDelay}
+            reason="Authentication successful"
+          />
+        );
+      }
+
+      if (typeof window !== 'undefined') {
+        window.location.href = redirectOnAuthenticated;
+      }
+
+      return <DefaultLoadingSpinner message="Redirecting..." />;
+    }
+
+    // All checks passed - show protected content
+    return <>{children}</>;
   }
 
   // Fallback - unexpected state
