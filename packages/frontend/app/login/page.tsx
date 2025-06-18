@@ -208,7 +208,7 @@ export default function LoginPage() {
 
       {currentError && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{currentError}</div>}
 
-      <Button type="submit" className="w-full" loading={isLoading}>
+      <Button type="submit" className="w-full" loading={localLoading}>
         Sign In
       </Button>
     </form>
