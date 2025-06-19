@@ -6,18 +6,21 @@ import { Plus, LogOut, Settings, ArrowRight } from 'lucide-react';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { AuthGuard, useSession, useAccount, useAuthService } from '../../../sdk/auth-react-sdk/src';
+import { AuthGuard, useSession, useAuthService } from '../../../sdk/auth-react-sdk/src';
 import { LoadingSpinner } from '@/components/auth/loading-spinner';
 import { ErrorDisplay } from '@/components/auth/error-display';
 import { RedirectingDisplay } from '@/components/auth/redirecting-display';
 import QuickStats from '@/components/accounts-switch/quick-stats';
 import AccountCard from '@/components/accounts-switch/account-card';
 
-// Main Component
 export default function AccountsPage() {
   const router = useRouter();
-  const { accounts, currentAccountId, operations: sessionOps, isAuthenticated } = useSession();
-  const currentAccount = useAccount();
+  const {
+    accounts,
+    currentAccountId,
+    operations: sessionOps,
+    isAuthenticated,
+  } = useSession({ autoLoadSessionAccounts: true });
   const authService = useAuthService();
 
   const handleSwitchAccount = async (accountId: string) => {
@@ -55,13 +58,8 @@ export default function AccountsPage() {
     router.push('/login?mode=add');
   };
 
-  // Loading state
-  if (!isAuthenticated) {
-    return <LoadingSpinner reason="Loading accounts..." />;
-  }
-
-  // Empty state
-  if (accounts.length === 0) {
+  // Show empty state if no accounts
+  if (isAuthenticated && accounts.length === 0) {
     return (
       <AuthGuard
         allowGuests={false}
@@ -145,7 +143,7 @@ export default function AccountsPage() {
             <QuickStats accounts={accounts} />
 
             {/* Current Account Highlight */}
-            {currentAccount?.data && (
+            {currentAccountId && (
               <Card className="border-primary/20 bg-primary/5">
                 <CardHeader>
                   <CardTitle className="flex items-center space-x-2">
@@ -155,13 +153,18 @@ export default function AccountsPage() {
                   <CardDescription>You are currently signed in with this account</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <AccountCard
-                    account={currentAccount.data}
-                    isCurrent={true}
-                    onSwitch={handleSwitchAccount}
-                    onLogout={handleLogoutAccount}
-                    onSettings={handleAccountSettings}
-                  />
+                  {accounts
+                    .filter((account) => account.id === currentAccountId)
+                    .map((account) => (
+                      <AccountCard
+                        key={account.id}
+                        account={account}
+                        isCurrent={true}
+                        onSwitch={handleSwitchAccount}
+                        onLogout={handleLogoutAccount}
+                        onSettings={handleAccountSettings}
+                      />
+                    ))}
                 </CardContent>
               </Card>
             )}
@@ -210,8 +213,8 @@ export default function AccountsPage() {
                   <Button
                     variant="outline"
                     className="justify-start h-auto p-4 space-x-3"
-                    onClick={() => currentAccount && handleAccountSettings(currentAccount.id)}
-                    disabled={!currentAccount}
+                    onClick={() => currentAccountId && handleAccountSettings(currentAccountId)}
+                    disabled={!currentAccountId}
                   >
                     <div className="w-10 h-10 bg-blue-500/10 rounded-full flex items-center justify-center">
                       <Settings className="w-5 h-5 text-blue-600" />
