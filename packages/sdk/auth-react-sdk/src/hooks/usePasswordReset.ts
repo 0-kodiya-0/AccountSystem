@@ -27,11 +27,17 @@ interface PasswordResetState {
   completionMessage: string | null;
 }
 
+interface UsePasswordResetOptions {
+  autoProcessToken?: boolean; // Whether to auto-process reset tokens from URL (default: true)
+}
+
 interface UsePasswordResetReturn {
   // Main actions
   requestReset: (data: PasswordResetRequest) => Promise<{ success: boolean; message?: string }>;
   resetPassword: (data: ResetPasswordRequest) => Promise<{ success: boolean; message?: string }>;
   retry: () => Promise<{ success: boolean; message?: string }>;
+
+  processTokenFromUrl: () => Promise<{ success: boolean; message?: string }>;
 
   // State
   phase: PasswordResetPhase;
@@ -83,7 +89,8 @@ const INITIAL_STATE: PasswordResetState = {
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_COOLDOWN_MS = 5000; // 5 seconds
 
-export const usePasswordReset = (): UsePasswordResetReturn => {
+export const usePasswordReset = (options: UsePasswordResetOptions = {}): UsePasswordResetReturn => {
+  const { autoProcessToken = true } = options;
   const authService = useAuthService();
   const [state, setState] = useState<PasswordResetState>(INITIAL_STATE);
 
@@ -170,10 +177,20 @@ export const usePasswordReset = (): UsePasswordResetReturn => {
     }
   }, [handleError, safeSetState]);
 
-  // Auto-extract token on mount
+  const processTokenFromUrl = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
+    const success = await extractResetToken();
+    return {
+      success,
+      message: success ? 'Reset token verified successfully' : 'No valid reset token found',
+    };
+  }, [extractResetToken]);
+
+  // Update useEffect to respect autoProcessToken option
   useEffect(() => {
-    extractResetToken();
-  }, []); // Only run on mount
+    if (autoProcessToken) {
+      extractResetToken();
+    }
+  }, [autoProcessToken]); // Updated dependency array
 
   // Request password reset
   const requestReset = useCallback(
@@ -449,6 +466,8 @@ export const usePasswordReset = (): UsePasswordResetReturn => {
     requestReset,
     resetPassword,
     retry,
+
+    processTokenFromUrl,
 
     // Core state
     phase: state.phase,

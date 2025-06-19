@@ -27,12 +27,17 @@ interface SignupState {
   lastAttemptTimestamp: number | null;
 }
 
+interface UseLocalSignupOptions {
+  autoProcessToken?: boolean; // Whether to auto-process tokens from URL (default: true)
+}
+
 interface UseLocalSignupReturn {
   // Enhanced actions with better return types
   start: (data: RequestEmailVerificationRequest) => Promise<{ success: boolean; message?: string }>;
   cancel: () => Promise<{ success: boolean; message?: string }>;
   complete: (data: CompleteProfileRequest) => Promise<{ success: boolean; accountId?: string; message?: string }>;
   retry: () => Promise<{ success: boolean; message?: string }>;
+  processTokenFromUrl: () => Promise<{ success: boolean; message?: string }>;
 
   // Computed state for better UX
   phase: SignupPhase;
@@ -79,17 +84,10 @@ const INITIAL_STATE: SignupState = {
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_COOLDOWN_MS = 5000; // 5 seconds
 
-export const useLocalSignup = (): UseLocalSignupReturn => {
+export const useLocalSignup = (options: UseLocalSignupOptions = {}): UseLocalSignupReturn => {
+  const { autoProcessToken = true } = options;
   const authService = useAuthService();
   const [state, setState] = useState<SignupState>(INITIAL_STATE);
-
-  // Refs for cleanup and state tracking
-  const phaseRef = useRef<SignupPhase>('idle');
-
-  // Update phase ref when state changes
-  useEffect(() => {
-    phaseRef.current = state.phase;
-  }, [state.phase]);
 
   // Safe state update that checks if component is still mounted
   const safeSetState = useCallback((updater: (prev: SignupState) => SignupState) => {
@@ -121,12 +119,6 @@ export const useLocalSignup = (): UseLocalSignupReturn => {
 
     // Check if we should process this token
     if (!tokenFromUrl) {
-      return false;
-    }
-
-    // Check current phase using ref to avoid stale closure
-    const currentPhase = phaseRef.current;
-    if (currentPhase === 'email_verified' || currentPhase === 'email_verifying') {
       return false;
     }
 
@@ -165,11 +157,20 @@ export const useLocalSignup = (): UseLocalSignupReturn => {
     }
   }, [authService, handleError, safeSetState]);
 
+  const processTokenFromUrl = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
+    const success = await extractAndVerifyToken();
+    return {
+      success,
+      message: success ? 'Email verification successful' : 'No valid token found',
+    };
+  }, [extractAndVerifyToken]);
+
   // Auto-verify on mount only (remove dependency loop)
   useEffect(() => {
-    // Check for token only once on mount
-    extractAndVerifyToken();
-  }, []); // Empty dependency array - only run on mount
+    if (autoProcessToken) {
+      extractAndVerifyToken();
+    }
+  }, [autoProcessToken]); // Empty dependency array - only run on mount
 
   // Enhanced start function with validation
   const start = useCallback(
@@ -473,6 +474,8 @@ export const useLocalSignup = (): UseLocalSignupReturn => {
     cancel,
     complete,
     retry,
+
+    processTokenFromUrl,
 
     // Core state
     phase: state.phase,

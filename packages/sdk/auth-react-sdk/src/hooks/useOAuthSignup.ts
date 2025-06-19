@@ -19,11 +19,17 @@ interface OAuthSignupState {
   callbackMessage: string | null;
 }
 
+interface UseOAuthSignupOptions {
+  autoProcessCallback?: boolean; // Whether to auto-process OAuth callbacks (default: true)
+}
+
 interface UseOAuthSignupReturn {
   // Main actions
   startSignup: (provider: OAuthProviders, callbackUrl: string) => Promise<{ success: boolean; message?: string }>;
   getSignupUrl: (provider: OAuthProviders, callbackUrl: string) => Promise<string>;
   retry: () => Promise<{ success: boolean; message?: string }>;
+
+  processCallbackFromUrl: () => Promise<{ success: boolean; message?: string }>;
 
   // State
   phase: OAuthSignupPhase;
@@ -71,7 +77,8 @@ const INITIAL_STATE: OAuthSignupState = {
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_COOLDOWN_MS = 5000; // 5 seconds
 
-export const useOAuthSignup = (): UseOAuthSignupReturn => {
+export const useOAuthSignup = (options: UseOAuthSignupOptions = {}): UseOAuthSignupReturn => {
+  const { autoProcessCallback = true } = options;
   const authService = useAuthService();
   const [state, setState] = useState<OAuthSignupState>(INITIAL_STATE);
 
@@ -124,7 +131,7 @@ export const useOAuthSignup = (): UseOAuthSignupReturn => {
       }
     });
 
-    if (urlParams.size <= 0) {
+    if (urlParams.size <= 0 || !callbackData.code) {
       return false;
     }
 
@@ -179,10 +186,21 @@ export const useOAuthSignup = (): UseOAuthSignupReturn => {
     }
   }, [safeSetState, handleError]);
 
-  // Auto-detect and handle OAuth callback on mount
+  // Add manual callback processing to return interface
+  const processCallbackFromUrl = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
+    const success = await handleOAuthCallback();
+    return {
+      success,
+      message: success ? 'OAuth callback processed successfully' : 'No valid callback found',
+    };
+  }, [handleOAuthCallback]);
+
+  // Update useEffect to respect autoProcessCallback option
   useEffect(() => {
-    handleOAuthCallback();
-  }, []); // Only run on mount
+    if (autoProcessCallback) {
+      handleOAuthCallback();
+    }
+  }, [autoProcessCallback]); // Updated dependency array
 
   // Start OAuth signup with redirect
   const startSignup = useCallback(
@@ -406,6 +424,8 @@ export const useOAuthSignup = (): UseOAuthSignupReturn => {
     startSignup,
     getSignupUrl,
     retry,
+
+    processCallbackFromUrl,
 
     // Core state
     phase: state.phase,

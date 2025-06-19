@@ -32,12 +32,18 @@ interface OAuthSigninState {
   callbackMessage: string | null;
 }
 
+interface UseOAuthSigninOptions {
+  autoProcessCallback?: boolean; // Whether to auto-process OAuth callbacks (default: true)
+}
+
 interface UseOAuthSigninReturn {
   // Main actions
   startSignin: (provider: OAuthProviders, callbackUrl: string) => Promise<{ success: boolean; message?: string }>;
   getSigninUrl: (provider: OAuthProviders, callbackUrl: string) => Promise<string>;
   verify2FA: (token: string) => Promise<{ success: boolean; message?: string }>;
   retry: () => Promise<{ success: boolean; message?: string }>;
+
+  processCallbackFromUrl: () => Promise<{ success: boolean; message?: string }>;
 
   // State
   phase: OAuthSigninPhase;
@@ -96,7 +102,8 @@ const INITIAL_STATE: OAuthSigninState = {
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_COOLDOWN_MS = 5000; // 5 seconds
 
-export const useOAuthSignin = (): UseOAuthSigninReturn => {
+export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSigninReturn => {
+  const { autoProcessCallback = true } = options;
   const authService = useAuthService();
   const [state, setState] = useState<OAuthSigninState>(INITIAL_STATE);
 
@@ -153,7 +160,7 @@ export const useOAuthSignin = (): UseOAuthSigninReturn => {
       }
     });
 
-    if (urlParams.size <= 0) {
+    if (urlParams.size <= 0 || !callbackData.code) {
       return false;
     }
 
@@ -245,10 +252,20 @@ export const useOAuthSignin = (): UseOAuthSigninReturn => {
     }
   }, [safeSetState, handleError, storeTempToken]);
 
+  const processCallbackFromUrl = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
+    const success = await handleOAuthCallback();
+    return {
+      success,
+      message: success ? 'OAuth callback processed successfully' : 'No valid callback found',
+    };
+  }, [handleOAuthCallback]);
+
   // Auto-detect and handle OAuth callback on mount
   useEffect(() => {
-    handleOAuthCallback();
-  }, []); // Only run on mount
+    if (autoProcessCallback) {
+      handleOAuthCallback();
+    }
+  }, [autoProcessCallback]); // Only run on mount
 
   // Start OAuth signin with redirect
   const startSignin = useCallback(
@@ -541,6 +558,8 @@ export const useOAuthSignin = (): UseOAuthSigninReturn => {
     getSigninUrl,
     verify2FA,
     retry,
+
+    processCallbackFromUrl,
 
     // Core state
     phase: state.phase,
