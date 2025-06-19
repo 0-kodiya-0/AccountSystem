@@ -73,13 +73,13 @@ export const refreshAccessToken = asyncHandler(async (req, res, next) => {
     throw new BadRequestError('Refresh token not found', 400, ApiErrorCode.TOKEN_INVALID);
   }
 
-  // Use centralized refresh logic
-  const result = await TokenService.refreshAccessToken(req, res, accountId, refreshToken);
-
   // Validate and determine redirect URL
   if (!redirectUrl) {
     throw new BadRequestError('Missing redirectUrl query parameter', 400, ApiErrorCode.MISSING_DATA);
   }
+
+  // Use centralized refresh logic
+  const result = await TokenService.refreshAccessToken(req, res, accountId, refreshToken);
 
   next(new Redirect(result, redirectUrl as string));
 });
