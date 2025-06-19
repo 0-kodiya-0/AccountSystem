@@ -92,8 +92,6 @@ export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
 
   // Get session state using the new useSession hook
   const {
-    data: sessionData,
-    status: sessionStatus,
     error: sessionError,
     isAuthenticated,
     hasAccount,

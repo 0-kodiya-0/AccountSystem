@@ -1,19 +1,27 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
-import { Account, AccountSessionInfo, AccountState, LoadingState, SessionState } from '../types';
+import {
+  Account,
+  AccountSessionInfo,
+  AccountState,
+  LoadingState,
+  SessionState,
+  SessionAccount,
+  SessionAccountsState,
+} from '../types';
 import { enableMapSet } from 'immer';
 
 enableMapSet();
 
-// Main store state
+// Main store state - Updated with SessionAccountsState
 interface AppState {
   session: SessionState;
-  accounts: Record<string, AccountState>;
-  tempToken: string | null;
+  accounts: Record<string, AccountState>; // Full account data
+  sessionAccounts: SessionAccountsState; // Session accounts with their own loading state
 }
 
-// Store actions
+// Store actions - Updated session account actions
 interface AppActions {
   // Session actions
   setSessionStatus: (status: LoadingState, operation?: string) => void;
@@ -22,7 +30,7 @@ interface AppActions {
   setSessionOperation: (operation: string | null) => void;
   clearSession: () => void;
 
-  // Account actions
+  // Account actions (full account data)
   setAccountStatus: (accountId: string, status: LoadingState, operation?: string) => void;
   setAccountData: (accountId: string, data: Account) => void;
   setAccountError: (accountId: string, error: string | null) => void;
@@ -32,15 +40,24 @@ interface AppActions {
   removeAccount: (accountId: string) => void;
   clearAccountOperation: (accountId: string) => void;
 
-  // Temp token actions
-  setTempToken: (token: string) => void;
-  clearTempToken: () => void;
+  // Session accounts actions (with separate state management)
+  setSessionAccountsStatus: (status: LoadingState, operation?: string) => void;
+  setSessionAccountsData: (accounts: SessionAccount[]) => void;
+  setSessionAccountsError: (error: string | null) => void;
+  setSessionAccountData: (accountId: string, data: SessionAccount) => void;
+  updateSessionAccountData: (accountId: string, updates: Partial<SessionAccount>) => void;
+  removeSessionAccount: (accountId: string) => void;
+  clearSessionAccounts: () => void;
 
   // Getters
   getSessionState: () => SessionState;
-  getAccountState: (accountId: string) => AccountState;
+  getSessionAccountsState: () => SessionAccountsState;
+  getAccountState: (accountId: string | null) => AccountState;
+  getSessionAccount: (accountId: string) => SessionAccount | undefined;
+  getAllSessionAccounts: () => SessionAccount[];
   shouldLoadAccount: (accountId: string, maxAge?: number) => boolean;
   shouldLoadSession: (maxAge?: number) => boolean;
+  shouldLoadSessionAccounts: (maxAge?: number) => boolean;
 }
 
 // Helper functions
@@ -60,13 +77,21 @@ const createDefaultAccountState = (): AccountState => ({
   lastLoaded: null,
 });
 
+const createDefaultSessionAccountsState = (): SessionAccountsState => ({
+  data: [],
+  status: 'idle',
+  currentOperation: null,
+  error: null,
+  lastLoaded: null,
+});
+
 export const useAppStore = create<AppState & AppActions>()(
   subscribeWithSelector(
     immer((set, get) => ({
-      // Initial state
+      // Initial state - Updated sessionAccounts structure
       session: createDefaultSessionState(),
       accounts: {},
-      tempToken: null,
+      sessionAccounts: createDefaultSessionAccountsState(),
 
       // Session actions
       setSessionStatus: (status: LoadingState, operation?: string) => {
@@ -107,11 +132,11 @@ export const useAppStore = create<AppState & AppActions>()(
         set((state) => {
           state.session = createDefaultSessionState();
           state.accounts = {};
-          state.tempToken = null;
+          state.sessionAccounts = createDefaultSessionAccountsState(); // Clear session accounts with state reset
         });
       },
 
-      // Account actions
+      // Account actions (full account data)
       setAccountStatus: (accountId: string, status: LoadingState, operation?: string) => {
         set((state) => {
           if (!state.accounts[accountId]) {
@@ -135,6 +160,23 @@ export const useAppStore = create<AppState & AppActions>()(
           state.accounts[accountId].currentOperation = null;
           state.accounts[accountId].error = null;
           state.accounts[accountId].lastLoaded = Date.now();
+
+          // Also update session account data if it exists
+          const sessionAccountIndex = state.sessionAccounts.data.findIndex((acc) => acc.id === accountId);
+          if (sessionAccountIndex !== -1) {
+            state.sessionAccounts.data[sessionAccountIndex] = {
+              id: data.id,
+              accountType: data.accountType,
+              status: data.status,
+              userDetails: {
+                name: data.userDetails.name,
+                email: data.userDetails.email,
+                username: data.userDetails.username,
+                imageUrl: data.userDetails.imageUrl,
+              },
+              provider: data.provider,
+            };
+          }
         });
       },
 
@@ -168,6 +210,23 @@ export const useAppStore = create<AppState & AppActions>()(
             state.accounts[account.id].status = 'success';
             state.accounts[account.id].lastLoaded = Date.now();
             state.accounts[account.id].error = null;
+
+            // Also update session account data if it exists
+            const sessionAccountIndex = state.sessionAccounts.data.findIndex((acc) => acc.id === account.id);
+            if (sessionAccountIndex !== -1) {
+              state.sessionAccounts.data[sessionAccountIndex] = {
+                id: account.id,
+                accountType: account.accountType,
+                status: account.status,
+                userDetails: {
+                  name: account.userDetails.name,
+                  email: account.userDetails.email,
+                  username: account.userDetails.username,
+                  imageUrl: account.userDetails.imageUrl,
+                },
+                provider: account.provider,
+              };
+            }
           });
         });
       },
@@ -179,6 +238,24 @@ export const useAppStore = create<AppState & AppActions>()(
               ...state.accounts[accountId].data!,
               ...updates,
             };
+
+            // Also update session account data if relevant fields changed
+            const sessionAccountIndex = state.sessionAccounts.data.findIndex((acc) => acc.id === accountId);
+            if (sessionAccountIndex !== -1) {
+              const updatedAccount = state.accounts[accountId].data!;
+              state.sessionAccounts.data[sessionAccountIndex] = {
+                id: updatedAccount.id,
+                accountType: updatedAccount.accountType,
+                status: updatedAccount.status,
+                userDetails: {
+                  name: updatedAccount.userDetails.name,
+                  email: updatedAccount.userDetails.email,
+                  username: updatedAccount.userDetails.username,
+                  imageUrl: updatedAccount.userDetails.imageUrl,
+                },
+                provider: updatedAccount.provider,
+              };
+            }
           }
         });
       },
@@ -186,6 +263,9 @@ export const useAppStore = create<AppState & AppActions>()(
       removeAccount: (accountId: string) => {
         set((state) => {
           delete state.accounts[accountId];
+
+          // Remove from session accounts too
+          state.sessionAccounts.data = state.sessionAccounts.data.filter((acc) => acc.id !== accountId);
 
           // Update session data if it exists
           if (state.session.data) {
@@ -212,16 +292,70 @@ export const useAppStore = create<AppState & AppActions>()(
         });
       },
 
-      // Temp token actions
-      setTempToken: (token: string) => {
+      // NEW: Session accounts actions with separate state management
+      setSessionAccountsStatus: (status: LoadingState, operation?: string) => {
         set((state) => {
-          state.tempToken = token;
+          state.sessionAccounts.status = status;
+          state.sessionAccounts.currentOperation = operation || null;
+          if (status !== 'error') {
+            state.sessionAccounts.error = null;
+          }
         });
       },
 
-      clearTempToken: () => {
+      setSessionAccountsData: (accounts: SessionAccount[]) => {
         set((state) => {
-          state.tempToken = null;
+          state.sessionAccounts.data = accounts;
+          state.sessionAccounts.status = 'success';
+          state.sessionAccounts.currentOperation = null;
+          state.sessionAccounts.error = null;
+          state.sessionAccounts.lastLoaded = Date.now();
+        });
+      },
+
+      setSessionAccountsError: (error: string | null) => {
+        set((state) => {
+          state.sessionAccounts.error = error;
+          state.sessionAccounts.status = error ? 'error' : 'idle';
+          state.sessionAccounts.currentOperation = null;
+        });
+      },
+
+      setSessionAccountData: (accountId: string, data: SessionAccount) => {
+        set((state) => {
+          const existingIndex = state.sessionAccounts.data.findIndex((acc) => acc.id === accountId);
+          if (existingIndex !== -1) {
+            state.sessionAccounts.data[existingIndex] = data;
+          } else {
+            state.sessionAccounts.data.push(data);
+          }
+          state.sessionAccounts.lastLoaded = Date.now();
+        });
+      },
+
+      updateSessionAccountData: (accountId: string, updates: Partial<SessionAccount>) => {
+        set((state) => {
+          const existingIndex = state.sessionAccounts.data.findIndex((acc) => acc.id === accountId);
+          if (existingIndex !== -1) {
+            state.sessionAccounts.data[existingIndex] = {
+              ...state.sessionAccounts.data[existingIndex],
+              ...updates,
+            };
+            state.sessionAccounts.lastLoaded = Date.now();
+          }
+        });
+      },
+
+      removeSessionAccount: (accountId: string) => {
+        set((state) => {
+          state.sessionAccounts.data = state.sessionAccounts.data.filter((acc) => acc.id !== accountId);
+          state.sessionAccounts.lastLoaded = Date.now();
+        });
+      },
+
+      clearSessionAccounts: () => {
+        set((state) => {
+          state.sessionAccounts = createDefaultSessionAccountsState();
         });
       },
 
@@ -230,8 +364,20 @@ export const useAppStore = create<AppState & AppActions>()(
         return get().session;
       },
 
-      getAccountState: (accountId: string) => {
-        return get().accounts[accountId];
+      getSessionAccountsState: () => {
+        return get().sessionAccounts;
+      },
+
+      getAccountState: (accountId: string | null) => {
+        return accountId ? get().accounts[accountId] : createDefaultAccountState();
+      },
+
+      getSessionAccount: (accountId: string) => {
+        return get().sessionAccounts.data.find((acc) => acc.id === accountId);
+      },
+
+      getAllSessionAccounts: () => {
+        return get().sessionAccounts.data;
       },
 
       shouldLoadAccount: (accountId: string, maxAge: number = 5 * 60 * 1000) => {
@@ -264,6 +410,22 @@ export const useAppStore = create<AppState & AppActions>()(
         // Load if no timestamp or data is stale
         if (!sessionState.lastLoaded) return true;
         if (Date.now() - sessionState.lastLoaded > maxAge) return true;
+
+        return false;
+      },
+
+      shouldLoadSessionAccounts: (maxAge: number = 5 * 60 * 1000) => {
+        const sessionAccountsState = get().sessionAccounts;
+
+        // Don't load if currently loading
+        if (sessionAccountsState.status === 'loading') return false;
+
+        // Load if no data
+        if (sessionAccountsState.data.length === 0) return true;
+
+        // Load if no timestamp or data is stale
+        if (!sessionAccountsState.lastLoaded) return true;
+        if (Date.now() - sessionAccountsState.lastLoaded > maxAge) return true;
 
         return false;
       },

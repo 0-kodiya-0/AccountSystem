@@ -647,7 +647,7 @@ export interface CallbackData {
   [key: string]: any;
 }
 
-export type LoadingState = 'idle' | 'loading' | 'updating' | 'saving' | 'deleting' | 'error' | 'success';
+export type LoadingState = 'idle' | 'loading' | 'updating' | 'switching' | 'saving' | 'deleting' | 'error' | 'success';
 
 // Session state structure
 export interface SessionState {
@@ -661,6 +661,14 @@ export interface SessionState {
 // Account state structure
 export interface AccountState {
   data: Account | null;
+  status: LoadingState;
+  currentOperation: string | null;
+  error: string | null;
+  lastLoaded: number | null;
+}
+
+export interface SessionAccountsState {
+  data: SessionAccount[];
   status: LoadingState;
   currentOperation: string | null;
   error: string | null;

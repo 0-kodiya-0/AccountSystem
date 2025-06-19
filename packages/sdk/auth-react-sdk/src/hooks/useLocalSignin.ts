@@ -84,10 +84,6 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
   // Refs for cleanup and state tracking
   const lastSigninDataRef = useRef<LocalLoginRequest | null>(null);
 
-  // Store integration for temp token management
-  const storeTempToken = useAppStore((state) => state.setTempToken);
-  const clearStoreTempToken = useAppStore((state) => state.clearTempToken);
-
   // Safe state update that checks if component is still mounted
   const safeSetState = useCallback((updater: (prev: LocalSigninState) => LocalSigninState) => {
     setState(updater);
@@ -154,9 +150,6 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
         const result = await authService.localLogin(data);
 
         if (result.requiresTwoFactor && result.tempToken) {
-          // Two-factor authentication required
-          storeTempToken(result.tempToken);
-
           safeSetState((prev) => ({
             ...prev,
             phase: 'requires_2fa',
@@ -192,7 +185,7 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
         return { success: false, message };
       }
     },
-    [authService, handleError, safeSetState, storeTempToken],
+    [authService, handleError, safeSetState],
   );
 
   // Two-factor verification function
@@ -224,9 +217,6 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
         });
 
         if (result.accountId) {
-          // 2FA verification successful
-          clearStoreTempToken();
-
           safeSetState((prev) => ({
             ...prev,
             phase: 'completed',
@@ -257,7 +247,7 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
         return { success: false, message };
       }
     },
-    [state.tempToken, authService, handleError, safeSetState, clearStoreTempToken],
+    [state.tempToken, authService, handleError, safeSetState],
   );
 
   // Enhanced retry with cooldown and attempt limits
@@ -297,9 +287,8 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
 
   const reset = useCallback(() => {
     lastSigninDataRef.current = null;
-    clearStoreTempToken();
     setState(INITIAL_STATE);
-  }, [clearStoreTempToken]);
+  }, []);
 
   const getDebugInfo = useCallback((): LocalSigninState => ({ ...state }), [state]);
 

@@ -13,13 +13,6 @@ import {
 import { getStatusHelpers, parseApiError } from '../utils';
 import { useEffect } from 'react';
 
-const DEFAULT_ACCOUNT_STATE = {
-  data: null,
-  status: 'idle' as LoadingState,
-  currentOperation: null,
-  error: null,
-};
-
 interface AccountOperations {
   load: () => Promise<Account | null>;
   logout: () => Promise<void>;
@@ -44,7 +37,7 @@ interface AccountOptions {
 
 interface AccountReturn {
   // Account identification
-  id: string;
+  id: string | null;
 
   // Account data
   data: Account | null;
@@ -70,7 +63,7 @@ interface AccountReturn {
 }
 
 // Overloaded function signatures
-export function useAccount(options?: AccountOptions): AccountReturn | null; // Current account
+export function useAccount(options?: AccountOptions): AccountReturn; // Current account
 export function useAccount(accountId: string, options?: AccountOptions): AccountReturn; // Specific account
 export function useAccount(
   accountIdOrOptions?: string | AccountOptions,
@@ -99,12 +92,7 @@ export function useAccount(
   const targetAccountId = accountId || currentAccountId;
 
   // Always call store hooks, even if targetAccountId is null
-  const accountState = useAppStore((state) => {
-    if (!targetAccountId) {
-      return DEFAULT_ACCOUNT_STATE;
-    }
-    return state.getAccountState(targetAccountId) || DEFAULT_ACCOUNT_STATE;
-  });
+  const accountState = useAppStore((state) => state.getAccountState(targetAccountId));
 
   const setAccountStatus = useAppStore((state) => state.setAccountStatus);
   const setAccountData = useAppStore((state) => state.setAccountData);
@@ -348,6 +336,7 @@ export function useAccount(
       if (!targetAccountId) return;
 
       try {
+        setAccountStatus(targetAccountId, 'switching', 'switchToThisAccount');
         await sessionOperations.setCurrentAccount(targetAccountId);
       } catch (error) {
         const apiError = parseApiError(error, 'Failed to switch to this account');
@@ -366,11 +355,6 @@ export function useAccount(
       accountOperations.load();
     }
   }, [autoLoad, targetAccountId]);
-
-  // Return null only after all hooks have been called
-  if (!targetAccountId) {
-    return null;
-  }
 
   return {
     // Account identification

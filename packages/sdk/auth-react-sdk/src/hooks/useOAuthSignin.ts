@@ -109,11 +109,6 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
 
   // Refs for cleanup and state tracking
   const lastCallbackUrlRef = useRef<string | null>(null);
-
-  // Store integration for temp token management
-  const storeTempToken = useAppStore((state) => state.setTempToken);
-  const clearStoreTempToken = useAppStore((state) => state.clearTempToken);
-
   // Safe state update that checks if component is still mounted
   const safeSetState = useCallback((updater: (prev: OAuthSigninState) => OAuthSigninState) => {
     setState(updater);
@@ -207,11 +202,6 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
         }
 
         case CallbackCode.OAUTH_SIGNIN_REQUIRES_2FA: {
-          // Two-factor authentication required
-          if (callbackData.tempToken) {
-            storeTempToken(callbackData.tempToken);
-          }
-
           safeSetState((prev) => ({
             ...prev,
             phase: 'requires_2fa',
@@ -250,7 +240,7 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
       url.search = '';
       window.history.replaceState({}, '', url.toString());
     }
-  }, [safeSetState, handleError, storeTempToken]);
+  }, [safeSetState, handleError]);
 
   const processCallbackFromUrl = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
     const success = await handleOAuthCallback();
@@ -380,9 +370,6 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
         });
 
         if (result.accountId) {
-          // 2FA verification successful
-          clearStoreTempToken();
-
           // Check if needs additional scopes
           if (result.needsAdditionalScopes && result.missingScopes) {
             safeSetState((prev) => ({
@@ -432,7 +419,7 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
         return { success: false, message };
       }
     },
-    [state.tempToken, authService, handleError, safeSetState, clearStoreTempToken],
+    [state.tempToken, authService, handleError, safeSetState],
   );
 
   // Enhanced retry with cooldown and attempt limits
@@ -472,9 +459,8 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
 
   const reset = useCallback(() => {
     lastCallbackUrlRef.current = null;
-    clearStoreTempToken();
     setState(INITIAL_STATE);
-  }, [clearStoreTempToken]);
+  }, []);
 
   const getDebugInfo = useCallback((): OAuthSigninState => ({ ...state }), [state]);
 
