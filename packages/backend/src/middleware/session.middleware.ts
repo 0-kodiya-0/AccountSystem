@@ -69,7 +69,7 @@ export const validateTokenAccess = asyncHandler(async (req, res, next) => {
 
   const accessToken = extractAccessToken(req, accountId);
   const refreshToken = extractRefreshToken(req, accountId);
-  const isRefreshTokenPath = req.path.endsWith('/refresh') || req.path.includes('/refresh/');
+  const isRefreshTokenPath = req.path.endsWith('/refresh');
 
   const token: string | null = isRefreshTokenPath ? refreshToken : accessToken;
 
@@ -147,7 +147,7 @@ export const validateTokenAccess = asyncHandler(async (req, res, next) => {
         },
         refreshPath,
         302,
-        `${getProxyUrl()}${getBaseUrl()}${req.originalUrl}`, // Pass original URL for redirect after refresh
+        `.${req.originalUrl}`, // Pass original URL for redirect after refresh
       );
     }
   }
