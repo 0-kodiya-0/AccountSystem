@@ -32,11 +32,10 @@ export class HttpClient {
 
     const result = await response.json();
 
-    if (!result.success && result.error) {
-      throw new AuthSDKError(result.error?.message || 'API error', result.error?.code || ApiErrorCode.SERVER_ERROR);
-    }
-
     if (!response.ok) {
+      if (result.error) {
+        throw new AuthSDKError(result.error?.message || 'API error', result.error?.code || ApiErrorCode.SERVER_ERROR);
+      }
       throw new AuthSDKError(
         `HTTP ${response.status}: ${response.statusText}`,
         ApiErrorCode.NETWORK_ERROR,
