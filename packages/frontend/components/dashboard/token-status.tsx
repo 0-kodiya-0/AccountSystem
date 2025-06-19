@@ -1,8 +1,8 @@
 import { Key, RefreshCw, EyeOff, Eye, ExternalLink, Copy } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAccount, TokenInfo } from '../../../sdk/auth-react-sdk/src';
 import { Card, CardHeader, CardTitle, CardContent, Button, CardDescription, Badge } from '../ui';
-import { LoadingSpinner } from './loading-spinner';
+import { LoadingSpinner } from '../auth/loading-spinner';
 
 // Updated TokenStatus Component
 interface TokenStatusProps {
@@ -15,7 +15,7 @@ export default function TokenStatus({ accountId }: TokenStatusProps) {
   const [loading, setLoading] = useState(false);
   const [showTokens, setShowTokens] = useState(false);
 
-  const loadTokenInfo = async () => {
+  const loadTokenInfo = useCallback(async () => {
     if (!currentAccount) return;
 
     setLoading(true);
@@ -28,7 +28,7 @@ export default function TokenStatus({ accountId }: TokenStatusProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentAccount]);
 
   useEffect(() => {
     loadTokenInfo();

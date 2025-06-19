@@ -13,8 +13,8 @@ import { formatAccountName } from '@/lib/utils';
 import { LoadingSpinner } from '@/components/auth/loading-spinner';
 import { ErrorDisplay } from '@/components/auth/error-display';
 import { RedirectingDisplay } from '@/components/auth/redirecting-display';
-import TokenStatus from '@/components/auth/token-status';
-import SecurityOverview from '@/components/auth/security-overview';
+import TokenStatus from '@/components/dashboard/token-status';
+import SecurityOverview from '@/components/dashboard/security-overview';
 
 // Main Dashboard Component
 export default function DashboardPage() {
