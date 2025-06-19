@@ -432,7 +432,7 @@ export class AuthService {
 
   async verifyTwoFactorSetup(accountId: string, token: string): Promise<UnifiedTwoFactorSetupResponse> {
     validateAccountId(accountId, '2FA setup verification');
-    validateToken(token, '2FA verification token', '2FA setup verification');
+    validateRequired(token, '2FA verification token', '2FA setup verification');
 
     return this.httpClient.post(`/${accountId}/twofa/verify-setup`, { token });
   }

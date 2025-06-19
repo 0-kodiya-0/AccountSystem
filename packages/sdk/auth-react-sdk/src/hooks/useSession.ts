@@ -1,15 +1,8 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { useAuthService } from '../context/ServicesProvider';
 import { AccountSessionInfo, LoadingState, SessionAccount, SessionAccountsState } from '../types';
 import { getStatusHelpers, parseApiError } from '../utils';
-
-interface SessionOperations {
-  load: () => Promise<void>;
-  loadSessionAccounts: () => Promise<void>;
-  logoutAll: () => Promise<void>;
-  setCurrentAccount: (accountId: string | null) => Promise<void>;
-}
 
 interface SessionOptions {
   autoLoad?: boolean; // Whether to automatically load session on mount (default: true)
@@ -50,7 +43,10 @@ interface SessionReturn {
   accounts: SessionAccount[];
 
   // Operations
-  operations: SessionOperations;
+  load: () => Promise<void>;
+  loadSessionAccounts: () => Promise<void>;
+  logoutAll: () => Promise<void>;
+  setCurrentAccount: (accountId: string | null) => Promise<void>;
 }
 
 export function useSession(options: SessionOptions = {}): SessionReturn {
@@ -71,83 +67,81 @@ export function useSession(options: SessionOptions = {}): SessionReturn {
   const setSessionAccountsError = useAppStore((state) => state.setSessionAccountsError);
 
   // Session operations
-  const sessionOperations = useMemo<SessionOperations>(
-    () => ({
-      load: async () => {
-        try {
-          setSessionStatus('loading', 'loadSession');
+  const load = useCallback(async () => {
+    try {
+      setSessionStatus('loading', 'loadSession');
 
-          const sessionResponse = await authService.getAccountSession();
-          setSessionData(sessionResponse.session);
-        } catch (error) {
-          const apiError = parseApiError(error, 'Failed to load session');
-          setSessionError(apiError.message);
-        }
-      },
+      const sessionResponse = await authService.getAccountSession();
+      setSessionData(sessionResponse.session);
+    } catch (error) {
+      const apiError = parseApiError(error, 'Failed to load session');
+      setSessionError(apiError.message);
+    }
+  }, [authService, setSessionStatus, setSessionData, setSessionError]);
 
-      loadSessionAccounts: async () => {
-        try {
-          // Check if we have session data with account IDs
-          const currentSessionData = sessionState.data || useAppStore.getState().getSessionState().data;
-          if (!currentSessionData?.accountIds.length) {
-            console.warn('No account IDs available to load session accounts');
-            return;
-          }
+  const loadSessionAccounts = useCallback(async () => {
+    try {
+      // Check if we have session data with account IDs
+      const currentSessionData = sessionState.data || useAppStore.getState().getSessionState().data;
+      if (!currentSessionData?.accountIds.length) {
+        console.warn('No account IDs available to load session accounts');
+        return;
+      }
 
-          setSessionAccountsStatus('loading', 'loadSessionAccounts');
+      setSessionAccountsStatus('loading', 'loadSessionAccounts');
 
-          const sessionAccountsData = await authService.getSessionAccountsData(currentSessionData.accountIds);
-          setSessionAccountsData(sessionAccountsData as SessionAccount[]);
-        } catch (error) {
-          const apiError = parseApiError(error, 'Failed to load session accounts');
-          setSessionAccountsError(apiError.message);
-        }
-      },
+      const sessionAccountsData = await authService.getSessionAccountsData(currentSessionData.accountIds);
+      setSessionAccountsData(sessionAccountsData as SessionAccount[]);
+    } catch (error) {
+      const apiError = parseApiError(error, 'Failed to load session accounts');
+      setSessionAccountsError(apiError.message);
+    }
+  }, [authService, sessionState.data, setSessionAccountsStatus, setSessionAccountsData, setSessionAccountsError]);
 
-      logoutAll: async () => {
-        try {
-          setSessionStatus('updating', 'logoutAll');
+  const logoutAll = useCallback(async () => {
+    try {
+      setSessionStatus('updating', 'logoutAll');
 
-          if (sessionState.data?.accountIds.length) {
-            await authService.logoutAll(sessionState.data.accountIds);
-          }
+      if (sessionState.data?.accountIds.length) {
+        await authService.logoutAll(sessionState.data.accountIds);
+      }
 
-          clearSession();
-        } catch (error) {
-          const apiError = parseApiError(error, 'Failed to logout all');
-          setSessionError(apiError.message);
-        }
-      },
+      clearSession();
+    } catch (error) {
+      const apiError = parseApiError(error, 'Failed to logout all');
+      setSessionError(apiError.message);
+    }
+  }, [authService, sessionState.data?.accountIds, setSessionStatus, clearSession, setSessionError]);
 
-      setCurrentAccount: async (accountId: string | null) => {
-        try {
-          setSessionStatus('updating', 'setCurrentAccount');
+  const setCurrentAccount = useCallback(
+    async (accountId: string | null) => {
+      try {
+        setSessionStatus('updating', 'setCurrentAccount');
 
-          await authService.setCurrentAccountInSession(accountId);
+        await authService.setCurrentAccountInSession(accountId);
 
-          // Refresh session to get updated current account
-          const sessionResponse = await authService.getAccountSession();
-          setSessionData(sessionResponse.session);
-        } catch (error) {
-          const apiError = parseApiError(error, 'Failed to set current account');
-          setSessionError(apiError.message);
-        }
-      },
-    }),
-    [autoLoadSessionAccounts],
+        // Refresh session to get updated current account
+        const sessionResponse = await authService.getAccountSession();
+        setSessionData(sessionResponse.session);
+      } catch (error) {
+        const apiError = parseApiError(error, 'Failed to set current account');
+        setSessionError(apiError.message);
+      }
+    },
+    [authService, setSessionStatus, setSessionData, setSessionError],
   );
 
   // Auto-load session on mount (if enabled)
   useEffect(() => {
     if (autoLoad && useAppStore.getState().shouldLoadSession()) {
-      sessionOperations.load();
+      load();
     }
-  }, [autoLoad, sessionState.status]);
+  }, [autoLoad]);
 
   useEffect(() => {
     // Automatically load session accounts if configured to do so
     if (autoLoadSessionAccounts && useAppStore.getState().shouldLoadSessionAccounts()) {
-      sessionOperations.loadSessionAccounts();
+      loadSessionAccounts();
     }
   }, [autoLoadSessionAccounts, sessionState.status]);
 
@@ -201,6 +195,9 @@ export function useSession(options: SessionOptions = {}): SessionReturn {
     accounts,
 
     // Operations
-    operations: sessionOperations,
+    load,
+    loadSessionAccounts,
+    logoutAll,
+    setCurrentAccount,
   };
 }

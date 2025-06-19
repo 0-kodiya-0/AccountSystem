@@ -19,6 +19,8 @@ export { useOAuthSignin } from './hooks/useOAuthSignin';
 export { useLocalSignup } from './hooks/useLocalSignup';
 export { useOAuthSignup } from './hooks/useOAuthSignup';
 export { usePasswordReset } from './hooks/usePasswordReset';
+export { useTwoFactorAuth } from './hooks/useTwoFactorAuth';
+export { useOAuthPermissions } from './hooks/useOAuthPermissions';
 
 // Store exports
 export { useAppStore } from './store/useAppStore';
