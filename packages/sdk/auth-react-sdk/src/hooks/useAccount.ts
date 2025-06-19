@@ -9,6 +9,7 @@ import {
   BackupCodesRequest,
   LoadingState,
   AccountUpdateRequest,
+  AccountType,
 } from '../types';
 import { getStatusHelpers, parseApiError } from '../utils';
 import { useEffect, useMemo } from 'react';
@@ -99,7 +100,6 @@ export function useAccount(
   const targetAccountId = accountId || currentAccountId;
 
   // Always call store hooks, even if targetAccountId is null
-  const accounts = useAppStore((state) => state.getSessionAccountsState());
   const accountState = useAppStore((state) => state.getAccountState(targetAccountId));
 
   const setAccountStatus = useAppStore((state) => state.setAccountStatus);
@@ -141,11 +141,11 @@ export function useAccount(
       },
 
       setup2FA: async (data: UnifiedTwoFactorSetupRequest) => {
-        if (!targetAccountId) return null;
+        if (!targetAccountId || !accountState.data?.accountType) return null;
 
         try {
           setAccountStatus(targetAccountId, 'updating', 'setup2FA');
-          const result = await authService.setupTwoFactor(targetAccountId, data);
+          const result = await authService.setupTwoFactor(targetAccountId, accountState.data?.accountType, data);
           setAccountStatus(targetAccountId, 'success');
           return result;
         } catch (error) {
@@ -353,7 +353,7 @@ export function useAccount(
         }
       },
     }),
-    [targetAccountId],
+    [targetAccountId, accountState.data],
   );
 
   // Derived state

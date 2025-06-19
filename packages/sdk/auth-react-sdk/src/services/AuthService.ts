@@ -40,6 +40,7 @@ import {
   TokenValidationResponse,
   PasswordResetVerificationRequest,
   PasswordResetVerificationResponse,
+  AccountType,
 } from '../types';
 import { HttpClient } from '../client/HttpClient';
 
@@ -409,7 +410,11 @@ export class AuthService {
     return this.httpClient.get(`/${accountId}/twofa/status`);
   }
 
-  async setupTwoFactor(accountId: string, data: UnifiedTwoFactorSetupRequest): Promise<UnifiedTwoFactorSetupResponse> {
+  async setupTwoFactor(
+    accountId: string,
+    accountType: AccountType,
+    data: UnifiedTwoFactorSetupRequest,
+  ): Promise<UnifiedTwoFactorSetupResponse> {
     validateAccountId(accountId, '2FA setup');
     validateRequired(data, '2FA setup data', '2FA setup');
 
@@ -418,7 +423,7 @@ export class AuthService {
     }
 
     // For local accounts, password is required
-    if (data.password !== undefined) {
+    if (accountType === AccountType.Local && data.password !== undefined) {
       validateRequired(data.password, 'password', '2FA setup');
     }
 
