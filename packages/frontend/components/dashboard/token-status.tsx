@@ -20,7 +20,7 @@ export default function TokenStatus({ accountId }: TokenStatusProps) {
 
     setLoading(true);
     try {
-      const info = await currentAccount.operations.getTokenInformation();
+      const info = await currentAccount.getTokenInformation();
       setTokenInfo(info);
     } catch (error) {
       console.error('Failed to load token info:', error);
@@ -252,7 +252,7 @@ export default function TokenStatus({ accountId }: TokenStatusProps) {
               size="sm"
               onClick={async () => {
                 if (currentAccount) {
-                  await currentAccount.operations.revokeTokens();
+                  await currentAccount.revokeTokens();
                   loadTokenInfo();
                 }
               }}

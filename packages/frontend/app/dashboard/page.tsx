@@ -25,13 +25,13 @@ export default function DashboardPage() {
   // Load current account data if available and not loaded
   useEffect(() => {
     if (currentAccount && !currentAccount.data && currentAccount.isIdle) {
-      currentAccount.operations.load();
+      currentAccount.load();
     }
   }, [currentAccount]);
 
   const handleLogout = async () => {
     if (currentAccount) {
-      await currentAccount.operations.logout();
+      await currentAccount.logout();
     }
   };
 
