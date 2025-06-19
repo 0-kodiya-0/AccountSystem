@@ -393,7 +393,7 @@ export const useLocalSignup = (options: UseLocalSignupOptions = {}): UseLocalSig
   const canCancel = ['email_sending', 'email_sent', 'email_verifying', 'failed'].includes(state.phase);
 
   // Progress calculation
-  const getProgress = (): number => {
+  const getProgress = useCallback((): number => {
     switch (state.phase) {
       case 'idle':
         return 0;
@@ -416,9 +416,9 @@ export const useLocalSignup = (options: UseLocalSignupOptions = {}): UseLocalSig
       default:
         return 0;
     }
-  };
+  }, [state.phase]);
 
-  const getCurrentStep = (): string => {
+  const getCurrentStep = useCallback((): string => {
     switch (state.phase) {
       case 'idle':
         return 'Ready to start signup';
@@ -441,9 +441,9 @@ export const useLocalSignup = (options: UseLocalSignupOptions = {}): UseLocalSig
       default:
         return 'Unknown step';
     }
-  };
+  }, [state.phase]);
 
-  const getNextStep = (): string | null => {
+  const getNextStep = useCallback((): string | null => {
     switch (state.phase) {
       case 'idle':
         return 'Enter email to begin';
@@ -466,7 +466,7 @@ export const useLocalSignup = (options: UseLocalSignupOptions = {}): UseLocalSig
       default:
         return null;
     }
-  };
+  }, [state.phase]);
 
   return {
     // Enhanced actions

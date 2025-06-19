@@ -398,7 +398,7 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}): UsePass
   const canResetPassword = state.phase === 'token_verified' && hasValidToken;
 
   // Progress calculation
-  const getProgress = (): number => {
+  const getProgress = useCallback((): number => {
     switch (state.phase) {
       case 'idle':
         return 0;
@@ -417,9 +417,9 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}): UsePass
       default:
         return 0;
     }
-  };
+  }, [state.phase]);
 
-  const getCurrentStep = (): string => {
+  const getCurrentStep = useCallback((): string => {
     switch (state.phase) {
       case 'idle':
         return 'Ready to reset password';
@@ -438,9 +438,9 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}): UsePass
       default:
         return 'Unknown step';
     }
-  };
+  }, [state.phase]);
 
-  const getNextStep = (): string | null => {
+  const getNextStep = useCallback((): string | null => {
     switch (state.phase) {
       case 'idle':
         return 'Enter your email address';
@@ -459,7 +459,7 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}): UsePass
       default:
         return null;
     }
-  };
+  }, [state.phase]);
 
   return {
     // Main actions

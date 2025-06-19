@@ -302,7 +302,7 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
   const requiresTwoFactor = state.phase === 'requires_2fa';
 
   // Progress calculation
-  const getProgress = (): number => {
+  const getProgress = useCallback((): number => {
     switch (state.phase) {
       case 'idle':
         return 0;
@@ -319,9 +319,9 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
       default:
         return 0;
     }
-  };
+  }, [state.phase]);
 
-  const getCurrentStep = (): string => {
+  const getCurrentStep = useCallback((): string => {
     switch (state.phase) {
       case 'idle':
         return 'Ready to sign in';
@@ -338,9 +338,9 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
       default:
         return 'Unknown step';
     }
-  };
+  }, [state.phase]);
 
-  const getNextStep = (): string | null => {
+  const getNextStep = useCallback((): string | null => {
     switch (state.phase) {
       case 'idle':
         return 'Enter credentials';
@@ -357,7 +357,7 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
       default:
         return null;
     }
-  };
+  }, [state.phase]);
 
   return {
     // Main actions

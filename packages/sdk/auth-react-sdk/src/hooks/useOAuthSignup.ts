@@ -361,7 +361,7 @@ export const useOAuthSignup = (options: UseOAuthSignupOptions = {}): UseOAuthSig
     !!lastCallbackUrlRef.current;
 
   // Progress calculation
-  const getProgress = (): number => {
+  const getProgress = useCallback((): number => {
     switch (state.phase) {
       case 'idle':
         return 0;
@@ -376,9 +376,9 @@ export const useOAuthSignup = (options: UseOAuthSignupOptions = {}): UseOAuthSig
       default:
         return 0;
     }
-  };
+  }, [state.phase]);
 
-  const getCurrentStep = (): string => {
+  const getCurrentStep = useCallback((): string => {
     switch (state.phase) {
       case 'idle':
         return 'Ready to start OAuth signup';
@@ -393,9 +393,9 @@ export const useOAuthSignup = (options: UseOAuthSignupOptions = {}): UseOAuthSig
       default:
         return 'Unknown step';
     }
-  };
+  }, [state.phase]);
 
-  const getNextStep = (): string | null => {
+  const getNextStep = useCallback((): string | null => {
     switch (state.phase) {
       case 'idle':
         return 'Choose OAuth provider';
@@ -410,7 +410,7 @@ export const useOAuthSignup = (options: UseOAuthSignupOptions = {}): UseOAuthSig
       default:
         return null;
     }
-  };
+  }, [state.phase]);
 
   // Expose internal methods for callback handling (optional)
   const internal = {
