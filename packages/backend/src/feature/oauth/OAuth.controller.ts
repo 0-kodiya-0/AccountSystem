@@ -375,7 +375,7 @@ export const handlePermissionCallback = asyncHandler(async (req, res, next) => {
 
     // Create error callback data
     const callbackData: CallbackData = {
-      code: CallbackCode.PERMISSION_ERROR,
+      code: CallbackCode.OAUTH_PERMISSION_ERROR,
       error: error instanceof Error ? error.message : 'Permission grant failed',
       provider: OAuthProviders.Google,
     };

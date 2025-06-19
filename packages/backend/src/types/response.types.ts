@@ -180,7 +180,7 @@ export enum CallbackCode {
 
   // Error codes
   OAUTH_ERROR = 'oauth_error',
-  PERMISSION_ERROR = 'permission_error',
+  OAUTH_PERMISSION_ERROR = 'oauth_permission_error',
 }
 
 export interface CallbackData {
