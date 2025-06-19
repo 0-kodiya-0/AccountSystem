@@ -52,7 +52,7 @@ interface AppActions {
   // Getters
   getSessionState: () => SessionState;
   getSessionAccountsState: () => SessionAccountsState;
-  getAccountState: (accountId: string | null) => AccountState;
+  getAccountState: (accountId: string) => AccountState;
   getSessionAccount: (accountId: string) => SessionAccount | undefined;
   getAllSessionAccounts: () => SessionAccount[];
   shouldLoadAccount: (accountId: string, maxAge?: number) => boolean;
@@ -373,8 +373,8 @@ export const useAppStore = create<AppState & AppActions>()(
         return get().sessionAccounts;
       },
 
-      getAccountState: (accountId: string | null) => {
-        return accountId ? get().accounts[accountId] || createDefaultAccountState() : DEFAULT_ACCOUNT_STATE;
+      getAccountState: (accountId) => {
+        return get().accounts[accountId];
       },
 
       getSessionAccount: (accountId: string) => {
