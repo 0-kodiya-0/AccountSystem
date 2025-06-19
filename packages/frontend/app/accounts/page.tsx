@@ -15,17 +15,14 @@ import AccountCard from '@/components/accounts-switch/account-card';
 
 export default function AccountsPage() {
   const router = useRouter();
-  const {
-    accounts,
-    currentAccountId,
-    operations: sessionOps,
-    isAuthenticated,
-  } = useSession({ autoLoadSessionAccounts: true });
+  const { accounts, currentAccountId, isAuthenticated, setCurrentAccount, logoutAll } = useSession({
+    autoLoadSessionAccounts: true,
+  });
   const authService = useAuthService();
 
   const handleSwitchAccount = async (accountId: string) => {
     try {
-      await sessionOps.setCurrentAccount(accountId);
+      await setCurrentAccount(accountId);
       router.push('/dashboard');
     } catch (error) {
       console.error('Failed to switch account:', error);
@@ -43,7 +40,7 @@ export default function AccountsPage() {
 
   const handleLogoutAll = async () => {
     try {
-      await sessionOps.logoutAll();
+      await logoutAll();
       router.push('/login');
     } catch (error) {
       console.error('Failed to logout all accounts:', error);
