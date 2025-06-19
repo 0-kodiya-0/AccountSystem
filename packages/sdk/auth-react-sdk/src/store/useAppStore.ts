@@ -60,30 +60,35 @@ interface AppActions {
   shouldLoadSessionAccounts: (maxAge?: number) => boolean;
 }
 
-// Helper functions
-const createDefaultSessionState = (): SessionState => ({
+// STATIC DEFAULT STATES - These are created once and reused
+export const DEFAULT_SESSION_STATE: SessionState = {
   data: null,
   status: 'idle',
   currentOperation: null,
   error: null,
   lastLoaded: null,
-});
+};
 
-const createDefaultAccountState = (): AccountState => ({
+export const DEFAULT_ACCOUNT_STATE: AccountState = {
   data: null,
   status: 'idle',
   currentOperation: null,
   error: null,
   lastLoaded: null,
-});
+};
 
-const createDefaultSessionAccountsState = (): SessionAccountsState => ({
+export const DEFAULT_SESSION_ACCOUNTS_STATE: SessionAccountsState = {
   data: [],
   status: 'idle',
   currentOperation: null,
   error: null,
   lastLoaded: null,
-});
+};
+
+// Helper functions that return static objects
+const createDefaultSessionState = (): SessionState => ({ ...DEFAULT_SESSION_STATE });
+const createDefaultAccountState = (): AccountState => ({ ...DEFAULT_ACCOUNT_STATE });
+const createDefaultSessionAccountsState = (): SessionAccountsState => ({ ...DEFAULT_SESSION_ACCOUNTS_STATE, data: [] });
 
 export const useAppStore = create<AppState & AppActions>()(
   subscribeWithSelector(
@@ -369,7 +374,7 @@ export const useAppStore = create<AppState & AppActions>()(
       },
 
       getAccountState: (accountId: string | null) => {
-        return accountId ? get().accounts[accountId] : createDefaultAccountState();
+        return accountId ? get().accounts[accountId] || createDefaultAccountState() : DEFAULT_ACCOUNT_STATE;
       },
 
       getSessionAccount: (accountId: string) => {
@@ -415,8 +420,12 @@ export const useAppStore = create<AppState & AppActions>()(
       },
 
       shouldLoadSessionAccounts: (maxAge: number = 5 * 60 * 1000) => {
-        const sessionAccountsState = get().sessionAccounts;
+        const sessionState = get().session;
 
+        if (sessionState.status === 'loading' || (sessionState.data && sessionState.data.accountIds.length <= 0))
+          return false;
+
+        const sessionAccountsState = get().sessionAccounts;
         // Don't load if currently loading
         if (sessionAccountsState.status === 'loading') return false;
 

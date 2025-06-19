@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { useAuthService } from '../context/ServicesProvider';
 import { AccountSessionInfo, LoadingState, SessionAccount, SessionAccountsState } from '../types';
@@ -71,87 +71,96 @@ export function useSession(options: SessionOptions = {}): SessionReturn {
   const setSessionAccountsError = useAppStore((state) => state.setSessionAccountsError);
 
   // Session operations
-  const sessionOperations: SessionOperations = {
-    load: async () => {
-      try {
-        setSessionStatus('loading', 'loadSession');
+  const sessionOperations = useMemo<SessionOperations>(
+    () => ({
+      load: async () => {
+        try {
+          setSessionStatus('loading', 'loadSession');
 
-        const sessionResponse = await authService.getAccountSession();
-        setSessionData(sessionResponse.session);
-
-        // Automatically load session accounts if configured to do so
-        if (autoLoadSessionAccounts && sessionResponse.session.accountIds.length > 0) {
-          await sessionOperations.loadSessionAccounts();
+          const sessionResponse = await authService.getAccountSession();
+          setSessionData(sessionResponse.session);
+        } catch (error) {
+          const apiError = parseApiError(error, 'Failed to load session');
+          setSessionError(apiError.message);
         }
-      } catch (error) {
-        const apiError = parseApiError(error, 'Failed to load session');
-        setSessionError(apiError.message);
-      }
-    },
+      },
 
-    loadSessionAccounts: async () => {
-      try {
-        // Check if we have session data with account IDs
-        const currentSessionData = sessionState.data || useAppStore.getState().getSessionState().data;
-        if (!currentSessionData?.accountIds.length) {
-          console.warn('No account IDs available to load session accounts');
-          return;
+      loadSessionAccounts: async () => {
+        try {
+          // Check if we have session data with account IDs
+          const currentSessionData = sessionState.data || useAppStore.getState().getSessionState().data;
+          if (!currentSessionData?.accountIds.length) {
+            console.warn('No account IDs available to load session accounts');
+            return;
+          }
+
+          setSessionAccountsStatus('loading', 'loadSessionAccounts');
+
+          const sessionAccountsData = await authService.getSessionAccountsData(currentSessionData.accountIds);
+          setSessionAccountsData(sessionAccountsData as SessionAccount[]);
+        } catch (error) {
+          const apiError = parseApiError(error, 'Failed to load session accounts');
+          setSessionAccountsError(apiError.message);
         }
+      },
 
-        setSessionAccountsStatus('loading', 'loadSessionAccounts');
+      logoutAll: async () => {
+        try {
+          setSessionStatus('updating', 'logoutAll');
 
-        const sessionAccountsData = await authService.getSessionAccountsData(currentSessionData.accountIds);
-        setSessionAccountsData(sessionAccountsData as SessionAccount[]);
-      } catch (error) {
-        const apiError = parseApiError(error, 'Failed to load session accounts');
-        setSessionAccountsError(apiError.message);
-      }
-    },
+          if (sessionState.data?.accountIds.length) {
+            await authService.logoutAll(sessionState.data.accountIds);
+          }
 
-    logoutAll: async () => {
-      try {
-        setSessionStatus('updating', 'logoutAll');
-
-        if (sessionState.data?.accountIds.length) {
-          await authService.logoutAll(sessionState.data.accountIds);
+          clearSession();
+        } catch (error) {
+          const apiError = parseApiError(error, 'Failed to logout all');
+          setSessionError(apiError.message);
         }
+      },
 
-        clearSession();
-      } catch (error) {
-        const apiError = parseApiError(error, 'Failed to logout all');
-        setSessionError(apiError.message);
-      }
-    },
+      setCurrentAccount: async (accountId: string | null) => {
+        try {
+          setSessionStatus('updating', 'setCurrentAccount');
 
-    setCurrentAccount: async (accountId: string | null) => {
-      try {
-        setSessionStatus('updating', 'setCurrentAccount');
+          await authService.setCurrentAccountInSession(accountId);
 
-        await authService.setCurrentAccountInSession(accountId);
-
-        // Refresh session to get updated current account
-        const sessionResponse = await authService.getAccountSession();
-        setSessionData(sessionResponse.session);
-      } catch (error) {
-        const apiError = parseApiError(error, 'Failed to set current account');
-        setSessionError(apiError.message);
-      }
-    },
-  };
+          // Refresh session to get updated current account
+          const sessionResponse = await authService.getAccountSession();
+          setSessionData(sessionResponse.session);
+        } catch (error) {
+          const apiError = parseApiError(error, 'Failed to set current account');
+          setSessionError(apiError.message);
+        }
+      },
+    }),
+    [autoLoadSessionAccounts],
+  );
 
   // Auto-load session on mount (if enabled)
   useEffect(() => {
     if (autoLoad && useAppStore.getState().shouldLoadSession()) {
       sessionOperations.load();
     }
-  }, [autoLoad]);
+  }, [autoLoad, sessionState.status]);
+
+  useEffect(() => {
+    // Automatically load session accounts if configured to do so
+    if (autoLoadSessionAccounts && useAppStore.getState().shouldLoadSessionAccounts()) {
+      sessionOperations.loadSessionAccounts();
+    }
+  }, [autoLoadSessionAccounts, sessionState.status]);
 
   // Derived state
-  const isAuthenticated = !!(
-    sessionState.data?.hasSession &&
-    sessionState.data?.isValid &&
-    sessionState.data?.accountIds.length > 0
-  );
+  const isAuthenticated = autoLoadSessionAccounts
+    ? !!(
+        sessionState.data?.hasSession &&
+        sessionState.data?.isValid &&
+        sessionState.data?.accountIds.length > 0 &&
+        sessionAccountsState.data &&
+        sessionAccountsState.data.length > 0
+      )
+    : !!(sessionState.data?.hasSession && sessionState.data?.isValid && sessionState.data?.accountIds.length > 0);
   const hasAccount = !!sessionState.data?.currentAccountId;
   const currentAccountId = sessionState.data?.currentAccountId || null;
   const accountIds = sessionState.data?.accountIds || [];
