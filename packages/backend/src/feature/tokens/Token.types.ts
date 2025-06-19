@@ -48,7 +48,6 @@ export interface TokenInfo {
 }
 
 export interface RefreshTokenResult {
-  accessToken: string;
   expiresIn: number;
 }
 

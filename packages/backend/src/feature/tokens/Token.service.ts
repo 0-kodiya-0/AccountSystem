@@ -122,7 +122,6 @@ async function refreshLocalAccessToken(req: Request, res: Response, accountId: s
   setAccessTokenCookie(req, res, accountId, newAccessToken, expiresIn);
 
   return {
-    accessToken: newAccessToken,
     expiresIn,
   };
 }
@@ -148,7 +147,6 @@ async function refreshOAuthAccessToken(
   setAccessTokenCookie(req, res, accountId, newJwtToken, expiresIn * 1000);
 
   return {
-    accessToken: newJwtToken,
     expiresIn: expiresIn * 1000,
   };
 }
