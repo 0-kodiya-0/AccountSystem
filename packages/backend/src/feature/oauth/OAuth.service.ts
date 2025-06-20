@@ -13,7 +13,7 @@ import {
   getGoogleAccountScopes,
   checkForAdditionalGoogleScopes,
 } from '../google/services/tokenInfo/tokenInfo.services';
-import { saveTwoFactorLoginToken } from '../twofa/TwoFA.service';
+import { saveTwoFactorTempToken } from '../twofa/TwoFA.cache';
 
 /**
  * Process sign up with OAuth provider
@@ -116,7 +116,7 @@ export async function processSignIn(stateDetails: SignInState) {
 
   if (account?.security.twoFactorEnabled) {
     // Use unified 2FA service to store OAuth tokens and generate temp token
-    const tempToken = saveTwoFactorLoginToken(user.id, user.userDetails.email as string, AccountType.OAuth, {
+    const tempToken = saveTwoFactorTempToken(user.id, user.userDetails.email as string, AccountType.OAuth, {
       accessToken: oauthAccessToken,
       refreshToken: oauthRefreshToken,
       userInfo: stateDetails.oAuthResponse,

@@ -32,7 +32,7 @@ import {
   PasswordResetVerificationRequest,
   PasswordResetVerificationResponse,
 } from './LocalAuth.types';
-import { saveTwoFactorLoginToken } from '../twofa/TwoFA.service';
+import { saveTwoFactorTempToken } from '../twofa/TwoFA.cache';
 
 export async function requestEmailVerification(email: string, callbackUrl: string): Promise<{ token: string }> {
   ValidationUtils.validateEmail(email);
@@ -315,7 +315,7 @@ export async function authenticateLocalUser(
   // Check if 2FA is enabled
   if (account.security.twoFactorEnabled) {
     // Generate temporary token for 2FA verification
-    const tempToken = saveTwoFactorLoginToken(
+    const tempToken = saveTwoFactorTempToken(
       account._id.toString(),
       account.userDetails.email as string,
       AccountType.Local,

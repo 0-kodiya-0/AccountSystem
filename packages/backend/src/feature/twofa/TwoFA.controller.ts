@@ -56,19 +56,12 @@ export const setupTwoFactor = asyncHandler(async (req, res, next) => {
 
   const result = await TwoFAService.setupTwoFactor(accountId, data, oauthAccessToken);
 
-  // If enabling 2FA, generate QR code
-  if (data.enableTwoFactor && result.secret && result.qrCodeUrl) {
+  // If enabling 2FA, generate QR code and return setup token
+  if (data.enableTwoFactor && result.secret && result.qrCodeUrl && result.setupToken) {
     try {
       const qrCodeDataUrl = await QRCode.toDataURL(result.qrCodeUrl);
 
-      // Send notification email (async - don't wait)
-      if (account.userDetails.email) {
-        sendNonCriticalEmail(
-          sendTwoFactorEnabledNotification,
-          [account.userDetails.email, account.userDetails.firstName || account.userDetails.name.split(' ')[0]],
-          { maxAttempts: 2, delayMs: 1000 },
-        );
-      }
+      logger.info(`2FA setup QR code generated for account ${accountId}`);
 
       next(
         new JsonSuccess({
@@ -86,18 +79,34 @@ export const setupTwoFactor = asyncHandler(async (req, res, next) => {
 });
 
 /**
- * Verify and enable 2FA setup
+ * Verify and enable 2FA setup using the setup token from the setup step
  * Route: POST /:accountId/twofa/verify-setup
  */
 export const verifyAndEnableTwoFactor = asyncHandler(async (req, res, next) => {
   const accountId = req.params.accountId;
+  const account = req.account as AccountDocument;
   const data = req.body as VerifySetupTwoFactorRequest;
 
   if (!data.token) {
     throw new BadRequestError('Verification token is required', 400, ApiErrorCode.MISSING_DATA);
   }
 
+  if (!data.setupToken) {
+    throw new BadRequestError('Setup token is required', 400, ApiErrorCode.MISSING_DATA);
+  }
+
   const result = await TwoFAService.verifyAndEnableTwoFactor(accountId, data);
+
+  // Send notification email after successful 2FA enablement (async - don't wait)
+  if (account.userDetails.email) {
+    sendNonCriticalEmail(
+      sendTwoFactorEnabledNotification,
+      [account.userDetails.email, account.userDetails.firstName || account.userDetails.name.split(' ')[0]],
+      { maxAttempts: 2, delayMs: 1000 },
+    );
+  }
+
+  logger.info(`2FA verification and enablement successful for account ${accountId}`);
 
   next(new JsonSuccess(result));
 });

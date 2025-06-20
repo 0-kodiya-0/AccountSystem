@@ -18,7 +18,13 @@ import {
   TwoFactorLoginResponse,
   VerifyTwoFactorLoginRequest,
 } from './TwoFA.types';
-import { saveTwoFactorTempToken, getTwoFactorTempToken, removeTwoFactorTempToken } from './TwoFA.cache';
+import {
+  getTwoFactorSetupToken,
+  getTwoFactorTempToken,
+  removeTwoFactorSetupToken,
+  removeTwoFactorTempToken,
+  saveTwoFactorSetupToken,
+} from './TwoFA.cache';
 import { logger } from '../../utils/logger';
 
 /**
@@ -43,6 +49,7 @@ export async function getTwoFactorStatus(accountId: string): Promise<TwoFactorSt
 
 /**
  * Set up 2FA for any account type (unified)
+ * Now returns a setup token for verification
  */
 export async function setupTwoFactor(
   accountId: string,
@@ -63,43 +70,60 @@ export async function setupTwoFactor(
   await verifyAccountAuthentication(account, data.password, oauthAccessToken);
 
   if (data.enableTwoFactor) {
-    return await enableTwoFactor(account);
+    return await enableTwoFactorWithSetupToken(account);
   } else {
     return await disableTwoFactor(account);
   }
 }
 
 /**
- * Verify and enable 2FA setup
+ * Verify and enable 2FA setup using setup token
  */
 export async function verifyAndEnableTwoFactor(
   accountId: string,
   data: VerifySetupTwoFactorRequest,
 ): Promise<TwoFactorSetupResponse> {
   ValidationUtils.validateObjectId(accountId, 'Account ID');
-  ValidationUtils.validateRequiredFields(data, ['token']);
+  ValidationUtils.validateRequiredFields(data, ['token', 'setupToken']);
   ValidationUtils.validateStringLength(data.token, '2FA token', 6, 6);
+
+  // Get setup token data
+  const setupTokenData = getTwoFactorSetupToken(data.setupToken);
+  if (!setupTokenData) {
+    throw new ValidationError('Invalid or expired setup token', 401, ApiErrorCode.TOKEN_INVALID);
+  }
+
+  // Verify the setup token belongs to the correct account
+  if (setupTokenData.accountId !== accountId) {
+    throw new ValidationError('Setup token does not belong to this account', 401, ApiErrorCode.TOKEN_INVALID);
+  }
 
   const models = await db.getModels();
   const account = await models.accounts.Account.findById(accountId);
 
-  if (!account || !account.security.twoFactorSecret) {
-    throw new NotFoundError('Account not found or 2FA not set up', 404, ApiErrorCode.USER_NOT_FOUND);
+  if (!account) {
+    throw new NotFoundError('Account not found', 404, ApiErrorCode.USER_NOT_FOUND);
   }
 
-  // Verify token
+  // Verify the 2FA token using the secret from the setup token
   const isValid = authenticator.verify({
     token: data.token,
-    secret: account.security.twoFactorSecret,
+    secret: setupTokenData.secret,
   });
 
   if (!isValid) {
     throw new ValidationError('Invalid two-factor code', 401, ApiErrorCode.AUTH_FAILED);
   }
 
-  // Enable 2FA
+  // Enable 2FA with the verified secret
   account.security.twoFactorEnabled = true;
+  account.security.twoFactorSecret = setupTokenData.secret;
   await account.save();
+
+  // Remove the setup token as it's been used
+  removeTwoFactorSetupToken(data.setupToken);
+
+  logger.info(`2FA enabled successfully for account ${accountId}`);
 
   return {
     message: 'Two-factor authentication has been successfully enabled for your account.',
@@ -153,31 +177,6 @@ export async function generateBackupCodes(
     message: 'New backup codes generated successfully. Please save these codes in a secure location.',
     backupCodes,
   };
-}
-
-/**
- * Save temporary token for 2FA verification during login
- * Unified for both local and OAuth accounts
- */
-export function saveTwoFactorLoginToken(
-  accountId: string,
-  email: string,
-  accountType: AccountType,
-  oauthTokens?: {
-    accessToken: string;
-    refreshToken: string;
-    userInfo?: any;
-  },
-): string {
-  const tempToken = saveTwoFactorTempToken(
-    accountId,
-    email,
-    accountType === AccountType.Local ? 'local' : 'oauth',
-    oauthTokens,
-  );
-
-  logger.info(`2FA temp token created for account ${accountId} (${accountType})`);
-  return tempToken;
 }
 
 /**
@@ -271,49 +270,50 @@ async function verifyAccountAuthentication(
 }
 
 /**
- * Helper: Enable 2FA for account
+ * Helper: Enable 2FA for account with setup token
  */
-async function enableTwoFactor(account: AccountDocument): Promise<TwoFactorSetupResponse> {
-  // Generate new secret if it doesn't exist
-  if (!account.security.twoFactorSecret) {
-    const secret = authenticator.generateSecret();
-    account.security.twoFactorSecret = secret;
+async function enableTwoFactorWithSetupToken(account: AccountDocument): Promise<TwoFactorSetupResponse> {
+  // Generate new secret
+  const secret = authenticator.generateSecret();
 
-    // Generate backup codes (10 codes, 8 chars each)
-    const backupCodes = Array(10)
-      .fill(0)
-      .map(() => crypto.randomBytes(4).toString('hex'));
+  // Generate backup codes (10 codes, 8 chars each)
+  const backupCodes = Array(10)
+    .fill(0)
+    .map(() => crypto.randomBytes(4).toString('hex'));
 
-    // Hash the backup codes before storing
-    account.security.twoFactorBackupCodes = await Promise.all(
-      backupCodes.map(async (code) => {
-        const salt = await bcrypt.genSalt(10);
-        return bcrypt.hash(code, salt);
-      }),
-    );
+  // Hash the backup codes before storing
+  const hashedBackupCodes = await Promise.all(
+    backupCodes.map(async (code) => {
+      const salt = await bcrypt.genSalt(10);
+      return bcrypt.hash(code, salt);
+    }),
+  );
 
-    await account.save();
+  // Store the secret and backup codes in the account, but don't enable 2FA yet
+  account.security.twoFactorSecret = secret;
+  account.security.twoFactorBackupCodes = hashedBackupCodes;
+  account.security.twoFactorEnabled = false; // Keep disabled until verification
+  await account.save();
 
-    const accountName = account.userDetails.email || account.userDetails.username || account._id.toString();
-    const qrCodeUrl = authenticator.keyuri(accountName, getAppName(), secret);
+  // Create setup token
+  const setupToken = saveTwoFactorSetupToken(
+    account._id.toString(),
+    secret,
+    account.accountType === AccountType.Local ? 'local' : 'oauth',
+  );
 
-    return {
-      message: '2FA setup successful. Please scan the QR code with your authenticator app.',
-      secret,
-      qrCodeUrl,
-      backupCodes, // Return unhashed codes for user to save
-    };
-  } else {
-    // Secret already exists
-    const accountName = account.userDetails.email || account.userDetails.username || account._id.toString();
-    const qrCodeUrl = authenticator.keyuri(accountName, getAppName(), account.security.twoFactorSecret);
+  const accountName = account.userDetails.email || account.userDetails.username || account._id.toString();
+  const qrCodeUrl = authenticator.keyuri(accountName, getAppName(), secret);
 
-    return {
-      message: '2FA setup successful. Please scan the QR code with your authenticator app.',
-      secret: account.security.twoFactorSecret,
-      qrCodeUrl,
-    };
-  }
+  logger.info(`2FA setup initiated for account ${account._id.toString()}`);
+
+  return {
+    message: '2FA setup successful. Please scan the QR code with your authenticator app and verify with a code.',
+    secret,
+    qrCodeUrl,
+    backupCodes, // Return unhashed codes for user to save
+    setupToken, // Return setup token for verification step
+  };
 }
 
 /**

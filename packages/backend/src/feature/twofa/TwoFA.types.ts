@@ -9,6 +9,7 @@ export interface SetupTwoFactorRequest {
 
 export interface VerifySetupTwoFactorRequest {
   token: string; // 6-digit TOTP code
+  setupToken: string; // NEW: Setup token from the setup step
 }
 
 export interface GenerateBackupCodesRequest {
@@ -28,6 +29,7 @@ export interface TwoFactorSetupResponse {
   qrCode?: string;
   qrCodeUrl?: string;
   backupCodes?: string[];
+  setupToken?: string; // NEW: Token to be used in verify-setup
 }
 
 export interface TwoFactorStatusResponse {
@@ -71,9 +73,24 @@ export interface TwoFactorTempToken {
   };
 }
 
+// NEW: Setup token interface for 2FA setup verification
+export interface TwoFactorSetupToken {
+  token: string;
+  accountId: string;
+  secret: string; // The 2FA secret that was generated
+  accountType: 'local' | 'oauth';
+  expiresAt: string;
+  createdAt: string;
+}
+
 export interface TwoFactorCache {
   // Save temporary data during login flow
   saveTempToken: (accountId: string, email: string, accountType: 'local' | 'oauth', oauthTokens?: any) => string;
   getTempToken: (tempToken: string) => TwoFactorTempToken | null;
   removeTempToken: (tempToken: string) => void;
+
+  // NEW: Save temporary data during setup flow
+  saveSetupToken: (accountId: string, secret: string, accountType: 'local' | 'oauth') => string;
+  getSetupToken: (setupToken: string) => TwoFactorSetupToken | null;
+  removeSetupToken: (setupToken: string) => void;
 }
