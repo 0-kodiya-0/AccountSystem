@@ -72,7 +72,7 @@ export function useAccount(
   const { autoLoad = true, autoLoadSession = true } = finalOptions;
 
   // Always call hooks in the same order
-  const { currentAccountId, setCurrentAccount } = useSession({ autoLoad: autoLoadSession });
+  const { currentAccountId, setCurrentAccount, load: loadSession } = useSession({ autoLoad: autoLoadSession });
   const authService = useAuthService();
   const accountService = useAccountService();
 
@@ -115,7 +115,7 @@ export function useAccount(
       setAccountStatus(targetAccountId, 'success');
 
       // Refresh session after logout
-      await load();
+      await loadSession();
     } catch (error) {
       const apiError = parseApiError(error, 'Failed to logout');
       setAccountError(targetAccountId, apiError.message);
@@ -148,7 +148,7 @@ export function useAccount(
       const result = await authService.revokeTokens(targetAccountId);
       setAccountStatus(targetAccountId, 'success');
 
-      await setCurrentAccount(targetAccountId);
+      await loadSession();
       return result;
     } catch (error) {
       const apiError = parseApiError(error, 'Failed to revoke tokens');
