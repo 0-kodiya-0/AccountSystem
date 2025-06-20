@@ -20,8 +20,8 @@ export interface InternalApiSdkConfig {
 // ============================================================================
 
 export class InternalApiSdk {
-  private httpClient: InternalHttpClient;
-  private socketClient?: InternalSocketClient;
+  public httpClient: InternalHttpClient; // Make public to fix private access error
+  public socketClient?: InternalSocketClient; // Make public to fix private access error
   private enableLogging: boolean;
   private preferSocket: boolean;
   private accountServerBaseUrl?: string;
@@ -261,7 +261,7 @@ export class InternalApiSdk {
       enableRefreshRedirect = true,
     } = options;
 
-    return async (req: Request, res: Response, next: NextFunction) => {
+    return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       try {
         let token: string | null = null;
         const accountId = accountIdParam ? req.params[accountIdParam] : undefined;
@@ -277,13 +277,14 @@ export class InternalApiSdk {
         if (!token) {
           if (required) {
             this.logError('Access token not found');
-            return res.status(401).json({
+            res.status(401).json({
               success: false,
               error: {
                 code: ApiErrorCode.TOKEN_INVALID,
                 message: 'Access token required',
               },
             });
+            return;
           }
           return next();
         }
@@ -296,7 +297,8 @@ export class InternalApiSdk {
 
           // Handle token invalidity with potential redirect
           const error = new InternalApiError(ApiErrorCode.TOKEN_INVALID, tokenResult.error || 'Invalid access token');
-          return this.handleTokenError(req, res, error, accountId);
+          this.handleTokenError(req, res, error, accountId);
+          return;
         }
 
         req.accessToken = token;
@@ -312,7 +314,7 @@ export class InternalApiSdk {
         next();
       } catch (error) {
         this.logError('Token verification failed', error);
-        return this.handleTokenError(req, res, error);
+        this.handleTokenError(req, res, error);
       }
     };
   }
@@ -320,18 +322,19 @@ export class InternalApiSdk {
   loadUser(options: { required?: boolean } = {}) {
     const { required = true } = options;
 
-    return async (req: Request, res: Response, next: NextFunction) => {
+    return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       try {
         if (!req.tokenData?.accountId) {
           if (required) {
             this.logError('No account ID in token data');
-            return res.status(401).json({
+            res.status(401).json({
               success: false,
               error: {
                 code: ApiErrorCode.AUTH_FAILED,
                 message: 'Valid token required to load user',
               },
             });
+            return;
           }
           return next();
         }
@@ -349,17 +352,18 @@ export class InternalApiSdk {
 
         if (error instanceof InternalApiError) {
           if (error.code === ApiErrorCode.USER_NOT_FOUND) {
-            return res.status(404).json({
+            res.status(404).json({
               success: false,
               error: {
                 code: ApiErrorCode.USER_NOT_FOUND,
                 message: 'User not found',
               },
             });
+            return;
           }
         }
 
-        return res.status(500).json({
+        res.status(500).json({
           success: false,
           error: {
             code: ApiErrorCode.SERVER_ERROR,
@@ -371,19 +375,20 @@ export class InternalApiSdk {
   }
 
   validateAccountAccess(accountIdParam: string = 'accountId') {
-    return async (req: Request, res: Response, next: NextFunction) => {
+    return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       try {
         const accountId = req.params[accountIdParam];
 
         if (!accountId) {
           this.logError('Account ID parameter missing');
-          return res.status(400).json({
+          res.status(400).json({
             success: false,
             error: {
               code: ApiErrorCode.MISSING_DATA,
               message: `Account ID parameter '${accountIdParam}' is required`,
             },
           });
+          return;
         }
 
         this.log(`Validating account access via ${this.shouldUseSocket() ? 'Socket' : 'HTTP'}`, { accountId });
@@ -391,13 +396,14 @@ export class InternalApiSdk {
 
         if (!existsResult.exists) {
           this.logError('Account not found', { accountId });
-          return res.status(404).json({
+          res.status(404).json({
             success: false,
             error: {
               code: ApiErrorCode.USER_NOT_FOUND,
               message: 'Account not found',
             },
           });
+          return;
         }
 
         if (req.tokenData?.accountId && req.tokenData.accountId !== accountId) {
@@ -405,20 +411,21 @@ export class InternalApiSdk {
             requestedAccount: accountId,
             currentAccount: req.tokenData.accountId,
           });
-          return res.status(403).json({
+          res.status(403).json({
             success: false,
             error: {
               code: ApiErrorCode.PERMISSION_DENIED,
               message: 'Access denied to this account',
             },
           });
+          return;
         }
 
         this.log('Account access validated', { accountId });
         next();
       } catch (error) {
         this.logError('Account validation failed', error);
-        return res.status(500).json({
+        res.status(500).json({
           success: false,
           error: {
             code: ApiErrorCode.SERVER_ERROR,
@@ -438,20 +445,21 @@ export class InternalApiSdk {
   ) {
     const { cookieName = 'account_session', required = true, validateAccount = false } = options;
 
-    return async (req: Request, res: Response, next: NextFunction) => {
+    return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       try {
         const sessionCookie = req.cookies?.[cookieName];
 
         if (!sessionCookie) {
           if (required) {
             this.logError('Session cookie not found');
-            return res.status(401).json({
+            res.status(401).json({
               success: false,
               error: {
                 code: ApiErrorCode.AUTH_FAILED,
                 message: 'Session required',
               },
             });
+            return;
           }
           return next();
         }
@@ -469,13 +477,14 @@ export class InternalApiSdk {
               accountId: req.tokenData.accountId,
               sessionAccounts: sessionResult.session.accountIds,
             });
-            return res.status(403).json({
+            res.status(403).json({
               success: false,
               error: {
                 code: ApiErrorCode.PERMISSION_DENIED,
                 message: 'Account not authorized in current session',
               },
             });
+            return;
           }
         }
 
@@ -486,7 +495,7 @@ export class InternalApiSdk {
         next();
       } catch (error) {
         this.logError('Session loading failed', error);
-        return res.status(500).json({
+        res.status(500).json({
           success: false,
           error: {
             code: ApiErrorCode.SERVER_ERROR,
@@ -504,17 +513,18 @@ export class InternalApiSdk {
   }) {
     const { accountTypes, emailVerified, customValidator } = options;
 
-    return async (req: Request, res: Response, next: NextFunction) => {
+    return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       try {
         if (!req.currentUser) {
           this.logError('User data required for permission check');
-          return res.status(401).json({
+          res.status(401).json({
             success: false,
             error: {
               code: ApiErrorCode.AUTH_FAILED,
               message: 'User authentication required',
             },
           });
+          return;
         }
 
         if (accountTypes && !accountTypes.includes(req.currentUser.accountType)) {
@@ -522,37 +532,40 @@ export class InternalApiSdk {
             required: accountTypes,
             actual: req.currentUser.accountType,
           });
-          return res.status(403).json({
+          res.status(403).json({
             success: false,
             error: {
               code: ApiErrorCode.PERMISSION_DENIED,
               message: 'Account type not authorized',
             },
           });
+          return;
         }
 
         if (emailVerified && !req.currentUser.isEmailVerified) {
           this.logError('Email verification required');
-          return res.status(403).json({
+          res.status(403).json({
             success: false,
             error: {
               code: ApiErrorCode.PERMISSION_DENIED,
               message: 'Email verification required',
             },
           });
+          return;
         }
 
         if (customValidator) {
           const isValid = await customValidator(req.currentUser);
           if (!isValid) {
             this.logError('Custom permission check failed');
-            return res.status(403).json({
+            res.status(403).json({
               success: false,
               error: {
                 code: ApiErrorCode.PERMISSION_DENIED,
                 message: 'Permission denied',
               },
             });
+            return;
           }
         }
 
@@ -560,7 +573,7 @@ export class InternalApiSdk {
         next();
       } catch (error) {
         this.logError('Permission check failed', error);
-        return res.status(500).json({
+        res.status(500).json({
           success: false,
           error: {
             code: ApiErrorCode.SERVER_ERROR,
@@ -572,7 +585,7 @@ export class InternalApiSdk {
   }
 
   // ========================================================================
-  // Convenience Middleware Combinations
+  // Convenience Middleware Combinations - Return arrays of middleware
   // ========================================================================
 
   authenticate(
@@ -623,23 +636,25 @@ export class InternalApiSdk {
   }
 
   // ========================================================================
-  // Client Selection Override Methods
+  // Client Selection Override Methods - Return objects instead of functions
   // ========================================================================
 
   useHttp() {
     const originalPreference = this.preferSocket;
     this.preferSocket = false;
 
+    const instance = this;
+
     return {
-      verifyAccessToken: this.verifyAccessToken.bind(this),
-      loadUser: this.loadUser.bind(this),
-      validateAccountAccess: this.validateAccountAccess.bind(this),
-      loadSession: this.loadSession.bind(this),
-      requirePermission: this.requirePermission.bind(this),
-      authenticate: this.authenticate.bind(this),
-      authorize: this.authorize.bind(this),
+      verifyAccessToken: (options?: any) => instance.verifyAccessToken(options),
+      loadUser: (options?: any) => instance.loadUser(options),
+      validateAccountAccess: (accountIdParam?: string) => instance.validateAccountAccess(accountIdParam),
+      loadSession: (options?: any) => instance.loadSession(options),
+      requirePermission: (options: any) => instance.requirePermission(options),
+      authenticate: (options?: any) => instance.authenticate(options),
+      authorize: (options?: any) => instance.authorize(options),
       restore: () => {
-        this.preferSocket = originalPreference;
+        instance.preferSocket = originalPreference;
       },
     };
   }
@@ -648,16 +663,18 @@ export class InternalApiSdk {
     const originalPreference = this.preferSocket;
     this.preferSocket = true;
 
+    const instance = this;
+
     return {
-      verifyAccessToken: this.verifyAccessToken.bind(this),
-      loadUser: this.loadUser.bind(this),
-      validateAccountAccess: this.validateAccountAccess.bind(this),
-      loadSession: this.loadSession.bind(this),
-      requirePermission: this.requirePermission.bind(this),
-      authenticate: this.authenticate.bind(this),
-      authorize: this.authorize.bind(this),
+      verifyAccessToken: (options?: any) => instance.verifyAccessToken(options),
+      loadUser: (options?: any) => instance.loadUser(options),
+      validateAccountAccess: (accountIdParam?: string) => instance.validateAccountAccess(accountIdParam),
+      loadSession: (options?: any) => instance.loadSession(options),
+      requirePermission: (options: any) => instance.requirePermission(options),
+      authenticate: (options?: any) => instance.authenticate(options),
+      authorize: (options?: any) => instance.authorize(options),
       restore: () => {
-        this.preferSocket = originalPreference;
+        instance.preferSocket = originalPreference;
       },
     };
   }
