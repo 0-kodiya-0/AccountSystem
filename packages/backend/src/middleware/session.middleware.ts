@@ -8,7 +8,6 @@ import { AccountType } from '../feature/account/Account.types';
 import { AccountDocument } from '../feature/account/Account.model';
 import { ValidationUtils } from '../utils/validation';
 import { verifyAccessToken, verifyRefreshToken } from '../feature/tokens';
-import { getBaseUrl, getProxyUrl } from '../config/env.config';
 
 /**
  * Middleware to verify token from cookies and add accountId to request
