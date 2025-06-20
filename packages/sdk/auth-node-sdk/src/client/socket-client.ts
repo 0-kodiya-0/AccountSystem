@@ -1,178 +1,241 @@
 import { io, Socket } from 'socket.io-client';
-import { AuthSDKConfig, InternalNotificationData } from '../types';
+import {
+  ServerToClientEvents,
+  ClientToServerEvents,
+  InternalSocketClientConfig,
+  SocketCallback,
+  TokenVerificationResponse,
+  TokenInfoResponse,
+  UserResponse,
+  UserEmailResponse,
+  UserExistsResponse,
+  SessionInfoResponse,
+  SessionAccountsResponse,
+  SessionValidationResponse,
+  Account,
+} from '../types';
 
-export class AuthSocketClient {
-    private config: AuthSDKConfig;
-    private socket: Socket | null = null;
-    private subscriptions = new Set<string>();
+export class InternalSocketClient {
+  private socket: Socket<ServerToClientEvents, ClientToServerEvents> | null = null;
+  private config: InternalSocketClientConfig;
+  private reconnectAttempts = 0;
 
-    constructor(config: AuthSDKConfig) {
-        this.config = config;
+  constructor(config: InternalSocketClientConfig) {
+    this.config = {
+      namespace: '/internal-socket',
+      timeout: 30000,
+      enableLogging: false,
+      autoConnect: true,
+      maxReconnectAttempts: 5,
+      ...config,
+    };
+  }
+
+  async connect(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const socketUrl = this.config.baseUrl;
+      const namespace = this.config.namespace!;
+
+      this.socket = io(`${socketUrl}${namespace}`, {
+        auth: {
+          serviceId: this.config.serviceId,
+          serviceName: this.config.serviceName,
+          serviceSecret: this.config.serviceSecret,
+        },
+        timeout: this.config.timeout,
+        autoConnect: this.config.autoConnect,
+        reconnection: true,
+        reconnectionAttempts: this.config.maxReconnectAttempts,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        transports: ['websocket', 'polling'],
+      });
+
+      this.setupEventHandlers(resolve, reject);
+    });
+  }
+
+  private setupEventHandlers(resolve: () => void, reject: (error: Error) => void): void {
+    if (!this.socket) return;
+
+    this.socket.on('connect', () => {
+      if (this.config.enableLogging) {
+        console.log(`[Socket] Connected as ${this.config.serviceName}`);
+      }
+      this.reconnectAttempts = 0;
+      resolve();
+    });
+
+    this.socket.on('connected', (data) => {
+      if (this.config.enableLogging) {
+        console.log('[Socket] Connection confirmed:', data);
+      }
+    });
+
+    this.socket.on('connect_error', (error) => {
+      if (this.config.enableLogging) {
+        console.error('[Socket] Connection error:', error);
+      }
+      reject(new Error(`Socket connection failed: ${error.message}`));
+    });
+
+    this.socket.on('disconnect', (reason) => {
+      if (this.config.enableLogging) {
+        console.log('[Socket] Disconnected:', reason);
+      }
+    });
+
+    this.socket.on('reconnect_attempt', (attemptNumber) => {
+      this.reconnectAttempts = attemptNumber;
+      if (this.config.enableLogging) {
+        console.log(`[Socket] Reconnection attempt ${attemptNumber}/${this.config.maxReconnectAttempts}`);
+      }
+    });
+
+    this.socket.on('reconnect_failed', () => {
+      if (this.config.enableLogging) {
+        console.error('[Socket] Failed to reconnect');
+      }
+    });
+  }
+
+  disconnect(): void {
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
     }
+  }
 
-    connect(): Promise<void> {
-        return new Promise((resolve, reject) => {
-            if (this.socket?.connected) {
-                resolve();
-                return;
-            }
-
-            const socketUrl = this.config.authServiceUrl + '/internal-notifications';
-
-            this.socket = io(socketUrl, {
-                auth: {
-                    serviceId: this.config.serviceName.toUpperCase(),
-                    serviceName: this.config.serviceName
-                },
-                transports: ['websocket'],
-                forceNew: true,
-                timeout: 10000
-            });
-
-            this.socket.on('connect', () => {
-                console.log(`Connected to auth service notifications as ${this.config.serviceName}`);
-                resolve();
-            });
-
-            this.socket.on('connect_error', (error) => {
-                console.error('Failed to connect to auth service notifications:', error);
-                reject(error);
-            });
-
-            this.socket.on('error', (error) => {
-                console.error('Auth service notification error:', error);
-            });
-
-            this.socket.on('disconnect', (reason) => {
-                console.log(`Disconnected from auth service notifications: ${reason}`);
-            });
-        });
+  private ensureConnected(): void {
+    if (!this.socket || !this.socket.connected) {
+      throw new Error('Socket not connected. Call connect() first.');
     }
+  }
 
-    async subscribeToAccount(accountId: string): Promise<void> {
-        if (!this.socket?.connected) {
-            throw new Error('Socket not connected. Call connect() first.');
-        }
+  // ========================================================================
+  // API Methods
+  // ========================================================================
 
-        return new Promise((resolve, reject) => {
-            this.socket!.emit('subscribe-account', { accountId });
+  verifyToken(
+    token: string,
+    tokenType: 'access' | 'refresh' = 'access',
+    callback: SocketCallback<TokenVerificationResponse>,
+  ): void {
+    this.ensureConnected();
+    this.socket!.emit('auth:verify-token', { token, tokenType }, callback);
+  }
 
-            this.socket!.once('subscribed', (data) => {
-                if (data.accountId === accountId) {
-                    this.subscriptions.add(accountId);
-                    resolve();
-                }
-            });
+  getTokenInfo(
+    token: string,
+    tokenType: 'access' | 'refresh' = 'access',
+    callback: SocketCallback<TokenInfoResponse>,
+  ): void {
+    this.ensureConnected();
+    this.socket!.emit('auth:token-info', { token, tokenType }, callback);
+  }
 
-            this.socket!.once('error', (error) => {
-                reject(new Error(error.message));
-            });
+  getUserById(accountId: string, callback: SocketCallback<UserResponse>): void {
+    this.ensureConnected();
+    this.socket!.emit('users:get-by-id', { accountId }, callback);
+  }
 
-            setTimeout(() => {
-                reject(new Error('Subscription timeout'));
-            }, 5000);
-        });
-    }
+  getUserByEmail(email: string, callback: SocketCallback<UserEmailResponse>): void {
+    this.ensureConnected();
+    this.socket!.emit('users:get-by-email', { email }, callback);
+  }
 
-    async unsubscribeFromAccount(accountId: string): Promise<void> {
-        if (!this.socket?.connected) {
-            return;
-        }
+  checkUserExists(accountId: string, callback: SocketCallback<UserExistsResponse>): void {
+    this.ensureConnected();
+    this.socket!.emit('users:exists', { accountId }, callback);
+  }
 
-        return new Promise((resolve, reject) => {
-            this.socket!.emit('unsubscribe-account', { accountId });
+  getSessionInfo(sessionCookie: string | undefined, callback: SocketCallback<SessionInfoResponse>): void {
+    this.ensureConnected();
+    this.socket!.emit('session:get-info', { sessionCookie }, callback);
+  }
 
-            this.socket!.once('unsubscribed', (data) => {
-                if (data.accountId === accountId) {
-                    this.subscriptions.delete(accountId);
-                    resolve();
-                }
-            });
+  getSessionAccounts(
+    data: { accountIds?: string[]; sessionCookie?: string },
+    callback: SocketCallback<SessionAccountsResponse>,
+  ): void {
+    this.ensureConnected();
+    this.socket!.emit('session:get-accounts', data, callback);
+  }
 
-            this.socket!.once('error', (error) => {
-                reject(new Error(error.message));
-            });
+  validateSession(
+    data: { accountId?: string; sessionCookie?: string },
+    callback: SocketCallback<SessionValidationResponse>,
+  ): void {
+    this.ensureConnected();
+    this.socket!.emit('session:validate', data, callback);
+  }
 
-            setTimeout(() => {
-                reject(new Error('Unsubscription timeout'));
-            }, 5000);
-        });
-    }
+  healthCheck(
+    callback: SocketCallback<{
+      status: 'healthy';
+      timestamp: string;
+      server: 'internal-socket';
+      serviceId: string;
+      serviceName: string;
+      authenticated: boolean;
+    }>,
+  ): void {
+    this.ensureConnected();
+    this.socket!.emit('health', {}, callback);
+  }
 
-    async subscribeToAccounts(accountIds: string[]): Promise<void> {
-        if (!this.socket?.connected) {
-            throw new Error('Socket not connected. Call connect() first.');
-        }
+  ping(
+    callback: SocketCallback<{
+      pong: true;
+      timestamp: string;
+      serviceId: string;
+      serviceName: string;
+    }>,
+  ): void {
+    this.ensureConnected();
+    this.socket!.emit('ping', {}, callback);
+  }
 
-        return new Promise((resolve, reject) => {
-            this.socket!.emit('subscribe-accounts', { accountIds });
+  // ========================================================================
+  // Event Listeners
+  // ========================================================================
 
-            this.socket!.once('bulk-subscribed', (data) => {
-                accountIds.forEach(id => this.subscriptions.add(id));
-                resolve();
-            });
+  onUserUpdated(callback: (data: { accountId: string; user: Account; timestamp: string }) => void): void {
+    this.ensureConnected();
+    this.socket!.on('user-updated', callback);
+  }
 
-            this.socket!.once('error', (error) => {
-                reject(new Error(error.message));
-            });
+  onUserDeleted(callback: (data: { accountId: string; timestamp: string }) => void): void {
+    this.ensureConnected();
+    this.socket!.on('user-deleted', callback);
+  }
 
-            setTimeout(() => {
-                reject(new Error('Bulk subscription timeout'));
-            }, 10000);
-        });
-    }
+  onSessionExpired(callback: (data: { accountId: string; sessionId: string; timestamp: string }) => void): void {
+    this.ensureConnected();
+    this.socket!.on('session-expired', callback);
+  }
 
-    onNotification(event: string, callback: (data: InternalNotificationData) => void): void {
-        if (!this.socket) {
-            throw new Error('Socket not initialized. Call connect() first.');
-        }
+  onServiceNotification(
+    callback: (data: { message: string; level: 'info' | 'warn' | 'error'; timestamp: string }) => void,
+  ): void {
+    this.ensureConnected();
+    this.socket!.on('service-notification', callback);
+  }
 
-        this.socket.on(event, callback);
-    }
+  onMaintenanceMode(callback: (data: { enabled: boolean; message?: string; timestamp: string }) => void): void {
+    this.ensureConnected();
+    this.socket!.on('maintenance-mode', callback);
+  }
 
-    offNotification(event: string, callback?: (data: InternalNotificationData) => void): void {
-        if (!this.socket) {
-            return;
-        }
+  // ========================================================================
+  // Utility Methods
+  // ========================================================================
 
-        if (callback) {
-            this.socket.off(event, callback);
-        } else {
-            this.socket.off(event);
-        }
-    }
+  isConnected(): boolean {
+    return this.socket?.connected || false;
+  }
 
-    ping(): Promise<any> {
-        if (!this.socket?.connected) {
-            throw new Error('Socket not connected');
-        }
-
-        return new Promise((resolve, reject) => {
-            this.socket!.emit('ping');
-
-            this.socket!.once('pong', (data) => {
-                resolve(data);
-            });
-
-            setTimeout(() => {
-                reject(new Error('Ping timeout'));
-            }, 5000);
-        });
-    }
-
-    disconnect(): void {
-        if (this.socket) {
-            this.socket.disconnect();
-            this.socket = null;
-            this.subscriptions.clear();
-        }
-    }
-
-    get isConnected(): boolean {
-        return this.socket?.connected || false;
-    }
-
-    get getSubscriptions(): string[] {
-        return Array.from(this.subscriptions);
-    }
+  getReconnectAttempts(): number {
+    return this.reconnectAttempts;
+  }
 }
