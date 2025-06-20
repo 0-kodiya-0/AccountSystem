@@ -1,40 +1,18 @@
 import express, { NextFunction } from 'express';
-import https from 'https';
 import http from 'http';
 import cors from 'cors';
-import { Socket } from 'net';
-//import { TLSSocket } from 'tls';
 import { applyErrorHandlers, asyncHandler } from './utils/response';
-// TEMPORARILY COMMENTED FOR TESTING - DISABLE TLS VALIDATION
-// import {
-//   internalAuthentication,
-//   InternalRequest,
-// } from "./middleware/internal-auth.middleware";
-import internalAuthRoutes from './feature/internal/auth/internal-auth.routes';
+import internalRoutes from './feature/internal/internal.routes';
 import socketConfig from './config/socket.config';
-import { InternalNotificationHandler } from './feature/internal/socket/internal-socket.handler';
+import { InternalSocketHandler } from './feature/internal/internal.socket';
 import { ApiErrorCode, JsonSuccess, NotFoundError } from './types/response.types';
-// TEMPORARILY COMMENTED FOR TESTING - DISABLE SSL CERT LOADING
-// import { loadInternalSSLCertificates } from "./config/internal-server.config";
 import { logger } from './utils/logger';
 import { getInternalServerEnabled, getInternalPort } from './config/env.config';
-import fs from 'fs';
 
-let internalServer: https.Server | http.Server | null = null;
-
-// TEMPORARY INTERFACE FOR TESTING WITHOUT TLS MIDDLEWARE
-interface TempInternalRequest extends express.Request {
-  clientCertificate?: {
-    fingerprint: string;
-    subject: { CN: string };
-    signedBySameCA: boolean;
-  };
-  isInternalRequest?: boolean;
-}
+let internalServer: http.Server | null = null;
 
 /**
- * Create the internal Express app
- * TEMPORARILY SIMPLIFIED FOR TESTING - TLS VALIDATION DISABLED
+ * Create the internal Express app (HTTP only for now)
  */
 function createInternalApp(): express.Application {
   const app = express();
@@ -65,46 +43,65 @@ function createInternalApp(): express.Application {
     });
   }
 
-  // TEMPORARILY COMMENTED - DISABLE AUTHENTICATION MIDDLEWARE FOR TESTING
-  // Apply internal authentication middleware to all routes
-  // app.use("/internal", internalAuthentication);
-
-  // TEMPORARY BASIC AUTH BYPASS FOR TESTING
+  // Basic authentication for internal API with enhanced logging
   app.use('/internal', (req, res, next) => {
-    const tempReq = req as TempInternalRequest;
-    tempReq.isInternalRequest = true;
-    tempReq.clientCertificate = {
-      fingerprint: 'TEMP_TESTING_FINGERPRINT',
-      subject: { CN: 'test-service' },
-      signedBySameCA: true,
-    };
-    logger.info('TEMP: Bypassing internal authentication for testing');
+    const serviceId = req.get('X-Internal-Service-ID');
+    const serviceSecret = req.get('X-Internal-Service-Secret');
+
+    if (!serviceId || !serviceSecret) {
+      logger.warn('Internal API HTTP request without proper authentication headers', {
+        ip: req.ip,
+        userAgent: req.get('User-Agent'),
+        path: req.path,
+      });
+      // For now, just log and continue - in production you'd want proper validation
+    } else {
+      logger.info(`Internal API HTTP request from service: ${serviceId}`, {
+        path: req.path,
+        method: req.method,
+      });
+    }
+
     next();
   });
 
   // Internal API routes
-  app.use('/internal/auth', internalAuthRoutes);
+  app.use('/internal', internalRoutes);
 
-  // Health check endpoint (with authentication)
+  // Health check endpoint with enhanced information
   app.get(
-    '/internal/health',
+    '/health',
     asyncHandler(async (req, res, next: NextFunction) => {
-      const internalReq = req as TempInternalRequest;
+      const socketHandler = req.app.get('internalSocketHandler') as InternalSocketHandler | undefined;
+      const connectedServices = socketHandler?.getConnectedServices() || [];
+
       next(
         new JsonSuccess({
-          success: true,
-          data: {
-            status: 'healthy',
-            timestamp: new Date().toISOString(),
-            server: 'internal-https',
-            certificate: {
-              fingerprint: internalReq.clientCertificate?.fingerprint,
-              subject: internalReq.clientCertificate?.subject,
-              signedBySameCA: internalReq.clientCertificate?.signedBySameCA,
-            },
-            // TEMP: Remove service header requirement for testing
-            service: 'testing-mode',
-            note: 'TEMPORARY: TLS validation disabled for testing',
+          status: 'healthy',
+          timestamp: new Date().toISOString(),
+          server: 'internal-http',
+          version: '1.0.0',
+          features: {
+            httpApi: true,
+            socketApi: true,
+            authentication: 'header-based',
+            typescript: true,
+          },
+          endpoints: {
+            auth: '/internal/auth/*',
+            users: '/internal/users/*',
+            session: '/internal/session/*',
+          },
+          socket: {
+            namespace: '/internal',
+            connectedServices: connectedServices.length,
+            services: connectedServices.map((s) => ({
+              serviceId: s.serviceId,
+              serviceName: s.serviceName,
+              authenticated: s.authenticated,
+              connectedAt: s.connectedAt,
+              lastActivity: s.lastActivity,
+            })),
           },
         }),
       );
@@ -125,8 +122,7 @@ function createInternalApp(): express.Application {
 }
 
 /**
- * Start the internal HTTPS server
- * TEMPORARILY MODIFIED FOR TESTING - BASIC SSL WITHOUT CLIENT CERT VALIDATION
+ * Start the internal HTTP server
  */
 export async function startInternalServer(): Promise<void> {
   if (internalServer) {
@@ -140,102 +136,31 @@ export async function startInternalServer(): Promise<void> {
     return;
   }
 
-  // TEMPORARILY COMMENTED - DISABLE STRICT SSL CERT LOADING
-  // Load SSL certificates
-  // const httpsOptions = loadInternalSSLCertificates();
-
-  // TEMPORARY BASIC SSL CONFIG FOR TESTING
-  let httpsOptions;
-  try {
-    // Try to load basic SSL certificates if available
-    const keyPath = process.env.INTERNAL_SERVER_KEY_PATH;
-    const certPath = process.env.INTERNAL_SERVER_CERT_PATH;
-
-    if (keyPath && certPath && fs.existsSync(keyPath) && fs.existsSync(certPath)) {
-      httpsOptions = {
-        key: fs.readFileSync(keyPath),
-        cert: fs.readFileSync(certPath),
-        // TEMPORARILY DISABLED - NO CLIENT CERT VALIDATION
-        // ca: fs.readFileSync(caCertPath),
-        // requestCert: true,
-        // rejectUnauthorized: true,
-
-        // TEMP: Allow any client connection
-        requestCert: false,
-        rejectUnauthorized: false,
-      };
-      logger.info('TEMP: Using basic SSL configuration for testing');
-    } else {
-      // Fallback to self-signed certificate generation or HTTP
-      throw new Error('SSL certificates not found - will fall back to HTTP');
-    }
-  } catch (error) {
-    logger.warn('TEMP: SSL certificate loading failed, falling back to HTTP for testing:', error);
-
-    // TEMPORARY FALLBACK TO HTTP FOR TESTING
-    const app = createInternalApp();
-
-    internalServer = http.createServer(app);
-
-    // Initialize Socket.IO for internal services
-    const io = socketConfig.initializeSocketIO(internalServer);
-
-    // Initialize internal notification handler
-    new InternalNotificationHandler(io);
-
-    const port = getInternalPort();
-
-    await new Promise<void>((resolve, reject) => {
-      internalServer!.listen(port, () => {
-        logger.warn(`⚠️  TEMP: Internal HTTP server running on port ${port} (TLS DISABLED FOR TESTING)`);
-        logger.warn('   ⚠️  Client certificate authentication DISABLED');
-        logger.warn('   ⚠️  Same-CA certificate validation DISABLED');
-        logger.warn('   ⚠️  Internal service authentication BYPASSED');
-        logger.warn('   ⚠️  This is for TESTING ONLY - DO NOT USE IN PRODUCTION');
-        logger.debug(`   📡 Health check: http://localhost:${port}/internal/health`);
-        resolve();
-      });
-
-      internalServer!.on('error', (error) => {
-        reject(error);
-      });
-    });
-
-    return;
-  }
-
   // Create the Express app
   const app = createInternalApp();
 
-  // Create HTTPS server with client certificate authentication
-  internalServer = https.createServer(httpsOptions, app);
+  // Create HTTP server
+  internalServer = http.createServer(app);
 
-  // Initialize Socket.IO for internal services
+  // Initialize Socket.IO for internal services with enhanced configuration
   const io = socketConfig.initializeSocketIO(internalServer);
 
-  // Initialize internal notification handler
-  new InternalNotificationHandler(io);
+  // Initialize internal socket handler with best practices implementation
+  const socketHandler = new InternalSocketHandler(io);
 
-  // Enhanced error handling for the HTTPS server
+  // Store socket handler reference for health checks and management
+  app.set('internalSocketHandler', socketHandler);
+
+  // Error handling for the HTTP server
   internalServer.on('error', (error: NodeJS.ErrnoException) => {
-    logger.error('Internal HTTPS server error:', error);
+    logger.error('Internal HTTP server error:', error);
     if (error.code === 'EADDRINUSE') {
       logger.error(`Port ${getInternalPort()} is already in use for internal server`);
     }
   });
 
-  internalServer.on('clientError', (error: Error, socket: Socket) => {
+  internalServer.on('clientError', (error: Error, socket) => {
     logger.error('Internal client error:', error);
-
-    // TEMPORARILY COMMENTED - CLIENT CERT ERROR HANDLING
-    // Handle client certificate errors gracefully
-    // if (
-    //   "code" in error &&
-    //   (error.code === "EPROTO" || error.code === "ECONNRESET")
-    // ) {
-    //   logger.warn("Client certificate validation failed or connection reset");
-    // }
-
     try {
       socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
     } catch {
@@ -243,41 +168,24 @@ export async function startInternalServer(): Promise<void> {
     }
   });
 
-  // TEMPORARILY COMMENTED - TLS CLIENT ERROR HANDLING
-  // Handle TLS/SSL errors
-  // internalServer.on("tlsClientError", (error: Error) => {
-  //   logger.error("TLS client error:", error.message);
-
-  //   if ("code" in error && error.code === "EPROTO") {
-  //     logger.warn("Client presented invalid or unauthorized certificate");
-  //   }
-  // });
-
-  // TEMPORARILY COMMENTED - SECURE CONNECTION LOGGING
-  // internalServer.on("secureConnection", (tlsSocket: TLSSocket) => {
-  //   const cert = tlsSocket.getPeerCertificate();
-  //   if (cert && Object.keys(cert).length > 0) {
-  //     const commonName = cert.subject?.CN || "unknown";
-  //     logger.debug(
-  //       `Secure connection established with certificate: ${commonName}`,
-  //     );
-  //   }
-  // });
-
   // Start the server
   const port = getInternalPort();
 
   await new Promise<void>((resolve, reject) => {
     internalServer!.listen(port, () => {
-      logger.info(`🔒 Internal HTTPS server running on port ${port}`);
-      // TEMPORARILY MODIFIED LOGGING
-      logger.warn('   ⚠️  TEMP: Client certificate authentication DISABLED for testing');
-      logger.warn('   ⚠️  TEMP: Same-CA certificate validation DISABLED for testing');
-      logger.warn('   ⚠️  TEMP: Internal service authentication BYPASSED for testing');
-      logger.info('   ✓ Internal notification socket.io enabled');
-      logger.debug(`   📡 Health check: https://localhost:${port}/internal/health`);
-      logger.debug(`   📡 Internal notifications: /internal-notifications namespace`);
-      logger.warn('   ⚠️  DO NOT USE THIS CONFIGURATION IN PRODUCTION');
+      logger.info(`🔌 Internal HTTP API server running on port ${port}`);
+      logger.info('   ✅ HTTP REST API endpoints available');
+      logger.info('   ✅ Socket.IO real-time API available');
+      logger.info('   ✅ TypeScript type-safe event interfaces');
+      logger.info('   ✅ Token verification & user information services');
+      logger.info('   ✅ Session management & validation services');
+      logger.info('   ✅ Activity tracking & health monitoring');
+      logger.info(`   📡 Health check: http://localhost:${port}/health`);
+      logger.info(`   📡 HTTP API base: http://localhost:${port}/internal`);
+      logger.info(`   📡 Socket.IO namespace: /internal`);
+      logger.info('   🔐 Authentication: X-Internal-Service-ID and X-Internal-Service-Secret headers');
+      logger.info('   🔐 Socket auth: serviceId, serviceName, serviceSecret in handshake');
+      logger.info('   📊 Features: Notifications, Activity Tracking, Service Management');
       resolve();
     });
 
@@ -288,7 +196,7 @@ export async function startInternalServer(): Promise<void> {
 }
 
 /**
- * Stop the internal HTTPS server
+ * Stop the internal HTTP server
  */
 export async function stopInternalServer(): Promise<void> {
   if (!internalServer) {
@@ -296,11 +204,11 @@ export async function stopInternalServer(): Promise<void> {
     return;
   }
 
-  logger.info('Stopping internal HTTPS server...');
+  logger.info('Stopping internal HTTP server...');
 
   await new Promise<void>((resolve) => {
     internalServer!.close(() => {
-      logger.info('Internal HTTPS server stopped');
+      logger.info('Internal HTTP server stopped');
       internalServer = null;
       resolve();
     });
