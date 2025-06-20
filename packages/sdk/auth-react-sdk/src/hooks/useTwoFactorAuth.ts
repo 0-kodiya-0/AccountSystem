@@ -5,6 +5,7 @@ import { useAuthService } from '../context/ServicesProvider';
 import {
   UnifiedTwoFactorSetupRequest,
   UnifiedTwoFactorSetupResponse,
+  UnifiedTwoFactorVerifySetupResponse,
   BackupCodesRequest,
   BackupCodesResponse,
   TwoFactorStatusResponse,
@@ -32,6 +33,8 @@ interface TwoFactorState {
   statusData: TwoFactorStatusResponse | null;
   // Backup codes
   backupCodes: string[] | null;
+  // NEW: Setup token for verification
+  setupToken: string | null;
 }
 
 interface TwoFactorOptions {
@@ -68,11 +71,12 @@ interface TwoFactorReturn {
   qrCode: string | null;
   secret: string | null;
   backupCodes: string[] | null;
+  setupToken: string | null; // NEW: Setup token for verification
 
   // Operations
   checkStatus: () => Promise<TwoFactorStatusResponse | null>;
   setup: (data: UnifiedTwoFactorSetupRequest) => Promise<UnifiedTwoFactorSetupResponse | null>;
-  verifySetup: (token: string) => Promise<UnifiedTwoFactorSetupResponse | null>;
+  verifySetup: (token: string) => Promise<UnifiedTwoFactorVerifySetupResponse | null>; // UPDATED
   generateBackupCodes: (data: BackupCodesRequest) => Promise<BackupCodesResponse | null>;
   disable: (password?: string) => Promise<{ success: boolean; message?: string }>;
 
@@ -81,6 +85,7 @@ interface TwoFactorReturn {
   reset: () => void;
   canSetup: boolean;
   canDisable: boolean;
+  canVerifySetup: boolean; // NEW: Can verify setup (has setup token)
 }
 
 const INITIAL_STATE: TwoFactorState = {
@@ -90,6 +95,7 @@ const INITIAL_STATE: TwoFactorState = {
   setupData: null,
   statusData: null,
   backupCodes: null,
+  setupToken: null, // NEW
 };
 
 export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOptions = {}): TwoFactorReturn {
@@ -175,6 +181,7 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
           phase: 'verifying_setup',
           loading: false,
           setupData: result,
+          setupToken: result.setupToken || null, // NEW: Store setup token
         }));
 
         return result;
@@ -186,9 +193,18 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
     [accountId, accountType, authService, handleError, safeSetState],
   );
 
+  // UPDATED: Now uses setup token from state
   const verifySetup = useCallback(
     async (token: string) => {
-      if (!accountId) return null;
+      if (!accountId || !state.setupToken) {
+        const errorMsg = !accountId ? 'No account ID available' : 'No setup token available. Please run setup first.';
+        safeSetState((prev) => ({
+          ...prev,
+          phase: 'failed',
+          error: errorMsg,
+        }));
+        return null;
+      }
 
       try {
         safeSetState((prev) => ({
@@ -198,7 +214,7 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
           error: null,
         }));
 
-        const result = await authService.verifyTwoFactorSetup(accountId, token);
+        const result = await authService.verifyTwoFactorSetup(accountId, token, state.setupToken);
 
         // Update account security state
         updateAccountData(accountId, {
@@ -211,10 +227,11 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
           loading: false,
           statusData: {
             enabled: true,
-            backupCodesCount: result.backupCodes?.length || 0,
+            backupCodesCount: prev.setupData?.backupCodes?.length || 0,
             lastSetupDate: new Date().toISOString(),
           },
-          backupCodes: result.backupCodes || null,
+          backupCodes: prev.setupData?.backupCodes || null,
+          setupToken: null, // Clear setup token after successful verification
         }));
 
         return result;
@@ -223,7 +240,7 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
         return null;
       }
     },
-    [accountId, authService, updateAccountData, handleError, safeSetState],
+    [accountId, state.setupToken, authService, updateAccountData, handleError, safeSetState],
   );
 
   const generateBackupCodes = useCallback(
@@ -297,6 +314,7 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
           },
           setupData: null,
           backupCodes: null,
+          setupToken: null, // Clear setup token
         }));
 
         return {
@@ -335,6 +353,7 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
 
   const canSetup = !!accountId && !!accountType && !isEnabled;
   const canDisable = !!accountId && !!accountType && isEnabled;
+  const canVerifySetup = !!accountId && !!state.setupToken; // NEW: Can verify if setup token exists
 
   return {
     // Account identification
@@ -366,6 +385,7 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
     qrCode: state.setupData?.qrCode ?? null,
     secret: state.setupData?.secret ?? null,
     backupCodes: state.backupCodes,
+    setupToken: state.setupToken, // NEW: Expose setup token
 
     // Operations
     checkStatus,
@@ -379,5 +399,6 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
     reset,
     canSetup,
     canDisable,
+    canVerifySetup, // NEW: Can verify setup capability
   };
 }

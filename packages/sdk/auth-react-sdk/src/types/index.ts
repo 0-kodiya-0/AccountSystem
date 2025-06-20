@@ -248,7 +248,7 @@ export interface ReauthorizeUrlResponse {
 }
 
 // ============================================================================
-// UNIFIED Two-Factor Authentication (NEW)
+// UNIFIED Two-Factor Authentication (UPDATED)
 // ============================================================================
 
 export interface TwoFactorStatusResponse {
@@ -268,6 +268,16 @@ export interface UnifiedTwoFactorSetupResponse {
   qrCode?: string;
   qrCodeUrl?: string;
   backupCodes?: string[];
+  setupToken?: string; // NEW: Setup token for verification step
+}
+
+export interface UnifiedTwoFactorVerifySetupRequest {
+  token: string; // 6-digit TOTP code
+  setupToken: string; // NEW: Setup token from setup step
+}
+
+export interface UnifiedTwoFactorVerifySetupResponse {
+  message: string;
 }
 
 export interface UnifiedTwoFactorVerifyRequest {

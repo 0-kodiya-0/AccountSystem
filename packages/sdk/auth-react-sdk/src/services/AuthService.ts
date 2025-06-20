@@ -41,6 +41,7 @@ import {
   PasswordResetVerificationRequest,
   PasswordResetVerificationResponse,
   AccountType,
+  UnifiedTwoFactorVerifySetupResponse,
 } from '../types';
 import { HttpClient } from '../client/HttpClient';
 
@@ -430,11 +431,23 @@ export class AuthService {
     return this.httpClient.post(`/${accountId}/twofa/setup`, data);
   }
 
-  async verifyTwoFactorSetup(accountId: string, token: string): Promise<UnifiedTwoFactorSetupResponse> {
+  /**
+   * Verify 2FA setup using setup token from the setup step
+   * UPDATED: Now requires setupToken parameter
+   */
+  async verifyTwoFactorSetup(
+    accountId: string,
+    token: string,
+    setupToken: string,
+  ): Promise<UnifiedTwoFactorVerifySetupResponse> {
     validateAccountId(accountId, '2FA setup verification');
     validateRequired(token, '2FA verification token', '2FA setup verification');
+    validateRequired(setupToken, 'setup token', '2FA setup verification');
 
-    return this.httpClient.post(`/${accountId}/twofa/verify-setup`, { token });
+    return this.httpClient.post(`/${accountId}/twofa/verify-setup`, {
+      token,
+      setupToken,
+    });
   }
 
   async generateBackupCodes(accountId: string, data: BackupCodesRequest): Promise<BackupCodesResponse> {
