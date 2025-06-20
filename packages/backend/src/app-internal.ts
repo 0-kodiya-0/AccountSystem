@@ -143,7 +143,7 @@ export async function startInternalServer(): Promise<void> {
   internalServer = http.createServer(app);
 
   // Initialize Socket.IO for internal services with enhanced configuration
-  const io = socketConfig.initializeSocketIO(internalServer);
+  const io = socketConfig.initializeSocketIO(internalServer, 'internal');
 
   // Initialize internal socket handler with best practices implementation
   const socketHandler = new InternalSocketHandler(io);

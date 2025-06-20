@@ -133,7 +133,7 @@ export async function startMainServer(): Promise<void> {
   httpServer = http.createServer(app);
 
   // Initialize Socket.IO with the HTTP server
-  const io = socketConfig.initializeSocketIO(httpServer);
+  const io = socketConfig.initializeSocketIO(httpServer, 'external');
 
   // Initialize socket handlers if notifications are enabled
   if (process.env.DISABLE_NOTIFICATIONS !== 'true') {
