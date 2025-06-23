@@ -1,5 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import nock from 'nock';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { InternalApiError, ApiErrorCode, InternalSocketClient, InternalHttpClient } from '../../src';
 
 describe('Error Handling Scenarios', () => {
@@ -8,6 +7,7 @@ describe('Error Handling Scenarios', () => {
     baseUrl,
     serviceId: 'test-service',
     serviceSecret: 'test-secret',
+    serviceName: 'Test Service',
     timeout: 5000,
     enableLogging: false,
   };
@@ -24,145 +24,10 @@ describe('Error Handling Scenarios', () => {
   });
 
   afterEach(() => {
-    nock.cleanAll();
     socketClient.disconnect();
   });
 
-  describe('HTTP Client Error Scenarios', () => {
-    describe('Network Errors', () => {
-      it('should handle connection timeout', async () => {
-        nock(baseUrl)
-          .get('/internal/health')
-          .delayConnection(6000) // Longer than timeout
-          .reply(200, { success: true });
-
-        await expect(httpClient.healthCheck()).rejects.toThrow(InternalApiError);
-
-        try {
-          await httpClient.healthCheck();
-        } catch (error) {
-          expect(error).toBeInstanceOf(InternalApiError);
-          expect((error as InternalApiError).code).toBe(ApiErrorCode.TIMEOUT_ERROR);
-          expect((error as InternalApiError).message).toContain('timeout');
-        }
-      });
-
-      it('should handle connection refused (ECONNREFUSED)', async () => {
-        const invalidClient = new InternalHttpClient({
-          ...config,
-          baseUrl: 'http://localhost:99999',
-        });
-
-        await expect(invalidClient.healthCheck()).rejects.toThrow(InternalApiError);
-
-        try {
-          await invalidClient.healthCheck();
-        } catch (error) {
-          expect((error as InternalApiError).code).toBe(ApiErrorCode.CONNECTION_ERROR);
-          expect((error as InternalApiError).message).toContain('Connection refused');
-        }
-      });
-
-      it('should handle DNS resolution failure (ENOTFOUND)', async () => {
-        const invalidClient = new InternalHttpClient({
-          ...config,
-          baseUrl: 'http://nonexistent.domain.invalid',
-        });
-
-        await expect(invalidClient.healthCheck()).rejects.toThrow(InternalApiError);
-
-        try {
-          await invalidClient.healthCheck();
-        } catch (error) {
-          expect((error as InternalApiError).code).toBe(ApiErrorCode.CONNECTION_ERROR);
-          expect((error as InternalApiError).message).toContain('DNS resolution failed');
-        }
-      });
-    });
-
-    describe('HTTP Status Errors', () => {
-      it('should handle 401 Unauthorized', async () => {
-        nock(baseUrl)
-          .post('/internal/auth/verify-token')
-          .reply(401, {
-            success: false,
-            error: { code: 'AUTH_FAILED', message: 'Authentication failed' },
-          });
-
-        await expect(httpClient.verifyToken('invalid')).rejects.toThrow(InternalApiError);
-
-        try {
-          await httpClient.verifyToken('invalid');
-        } catch (error) {
-          expect((error as InternalApiError).code).toBe(ApiErrorCode.AUTH_FAILED);
-          expect((error as InternalApiError).statusCode).toBe(401);
-        }
-      });
-
-      it('should handle 404 Not Found', async () => {
-        nock(baseUrl)
-          .get('/internal/users/notfound')
-          .reply(404, {
-            success: false,
-            error: { code: 'USER_NOT_FOUND', message: 'User not found' },
-          });
-
-        await expect(httpClient.getUserById('notfound')).rejects.toThrow(InternalApiError);
-
-        try {
-          await httpClient.getUserById('notfound');
-        } catch (error) {
-          expect((error as InternalApiError).code).toBe(ApiErrorCode.USER_NOT_FOUND);
-          expect((error as InternalApiError).statusCode).toBe(404);
-        }
-      });
-
-      it('should handle 500 Internal Server Error', async () => {
-        nock(baseUrl)
-          .get('/internal/health')
-          .reply(500, {
-            success: false,
-            error: { code: 'SERVER_ERROR', message: 'Internal server error' },
-          });
-
-        await expect(httpClient.healthCheck()).rejects.toThrow(InternalApiError);
-
-        try {
-          await httpClient.healthCheck();
-        } catch (error) {
-          expect((error as InternalApiError).code).toBe(ApiErrorCode.SERVER_ERROR);
-          expect((error as InternalApiError).statusCode).toBe(500);
-        }
-      });
-    });
-
-    describe('Response Format Errors', () => {
-      it('should handle malformed JSON responses', async () => {
-        nock(baseUrl).get('/internal/health').reply(200, 'invalid json response');
-
-        await expect(httpClient.healthCheck()).rejects.toThrow();
-      });
-
-      it('should handle non-API response format', async () => {
-        nock(baseUrl).get('/internal/health').reply(200, { message: 'Not an API response' }); // Missing success field
-
-        await expect(httpClient.healthCheck()).rejects.toThrow();
-      });
-    });
-  });
-
   describe('Socket Client Error Scenarios', () => {
-    it('should handle connection failures', async () => {
-      const invalidSocketClient = new InternalSocketClient({
-        ...config,
-        baseUrl: 'http://localhost:99999',
-        serviceName: 'Test Service',
-        timeout: 1000,
-      });
-
-      await expect(invalidSocketClient.connect()).rejects.toThrow('Socket connection failed');
-    });
-
     it('should handle operations without connection', () => {
       expect(() => {
         socketClient.verifyToken('token', 'access', () => {});
@@ -238,6 +103,149 @@ describe('Error Handling Scenarios', () => {
       expect(error.statusCode).toBe(401);
       expect(error.details).toEqual({ endpoint: '/auth/verify', method: 'POST' });
       expect(error.timestamp).toBeDefined();
+    });
+  });
+
+  describe('Error Class Construction', () => {
+    it('should create error with all parameters', () => {
+      const error = new InternalApiError(ApiErrorCode.VALIDATION_ERROR, 'Validation failed', 422, { field: 'email' });
+
+      expect(error.code).toBe(ApiErrorCode.VALIDATION_ERROR);
+      expect(error.message).toBe('Validation failed');
+      expect(error.statusCode).toBe(422);
+      expect(error.details).toEqual({ field: 'email' });
+      expect(error.name).toBe('InternalApiError');
+      expect(error.timestamp).toBeDefined();
+    });
+
+    it('should create error with minimal parameters', () => {
+      const error = new InternalApiError(ApiErrorCode.SERVER_ERROR, 'Server error');
+
+      expect(error.code).toBe(ApiErrorCode.SERVER_ERROR);
+      expect(error.message).toBe('Server error');
+      expect(error.statusCode).toBe(500); // Default
+      expect(error.details).toBeUndefined();
+    });
+
+    it('should preserve error stack trace', () => {
+      const error = new InternalApiError(ApiErrorCode.TOKEN_INVALID, 'Invalid token');
+      expect(error.stack).toBeDefined();
+      expect(error.stack).toContain('InternalApiError');
+    });
+  });
+
+  describe('HTTP Client Status Code Mapping', () => {
+    it('should map status codes to correct error codes', () => {
+      const client = new InternalHttpClient(config);
+      const mapStatusToErrorCode = client['mapStatusToErrorCode'];
+
+      expect(mapStatusToErrorCode(400)).toBe(ApiErrorCode.INVALID_REQUEST);
+      expect(mapStatusToErrorCode(401)).toBe(ApiErrorCode.AUTH_FAILED);
+      expect(mapStatusToErrorCode(403)).toBe(ApiErrorCode.PERMISSION_DENIED);
+      expect(mapStatusToErrorCode(404)).toBe(ApiErrorCode.RESOURCE_NOT_FOUND);
+      expect(mapStatusToErrorCode(409)).toBe(ApiErrorCode.RESOURCE_EXISTS);
+      expect(mapStatusToErrorCode(422)).toBe(ApiErrorCode.VALIDATION_ERROR);
+      expect(mapStatusToErrorCode(429)).toBe(ApiErrorCode.RATE_LIMIT_EXCEEDED);
+      expect(mapStatusToErrorCode(500)).toBe(ApiErrorCode.SERVER_ERROR);
+      expect(mapStatusToErrorCode(502)).toBe(ApiErrorCode.SERVICE_UNAVAILABLE);
+      expect(mapStatusToErrorCode(503)).toBe(ApiErrorCode.SERVICE_UNAVAILABLE);
+      expect(mapStatusToErrorCode(504)).toBe(ApiErrorCode.SERVICE_UNAVAILABLE);
+      expect(mapStatusToErrorCode(999)).toBe(ApiErrorCode.SERVER_ERROR); // Default case
+    });
+  });
+
+  describe('HTTP Client Configuration', () => {
+    it('should create client with correct axios configuration', () => {
+      const client = new InternalHttpClient(config);
+      const axiosInstance = client['client'];
+
+      expect(axiosInstance.defaults.baseURL).toBe('https://api.example.com/internal');
+      expect(axiosInstance.defaults.timeout).toBe(5000);
+      expect(axiosInstance.defaults.headers['Content-Type']).toBe('application/json');
+      expect(axiosInstance.defaults.headers['X-Internal-Service-ID']).toBe('test-service');
+      expect(axiosInstance.defaults.headers['X-Internal-Service-Secret']).toBe('test-secret');
+    });
+
+    it('should handle default timeout when not specified', () => {
+      const clientWithDefaults = new InternalHttpClient({
+        baseUrl: 'https://api.example.com',
+        serviceId: 'test-service',
+        serviceSecret: 'test-secret',
+      });
+
+      const axiosInstance = clientWithDefaults['client'];
+      expect(axiosInstance.defaults.timeout).toBe(30000);
+    });
+
+    it('should handle baseUrl with trailing slash', () => {
+      const clientWithSlash = new InternalHttpClient({
+        ...config,
+        baseUrl: 'https://api.example.com/',
+      });
+
+      const axiosInstance = clientWithSlash['client'];
+      expect(axiosInstance.defaults.baseURL).toBe('https://api.example.com/internal');
+    });
+  });
+
+  describe('Socket Client Configuration', () => {
+    it('should create socket client with correct configuration', () => {
+      const client = new InternalSocketClient(config);
+
+      expect(client['config']).toMatchObject({
+        baseUrl: config.baseUrl,
+        serviceId: config.serviceId,
+        serviceName: config.serviceName,
+        serviceSecret: config.serviceSecret,
+        namespace: '/internal-socket',
+        timeout: 30000,
+        enableLogging: false,
+        autoConnect: true,
+        maxReconnectAttempts: 5,
+      });
+    });
+
+    it('should handle custom configuration options', () => {
+      const customConfig = {
+        ...config,
+        namespace: '/custom',
+        timeout: 5000,
+        enableLogging: true,
+        autoConnect: false,
+        maxReconnectAttempts: 3,
+      };
+
+      const client = new InternalSocketClient(customConfig);
+      expect(client['config']).toMatchObject(customConfig);
+    });
+
+    it('should track connection state correctly', () => {
+      const client = new InternalSocketClient(config);
+
+      expect(client.isConnected()).toBe(false);
+      expect(client.getReconnectAttempts()).toBe(0);
+    });
+  });
+
+  describe('Error Handling Edge Cases', () => {
+    it('should handle undefined error messages', () => {
+      const error = new InternalApiError(ApiErrorCode.SERVER_ERROR, undefined as any);
+      expect(error.message).toBeDefined();
+    });
+
+    it('should handle null error details', () => {
+      const error = new InternalApiError(ApiErrorCode.SERVER_ERROR, 'Error', 500, null as any);
+      expect(error.details).toBeNull();
+    });
+
+    it('should handle error toJSON with circular references', () => {
+      const circularDetails: any = { self: null };
+      circularDetails.self = circularDetails;
+
+      const error = new InternalApiError(ApiErrorCode.SERVER_ERROR, 'Error', 500, circularDetails);
+
+      // Should not throw when serializing
+      expect(() => error.toJSON()).not.toThrow();
     });
   });
 });

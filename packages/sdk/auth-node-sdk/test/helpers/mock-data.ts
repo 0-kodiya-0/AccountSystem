@@ -5,6 +5,7 @@ import {
   SessionInfoResponse,
   HealthCheckResponse,
   AccountType,
+  TokenInfoResponse,
 } from '../../src/types';
 
 export const mockAccount: Account = {
@@ -24,6 +25,9 @@ export const mockTokenVerificationResponse: TokenVerificationResponse = {
   accountType: AccountType.OAuth,
   isRefreshToken: false,
   expiresAt: Date.now() + 3600000, // 1 hour from now
+};
+
+export const mockTokenInfoResponse: TokenInfoResponse = {
   tokenInfo: {
     type: 'oauth_jwt',
     format: 'JWT',
@@ -32,6 +36,7 @@ export const mockTokenVerificationResponse: TokenVerificationResponse = {
     createdAt: '2024-01-01T00:00:00.000Z',
     expiresAt: new Date(Date.now() + 3600000).toISOString(),
   },
+  tokenType: 'oauth_jwt',
 };
 
 export const mockUserResponse: UserResponse = {

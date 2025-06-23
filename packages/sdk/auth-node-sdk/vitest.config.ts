@@ -6,6 +6,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
+    silent: false, // Allow console output
+    reporters: 'verbose', // More detailed output
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
