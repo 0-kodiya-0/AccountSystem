@@ -10,7 +10,15 @@
     "dev": "npm run build -- --watch",
     "clean": "node -e \"const fs = require('fs'); if (fs.existsSync('dist')) fs.rmSync('dist', { recursive: true });\"",
     "prepublishOnly": "npm run build",
-    "test": "echo \"Tests not implemented yet\" && exit 0",
+    "create-logs": "node -e \"const fs = require('fs'); if (!fs.existsSync('logs')) fs.mkdirSync('logs', { recursive: true });\"",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:log": "npm run create-logs && vitest run --reporter=verbose > logs/test-output.log 2>&1",
+    "test:log-basic": "npm run create-logs && vitest run --reporter=basic > logs/test-basic.log 2>&1",
+    "test:coverage": "vitest --coverage",
+    "test:coverage-log": "npm run create-logs && vitest --coverage > logs/test-coverage.log 2>&1",
+    "test:watch": "vitest --watch",
+    "test:ui": "vitest --ui",
     "link": "npm run build && npm link"
   },
   "files": [
@@ -45,13 +53,25 @@
   "license": "MIT",
   "description": "",
   "devDependencies": {
+    "@types/cookie-parser": "^1.4.9",
     "@types/express": "^5.0.2",
     "@types/node": "^22.15.29",
+    "@types/sinon": "^17.0.3",
+    "@types/supertest": "^6.0.2",
+    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/ui": "^3.2.4",
     "esbuild": "0.25.5",
-    "typescript": "^5.8.3"
+    "msw": "^2.3.1",
+    "nock": "^13.5.4",
+    "sinon": "^18.0.0",
+    "supertest": "^7.0.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
   },
   "dependencies": {
     "axios": "^1.9.0",
+    "cookie-parser": "^1.4.7",
+    "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1"
   },
   "engines": {
