@@ -6,6 +6,7 @@ import * as AccountService from '../account/Account.service';
 import * as SessionService from '../session/session.service';
 import * as TokenService from '../tokens/Token.service';
 import { verifyAccessToken, verifyRefreshToken } from '../tokens/Token.jwt';
+import { TokenVerificationResponse } from './internal.types';
 
 /**
  * Verify and extract token information (unified for local and OAuth)
@@ -19,40 +20,26 @@ export const verifyAndExtractToken = asyncHandler(async (req: Request, res: Resp
     throw new BadRequestError('Token is required', 400, ApiErrorCode.TOKEN_INVALID);
   }
 
-  try {
-    let tokenData;
+  let tokenData;
 
-    if (tokenType === 'refresh') {
-      tokenData = verifyRefreshToken(token);
-    } else {
-      tokenData = verifyAccessToken(token);
-    }
-
-    // Get additional token info
-    const tokenInfo = TokenService.getTokenInfo(token, tokenType === 'refresh');
-
-    next(
-      new JsonSuccess({
-        valid: true,
-        accountId: tokenData.accountId,
-        accountType: tokenData.accountType,
-        isRefreshToken: tokenData.isRefreshToken,
-        expiresAt: tokenData.exp ? tokenData.exp * 1000 : undefined,
-        tokenInfo,
-        // OAuth specific fields
-        ...(tokenData.oauthAccessToken && { oauthAccessToken: tokenData.oauthAccessToken }),
-        ...(tokenData.oauthRefreshToken && { oauthRefreshToken: tokenData.oauthRefreshToken }),
-      }),
-    );
-  } catch (error) {
-    next(
-      new JsonSuccess({
-        valid: false,
-        error: error instanceof Error ? error.message : 'Invalid token',
-        tokenInfo: TokenService.getTokenInfo(token, tokenType === 'refresh'),
-      }),
-    );
+  if (tokenType === 'refresh') {
+    tokenData = verifyRefreshToken(token);
+  } else {
+    tokenData = verifyAccessToken(token);
   }
+
+  const response: TokenVerificationResponse = {
+    valid: true,
+    accountId: tokenData.accountId,
+    accountType: tokenData.accountType,
+    isRefreshToken: tokenData.isRefreshToken,
+    expiresAt: tokenData.exp ? tokenData.exp * 1000 : undefined,
+    // OAuth specific fields
+    ...(tokenData.oauthAccessToken && { oauthAccessToken: tokenData.oauthAccessToken }),
+    ...(tokenData.oauthRefreshToken && { oauthRefreshToken: tokenData.oauthRefreshToken }),
+  };
+
+  next(new JsonSuccess(response));
 });
 
 /**

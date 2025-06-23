@@ -152,7 +152,6 @@ export interface TokenVerificationResponse {
   accountType?: AccountType;
   isRefreshToken?: boolean;
   expiresAt?: number;
-  tokenInfo: TokenInfo;
   oauthAccessToken?: string;
   oauthRefreshToken?: string;
   error?: string;

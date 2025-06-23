@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { ApiErrorCode, InternalApiError } from '../types';
+import { ApiErrorCode, InternalApiError, TokenVerificationResponse } from '../types';
 import { InternalHttpClient } from '../client/auth-client';
 import { InternalSocketClient } from '../client/socket-client';
 
@@ -20,8 +20,8 @@ export interface InternalApiSdkConfig {
 // ============================================================================
 
 export class InternalApiSdk {
-  public httpClient: InternalHttpClient; // Make public to fix private access error
-  public socketClient?: InternalSocketClient; // Make public to fix private access error
+  public httpClient: InternalHttpClient;
+  public socketClient?: InternalSocketClient;
   private enableLogging: boolean;
   private preferSocket: boolean;
   private accountServerBaseUrl?: string;
@@ -54,12 +54,15 @@ export class InternalApiSdk {
     return this.preferSocket && !!this.socketClient && this.socketClient.isConnected();
   }
 
-  private async callVerifyToken(token: string, tokenType: 'access' | 'refresh' = 'access'): Promise<any> {
+  private async callVerifyToken(
+    token: string,
+    tokenType: 'access' | 'refresh' = 'access',
+  ): Promise<TokenVerificationResponse> {
     if (this.shouldUseSocket()) {
       return new Promise((resolve, reject) => {
         this.socketClient!.verifyToken(token, tokenType, (response) => {
           if (response.success) {
-            resolve(response.data);
+            resolve(response.data as TokenVerificationResponse);
           } else {
             reject(new Error(response.error?.message || 'Socket verification failed'));
           }
