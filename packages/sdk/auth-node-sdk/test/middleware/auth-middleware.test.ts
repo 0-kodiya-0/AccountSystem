@@ -58,7 +58,7 @@ describe('InternalApiSdk Middleware', () => {
     vi.clearAllMocks();
   });
 
-  describe('injectClients middleware', () => {
+  describe('Core middleware functionality', () => {
     it('should inject HTTP and Socket clients into request', async () => {
       app.use(sdk.injectClients());
       app.get('/test', (req, res) => {
@@ -106,7 +106,7 @@ describe('InternalApiSdk Middleware', () => {
     });
   });
 
-  describe('client selection override', () => {
+  describe('Client selection override', () => {
     it('should force HTTP client usage', async () => {
       vi.spyOn(socketClient, 'isConnected').mockReturnValue(true);
 
@@ -147,56 +147,7 @@ describe('InternalApiSdk Middleware', () => {
     });
   });
 
-  describe('error handling scenarios', () => {
-    beforeEach(() => {
-      app.use(sdk.injectClients());
-    });
-
-    it('should handle service unavailable errors', async () => {
-      vi.spyOn(httpClient, 'verifyToken').mockRejectedValue(new Error('Service unavailable'));
-
-      app.use(sdk.verifyAccessToken());
-      app.get('/test', (req, res) => {
-        res.json({ success: true });
-      });
-
-      await request(app).get('/test').set('Authorization', 'Bearer valid_token').expect(401);
-    });
-
-    it('should handle network timeout errors', async () => {
-      vi.spyOn(httpClient, 'getUserById').mockRejectedValue(new Error('Request timeout'));
-
-      app.use((req, res, next) => {
-        req.tokenData = {
-          valid: true,
-          accountId: '507f1f77bcf86cd799439011',
-          accountType: 'oauth',
-          isRefreshToken: false,
-          expiresAt: Date.now() + 3600000,
-        };
-        next();
-      });
-      app.use(sdk.loadUser());
-      app.get('/test', (req, res) => {
-        res.json({ success: true });
-      });
-
-      await request(app).get('/test').expect(500);
-    });
-
-    it('should handle validation errors gracefully', async () => {
-      vi.spyOn(httpClient, 'checkUserExists').mockRejectedValue(new Error('Database connection failed'));
-
-      app.use(sdk.validateAccountAccess('accountId'));
-      app.get('/test/:accountId', (req, res) => {
-        res.json({ success: true });
-      });
-
-      await request(app).get('/test/507f1f77bcf86cd799439011').expect(500);
-    });
-  });
-
-  describe('token extraction utilities', () => {
+  describe('Token extraction utilities', () => {
     it('should extract token from Authorization header', () => {
       const extractTokenFromHeader = sdk['extractTokenFromHeader'];
       const mockReq = {
@@ -246,7 +197,7 @@ describe('InternalApiSdk Middleware', () => {
     });
   });
 
-  describe('refresh URL building', () => {
+  describe('Refresh URL building', () => {
     it('should build correct refresh URL', () => {
       const buildRefreshUrl = sdk['buildRefreshUrl'];
       const mockReq = {

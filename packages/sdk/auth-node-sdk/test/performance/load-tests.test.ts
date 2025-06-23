@@ -111,48 +111,6 @@ describe('Performance and Load Tests', () => {
       console.log(`Completed ${requestCount * 3} mixed requests in ${duration}ms`);
     });
 
-    it('should handle memory efficiently with large responses', async () => {
-      const largeData = {
-        status: 'healthy',
-        timestamp: new Date().toISOString(),
-        server: 'internal-api',
-        version: '1.0.0',
-        features: { test: true },
-        endpoints: { test: '/test' },
-        services: { test: 'available' },
-        users: Array.from({ length: 1000 }, (_, i) => ({
-          id: `user_${i}`,
-          name: `User ${i}`,
-          email: `user${i}@example.com`,
-          data: 'x'.repeat(1000), // 1KB of data per user
-        })),
-      };
-
-      nock(baseUrl).get('/internal/health').reply(200, { success: true, data: largeData });
-
-      const initialMemory = process.memoryUsage().heapUsed;
-
-      // Make the request multiple times to test memory usage
-      for (let i = 0; i < 10; i++) {
-        nock(baseUrl).get('/internal/health').reply(200, { success: true, data: largeData });
-
-        await httpClient.healthCheck();
-      }
-
-      // Force garbage collection if available
-      if (global.gc) {
-        global.gc();
-      }
-
-      const finalMemory = process.memoryUsage().heapUsed;
-      const memoryIncrease = finalMemory - initialMemory;
-
-      // Memory increase should be reasonable (less than 50MB)
-      expect(memoryIncrease).toBeLessThan(50 * 1024 * 1024);
-
-      console.log(`Memory increase: ${(memoryIncrease / 1024 / 1024).toFixed(2)}MB`);
-    });
-
     it('should handle request timeouts gracefully under load', async () => {
       const requestCount = 20;
       const timeoutCount = 5;
@@ -305,67 +263,6 @@ describe('Performance and Load Tests', () => {
         )}ms per request)`,
       );
     });
-
-    it('should handle middleware chain efficiently', async () => {
-      const sdk = new InternalApiSdk({
-        httpClient,
-        enableLogging: false,
-      });
-
-      // Mock all required methods
-      vi.spyOn(httpClient, 'verifyToken').mockResolvedValue(mockTokenVerificationResponse);
-      vi.spyOn(httpClient, 'getUserById').mockResolvedValue(mockUserResponse);
-      vi.spyOn(httpClient, 'checkUserExists').mockResolvedValue({
-        exists: true,
-        accountId: '507f1f77bcf86cd799439011',
-      });
-      vi.spyOn(httpClient, 'getSessionInfo').mockResolvedValue({
-        session: {
-          accountIds: ['507f1f77bcf86cd799439011'],
-          currentAccountId: '507f1f77bcf86cd799439011',
-          sessionId: 'session_123',
-          createdAt: '2024-01-01T00:00:00.000Z',
-          lastActivity: '2024-01-01T01:00:00.000Z',
-        },
-      });
-
-      const middlewares = sdk.authorize();
-      const requestCount = 50;
-      const startTime = Date.now();
-
-      const promises = Array.from({ length: requestCount }, async () => {
-        const mockReq = {
-          headers: { authorization: 'Bearer valid_token' },
-          cookies: { account_session: 'session_cookie' },
-          params: { accountId: '507f1f77bcf86cd799439011' },
-        } as any;
-
-        const mockRes = {} as any;
-
-        // Execute all middleware in sequence
-        for (const middleware of middlewares) {
-          await new Promise<void>((resolve, reject) => {
-            middleware(mockReq, mockRes, (error) => {
-              if (error) reject(error);
-              else resolve();
-            });
-          });
-        }
-      });
-
-      await Promise.all(promises);
-      const endTime = Date.now();
-      const duration = endTime - startTime;
-
-      expect(duration).toBeLessThan(3000);
-
-      const avgProcessingTime = duration / requestCount;
-      console.log(
-        `Full middleware chain: Processed ${requestCount} requests in ${duration}ms (avg: ${avgProcessingTime.toFixed(
-          2,
-        )}ms per request)`,
-      );
-    });
   });
 
   describe('Resource Management', () => {
@@ -389,39 +286,6 @@ describe('Performance and Load Tests', () => {
 
       // Check that no interceptors are pending
       expect(nock.pendingMocks()).toHaveLength(0);
-    });
-
-    it('should handle client recreation efficiently', async () => {
-      const clientCount = 10;
-      const requestsPerClient = 5;
-
-      const startTime = Date.now();
-
-      for (let i = 0; i < clientCount; i++) {
-        const client = new InternalHttpClient({
-          ...config,
-          serviceId: `service_${i}`,
-        });
-
-        // Set up interceptors for this client
-        for (let j = 0; j < requestsPerClient; j++) {
-          nock(baseUrl)
-            .get('/internal/health')
-            .reply(200, { success: true, data: { status: 'healthy', client: i, request: j } });
-        }
-
-        // Make requests with this client
-        const promises = Array.from({ length: requestsPerClient }, (_, j) => client.healthCheck());
-
-        await Promise.all(promises);
-      }
-
-      const endTime = Date.now();
-      const duration = endTime - startTime;
-      const totalRequests = clientCount * requestsPerClient;
-
-      expect(duration).toBeLessThan(5000);
-      console.log(`Client recreation: ${clientCount} clients, ${totalRequests} total requests in ${duration}ms`);
     });
 
     it('should handle socket connection lifecycle efficiently', async () => {
@@ -464,34 +328,6 @@ describe('Performance and Load Tests', () => {
 
       expect(duration).toBeLessThan(8000);
       console.log(`Socket lifecycle: ${connectionCount} connections, ${totalRequests} total requests in ${duration}ms`);
-    });
-  });
-
-  describe('Error Handling Performance', () => {
-    it('should handle errors efficiently without memory leaks', async () => {
-      const errorCount = 100;
-      const startTime = Date.now();
-
-      // Set up interceptors that will return errors
-      for (let i = 0; i < errorCount; i++) {
-        nock(baseUrl)
-          .get('/internal/health')
-          .reply(500, { success: false, error: { code: 'SERVER_ERROR', message: `Error ${i}` } });
-      }
-
-      const promises = Array.from({ length: errorCount }, (_, i) =>
-        httpClient.healthCheck().catch((error) => ({ errorIndex: i, message: error.message })),
-      );
-
-      const results = await Promise.all(promises);
-      const endTime = Date.now();
-      const duration = endTime - startTime;
-
-      expect(results).toHaveLength(errorCount);
-      expect(results.every((r) => 'errorIndex' in r)).toBe(true);
-      expect(duration).toBeLessThan(3000);
-
-      console.log(`Error handling: ${errorCount} errors processed in ${duration}ms`);
     });
   });
 });

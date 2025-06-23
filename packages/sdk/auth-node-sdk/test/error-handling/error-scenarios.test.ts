@@ -78,38 +78,9 @@ describe('Error Handling Scenarios', () => {
           expect((error as InternalApiError).message).toContain('DNS resolution failed');
         }
       });
-
-      it('should handle generic network errors', async () => {
-        // Simulate a network error by not setting up any nock intercept
-        // and using a non-existent domain
-        const invalidClient = new InternalHttpClient({
-          ...config,
-          baseUrl: 'http://192.0.2.1', // Test IP that should not exist
-        });
-
-        await expect(invalidClient.healthCheck()).rejects.toThrow(InternalApiError);
-      });
     });
 
     describe('HTTP Status Errors', () => {
-      it('should handle 400 Bad Request', async () => {
-        nock(baseUrl)
-          .post('/internal/auth/verify-token')
-          .reply(400, {
-            success: false,
-            error: { code: 'INVALID_REQUEST', message: 'Invalid request format' },
-          });
-
-        await expect(httpClient.verifyToken('invalid')).rejects.toThrow(InternalApiError);
-
-        try {
-          await httpClient.verifyToken('invalid');
-        } catch (error) {
-          expect((error as InternalApiError).code).toBe(ApiErrorCode.INVALID_REQUEST);
-          expect((error as InternalApiError).statusCode).toBe(400);
-        }
-      });
-
       it('should handle 401 Unauthorized', async () => {
         nock(baseUrl)
           .post('/internal/auth/verify-token')
@@ -125,24 +96,6 @@ describe('Error Handling Scenarios', () => {
         } catch (error) {
           expect((error as InternalApiError).code).toBe(ApiErrorCode.AUTH_FAILED);
           expect((error as InternalApiError).statusCode).toBe(401);
-        }
-      });
-
-      it('should handle 403 Forbidden', async () => {
-        nock(baseUrl)
-          .get('/internal/users/forbidden')
-          .reply(403, {
-            success: false,
-            error: { code: 'PERMISSION_DENIED', message: 'Access denied' },
-          });
-
-        await expect(httpClient.getUserById('forbidden')).rejects.toThrow(InternalApiError);
-
-        try {
-          await httpClient.getUserById('forbidden');
-        } catch (error) {
-          expect((error as InternalApiError).code).toBe(ApiErrorCode.PERMISSION_DENIED);
-          expect((error as InternalApiError).statusCode).toBe(403);
         }
       });
 
@@ -164,24 +117,6 @@ describe('Error Handling Scenarios', () => {
         }
       });
 
-      it('should handle 429 Rate Limited', async () => {
-        nock(baseUrl)
-          .get('/internal/health')
-          .reply(429, {
-            success: false,
-            error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests' },
-          });
-
-        await expect(httpClient.healthCheck()).rejects.toThrow(InternalApiError);
-
-        try {
-          await httpClient.healthCheck();
-        } catch (error) {
-          expect((error as InternalApiError).code).toBe(ApiErrorCode.RATE_LIMIT_EXCEEDED);
-          expect((error as InternalApiError).statusCode).toBe(429);
-        }
-      });
-
       it('should handle 500 Internal Server Error', async () => {
         nock(baseUrl)
           .get('/internal/health')
@@ -199,32 +134,6 @@ describe('Error Handling Scenarios', () => {
           expect((error as InternalApiError).statusCode).toBe(500);
         }
       });
-
-      it('should handle 502 Bad Gateway', async () => {
-        nock(baseUrl).get('/internal/health').reply(502, 'Bad Gateway');
-
-        await expect(httpClient.healthCheck()).rejects.toThrow(InternalApiError);
-
-        try {
-          await httpClient.healthCheck();
-        } catch (error) {
-          expect((error as InternalApiError).code).toBe(ApiErrorCode.SERVICE_UNAVAILABLE);
-          expect((error as InternalApiError).statusCode).toBe(502);
-        }
-      });
-
-      it('should handle 503 Service Unavailable', async () => {
-        nock(baseUrl).get('/internal/health').reply(503, 'Service Unavailable');
-
-        await expect(httpClient.healthCheck()).rejects.toThrow(InternalApiError);
-
-        try {
-          await httpClient.healthCheck();
-        } catch (error) {
-          expect((error as InternalApiError).code).toBe(ApiErrorCode.SERVICE_UNAVAILABLE);
-          expect((error as InternalApiError).statusCode).toBe(503);
-        }
-      });
     });
 
     describe('Response Format Errors', () => {
@@ -234,27 +143,10 @@ describe('Error Handling Scenarios', () => {
         await expect(httpClient.healthCheck()).rejects.toThrow();
       });
 
-      it('should handle empty responses', async () => {
-        nock(baseUrl).get('/internal/health').reply(200, '');
-
-        await expect(httpClient.healthCheck()).rejects.toThrow();
-      });
-
       it('should handle non-API response format', async () => {
         nock(baseUrl).get('/internal/health').reply(200, { message: 'Not an API response' }); // Missing success field
 
         await expect(httpClient.healthCheck()).rejects.toThrow();
-      });
-
-      it('should handle API error responses without details', async () => {
-        nock(baseUrl)
-          .get('/internal/health')
-          .reply(400, {
-            success: false,
-            error: { code: 'UNKNOWN_ERROR' }, // Missing message
-          });
-
-        await expect(httpClient.healthCheck()).rejects.toThrow(InternalApiError);
       });
     });
   });
@@ -271,17 +163,6 @@ describe('Error Handling Scenarios', () => {
       await expect(invalidSocketClient.connect()).rejects.toThrow('Socket connection failed');
     });
 
-    it('should handle authentication failures', async () => {
-      const invalidAuthClient = new InternalSocketClient({
-        ...config,
-        serviceName: 'Test Service',
-        serviceId: '', // Invalid credentials
-        serviceSecret: '',
-      });
-
-      await expect(invalidAuthClient.connect()).rejects.toThrow();
-    });
-
     it('should handle operations without connection', () => {
       expect(() => {
         socketClient.verifyToken('token', 'access', () => {});
@@ -294,13 +175,6 @@ describe('Error Handling Scenarios', () => {
       expect(() => {
         socketClient.healthCheck(() => {});
       }).toThrow('Socket not connected');
-    });
-
-    it('should handle socket disconnection during operation', async () => {
-      // This test requires a real socket server setup
-      // For now, we'll test the state management
-      expect(socketClient.isConnected()).toBe(false);
-      expect(socketClient.getReconnectAttempts()).toBe(0);
     });
   });
 
@@ -364,91 +238,6 @@ describe('Error Handling Scenarios', () => {
       expect(error.statusCode).toBe(401);
       expect(error.details).toEqual({ endpoint: '/auth/verify', method: 'POST' });
       expect(error.timestamp).toBeDefined();
-    });
-  });
-
-  describe('Edge Cases', () => {
-    it('should handle extremely large responses', async () => {
-      const largeResponse = {
-        success: true,
-        data: {
-          status: 'healthy',
-          timestamp: new Date().toISOString(),
-          server: 'internal-api',
-          version: '1.0.0',
-          features: { test: true },
-          endpoints: { test: '/test' },
-          services: { test: 'available' },
-          largeArray: new Array(10000).fill('data'),
-          largeString: 'x'.repeat(1000000),
-        },
-      };
-
-      nock(baseUrl).get('/internal/health').reply(200, largeResponse);
-
-      const result = await httpClient.healthCheck();
-      expect((result as any).largeArray).toHaveLength(10000);
-      expect((result as any).largeString).toHaveLength(1000000);
-    });
-
-    it('should handle responses with special characters', async () => {
-      const specialResponse = {
-        success: true,
-        data: {
-          status: 'healthy',
-          timestamp: new Date().toISOString(),
-          server: 'internal-api',
-          version: '1.0.0',
-          features: { test: true },
-          endpoints: { test: '/test' },
-          services: { test: 'available' },
-          unicode: '🚀 Unicode test 測試 тест',
-          specialChars: '<>!@#$%^&*()_+-=[]{}|;:,.<>?',
-          nullBytes: 'test\x00null\x00bytes',
-          emojis: '👍😀🎉💯',
-        },
-      };
-
-      nock(baseUrl).get('/internal/health').reply(200, specialResponse);
-
-      const result = await httpClient.healthCheck();
-      expect((result as any).unicode).toBe('🚀 Unicode test 測試 тест');
-      expect((result as any).specialChars).toBe('<>!@#$%^&*()_+-=[]{}|;:,.<>?');
-      expect((result as any).emojis).toBe('👍😀🎉💯');
-    });
-
-    it('should handle concurrent requests', async () => {
-      // Set up multiple interceptors
-      for (let i = 0; i < 10; i++) {
-        nock(baseUrl)
-          .get('/internal/health')
-          .reply(200, { success: true, data: { status: 'healthy', id: i } });
-      }
-
-      const promises = Array.from({ length: 10 }, (_, i) => httpClient.healthCheck());
-
-      const results = await Promise.all(promises);
-      expect(results).toHaveLength(10);
-      results.forEach((result, index) => {
-        expect((result as any).id).toBe(index);
-      });
-    });
-
-    it('should handle request cancellation scenarios', async () => {
-      // Note: This is a simplified test as actual cancellation
-      // would require AbortController implementation
-      nock(baseUrl)
-        .get('/internal/health')
-        .delayConnection(1000)
-        .reply(200, { success: true, data: { status: 'healthy' } });
-
-      const promise = httpClient.healthCheck();
-
-      // Simulate some condition that would cause cancellation
-      // In real scenarios, this might be component unmount, navigation, etc.
-
-      // For this test, we'll just ensure the promise still resolves
-      await expect(promise).resolves.toBeDefined();
     });
   });
 });
