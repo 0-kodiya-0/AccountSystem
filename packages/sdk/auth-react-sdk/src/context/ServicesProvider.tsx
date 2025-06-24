@@ -5,19 +5,20 @@ import { AccountService } from '../services/AccountService';
 import { SDKConfig } from '../types';
 
 /**
+ * Configuration for creating services
+ */
+export interface ServicesConfig {
+  sdkConfig: SDKConfig;
+}
+
+/**
  * Services interface
  */
 export interface Services {
   httpClient: HttpClient;
   authService: AuthService;
   accountService: AccountService;
-}
-
-/**
- * Configuration for creating services
- */
-export interface ServicesConfig {
-  sdkConfig: SDKConfig;
+  config: ServicesConfig;
 }
 
 /**
@@ -39,6 +40,7 @@ const createServices = (config: ServicesConfig): Services => {
     httpClient,
     authService,
     accountService,
+    config,
   };
 };
 
@@ -79,6 +81,11 @@ const useServices = (): Services => {
   }
 
   return services;
+};
+
+export const useConfig = () => {
+  const { config } = useServices();
+  return config;
 };
 
 /**

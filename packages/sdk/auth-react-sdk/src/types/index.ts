@@ -381,9 +381,10 @@ export interface LogoutAllResponse {
 
 export interface SDKConfig {
   backendUrl: string;
+  backendProxyUrl?: string;
+  frontendProxyUrl?: string;
   timeout?: number;
   withCredentials?: boolean;
-  proxyPath?: string;
 }
 
 export interface ApiResponse<T = unknown> {

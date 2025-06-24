@@ -3,6 +3,7 @@ import { useSession } from '../hooks/useSession';
 import DefaultLoadingSpinner from './DefaultLoadingSpinner';
 import DefaultGlobalErrorDisplay from './DefaultGlobalErrorDisplay';
 import DefaultErrorDisplay from './DefaultErrorDisplay';
+import { useConfig } from '../context/ServicesProvider';
 
 interface BaseAuthGuardProps {
   children?: React.ReactNode;
@@ -83,12 +84,23 @@ export function AuthGuard(props: AuthGuardProps): JSX.Element | null {
     autoLoadSession = true,
   } = props;
 
+  const config = useConfig();
+
   const allowGuests = 'allowGuests' in props ? props.allowGuests : false;
   const requireAccount = 'requireAccount' in props ? props.requireAccount : false;
   const redirectOnAuthenticated = 'redirectOnAuthenticated' in props ? props.redirectOnAuthenticated : undefined;
-  const redirectToLogin = 'redirectToLogin' in props ? props.redirectToLogin : undefined;
+  const redirectToLogin =
+    'redirectToLogin' in props
+      ? config.sdkConfig.frontendProxyUrl
+        ? `${config.sdkConfig.frontendProxyUrl}${props.redirectToLogin}`
+        : props.redirectToLogin
+      : undefined;
   const redirectToAccountSelection =
-    'redirectToAccountSelection' in props ? props.redirectToAccountSelection : undefined;
+    'redirectToAccountSelection' in props
+      ? config.sdkConfig.frontendProxyUrl
+        ? `${config.sdkConfig.frontendProxyUrl}${props.redirectToAccountSelection}`
+        : props.redirectToAccountSelection
+      : undefined;
 
   // Get session state using the new useSession hook
   const {

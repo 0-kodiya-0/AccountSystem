@@ -7,9 +7,9 @@ export class HttpClient {
   private withCredentials: boolean;
 
   constructor(config: SDKConfig) {
-    this.proxyPath = config.proxyPath || '';
+    this.proxyPath = config.backendProxyUrl || '';
 
-    this.baseURL = config.proxyPath ? `${config.backendUrl}${config.proxyPath}` : config.backendUrl;
+    this.baseURL = config.backendProxyUrl ? `${config.backendUrl}${config.backendProxyUrl}` : config.backendUrl;
     this.timeout = config.timeout || 30000;
     this.withCredentials = config.withCredentials !== false;
   }
