@@ -1,6 +1,7 @@
 import { Request } from 'express';
 import * as path from 'path';
 import { logger } from './logger';
+
 /**
  * Get the path prefix that was stripped by the proxy
  */
@@ -16,6 +17,7 @@ export function getStrippedPathPrefix(req: Request): string {
 
 /**
  * Creates a redirect URL with proper parameters and relative path handling
+ * Enhanced to support SDK redirect patterns
  */
 export const createRedirectUrl = (
   req: Request,
@@ -90,11 +92,17 @@ export const createRedirectUrl = (
         finalUrl = '/' + targetPath;
       }
     } else {
+      // Direct path - handle SDK patterns
       finalUrl = cleanPath;
 
       // Ensure it starts with /
       if (!finalUrl.startsWith('/')) {
         finalUrl = '/' + finalUrl;
+      }
+
+      // If pathPrefix exists, prepend it
+      if (pathPrefix) {
+        finalUrl = pathPrefix + finalUrl;
       }
     }
   }

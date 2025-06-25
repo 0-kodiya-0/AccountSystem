@@ -3,7 +3,7 @@ import { ApiErrorCode, BadRequestError, NotFoundError, Redirect, ServerError } f
 import db from '../config/db';
 import { asyncHandler } from '../utils/response';
 import { validateAccount } from '../feature/account/Account.validation';
-import { clearAccountWithSession, extractAccessToken, extractRefreshToken } from '../feature/session/session.utils';
+import { extractAccessToken, extractRefreshToken } from '../feature/session/session.utils';
 import { AccountType } from '../feature/account/Account.types';
 import { AccountDocument } from '../feature/account/Account.model';
 import { ValidationUtils } from '../utils/validation';
@@ -11,6 +11,7 @@ import { verifyAccessToken, verifyRefreshToken } from '../feature/tokens';
 
 /**
  * Middleware to verify token from cookies and add accountId to request
+ * Step 1: Basic session authentication - validates accountId parameter
  */
 export const authenticateSession = (req: Request, res: Response, next: NextFunction) => {
   const accountId = req.params.accountId;
@@ -23,6 +24,7 @@ export const authenticateSession = (req: Request, res: Response, next: NextFunct
 
 /**
  * Middleware to validate access to a specific account
+ * Step 2: Account access validation - loads and validates account
  * Now works with unified Account model
  */
 export const validateAccountAccess = asyncHandler(async (req, res, next) => {
@@ -56,6 +58,7 @@ export const validateAccountAccess = asyncHandler(async (req, res, next) => {
 
 /**
  * Middleware to validate token access
+ * Step 3: Token validation - handles both access and refresh tokens with proper redirects
  * Now uses centralized auth token service
  */
 export const validateTokenAccess = asyncHandler(async (req, res, next) => {
@@ -75,8 +78,7 @@ export const validateTokenAccess = asyncHandler(async (req, res, next) => {
   try {
     if (!token) {
       if (isRefreshTokenPath) {
-        clearAccountWithSession(req, res, accountId);
-        return next(new BadRequestError('Missing refresh token'));
+        throw new BadRequestError('Missing refresh token');
       } else {
         throw new Error('Token not found');
       }
@@ -146,7 +148,7 @@ export const validateTokenAccess = asyncHandler(async (req, res, next) => {
         },
         refreshPath,
         302,
-        `.${req.originalUrl}`, // Pass original URL for redirect after refresh
+        req.originalUrl, // Pass original URL for redirect after refresh
       );
     }
   }
