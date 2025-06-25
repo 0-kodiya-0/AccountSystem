@@ -40,7 +40,7 @@ export interface TokenCreationOptions {
 export interface TokenInfo {
   isExpired: boolean;
   isValid: boolean;
-  type: 'local_jwt' | 'oauth_jwt' | 'local_refresh_jwt' | 'oauth_refresh_jwt';
+  type?: 'local_jwt' | 'oauth_jwt' | 'local_refresh_jwt' | 'oauth_refresh_jwt';
   expiresAt?: number;
   timeRemaining?: number;
   accountId?: string;

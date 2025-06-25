@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { AccountType } from '../account/Account.types';
 import { ValidationUtils } from '../../utils/validation';
-import { BadRequestError, AuthError, ApiErrorCode } from '../../types/response.types';
+import { BadRequestError, AuthError, ApiErrorCode, ServerError } from '../../types/response.types';
 import { refreshGoogleToken, revokeGoogleTokens } from '../google/services/tokenInfo/tokenInfo.services';
 import { setAccessTokenCookie, clearAccountWithSession } from '../session/session.utils';
 import { logger } from '../../utils/logger';
@@ -52,7 +52,6 @@ export function getTokenInfo(token: string, isRefreshToken: boolean = false): To
     return {
       isExpired: true,
       isValid: false,
-      type: getTokenTypeString(AccountType.Local, isRefreshToken), // Default fallback
       error: error instanceof Error ? error.message : 'Invalid token',
     };
   }
@@ -64,8 +63,10 @@ export function getTokenInfo(token: string, isRefreshToken: boolean = false): To
 function getTokenTypeString(accountType: AccountType, isRefreshToken: boolean): TokenInfo['type'] {
   if (accountType === AccountType.Local) {
     return isRefreshToken ? 'local_refresh_jwt' : 'local_jwt';
-  } else {
+  } else if (accountType === AccountType.OAuth) {
     return isRefreshToken ? 'oauth_refresh_jwt' : 'oauth_jwt';
+  } else {
+    throw new ServerError('Invalid account type');
   }
 }
 

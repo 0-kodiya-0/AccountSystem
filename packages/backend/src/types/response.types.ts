@@ -92,15 +92,30 @@ export class AuthError<T> extends BaseError<T> {
 export class ValidationError<T> extends BaseError<T> {
   constructor(message: string, statusCode: number = 400, code: ApiErrorCode = ApiErrorCode.VALIDATION_ERROR, data?: T) {
     super(code, message, statusCode, data);
-    Object.setPrototypeOf(this, NotFoundError.prototype);
+    Object.setPrototypeOf(this, ValidationError.prototype);
   }
 }
 
-export class AccountValidationError<T> extends ValidationError<T> {}
+export class AccountValidationError<T> extends ValidationError<T> {
+  constructor(message: string, statusCode: number = 400, code: ApiErrorCode = ApiErrorCode.VALIDATION_ERROR, data?: T) {
+    super(message, statusCode, code, data);
+    Object.setPrototypeOf(this, AccountValidationError.prototype);
+  }
+}
 
-export class ChatValidationError<T> extends ValidationError<T> {}
+export class ChatValidationError<T> extends ValidationError<T> {
+  constructor(message: string, statusCode: number = 400, code: ApiErrorCode = ApiErrorCode.VALIDATION_ERROR, data?: T) {
+    super(message, statusCode, code, data);
+    Object.setPrototypeOf(this, ChatValidationError.prototype);
+  }
+}
 
-export class SessionValidationError<T> extends ValidationError<T> {}
+export class SessionValidationError<T> extends ValidationError<T> {
+  constructor(message: string, statusCode: number = 400, code: ApiErrorCode = ApiErrorCode.VALIDATION_ERROR, data?: T) {
+    super(message, statusCode, code, data);
+    Object.setPrototypeOf(this, SessionValidationError.prototype);
+  }
+}
 
 export class ProviderValidationError<T extends object> extends ValidationError<T & { provider: OAuthProviders }> {
   constructor(
@@ -139,7 +154,7 @@ export class BadRequestError<T> extends BaseError<T> {
 export class ServerError<T> extends BaseError<T> {
   constructor(message: string, statusCode: number = 500, code: ApiErrorCode = ApiErrorCode.SERVER_ERROR, data?: T) {
     super(code, message, statusCode, data);
-    Object.setPrototypeOf(this, BadRequestError.prototype);
+    Object.setPrototypeOf(this, ServerError.prototype);
   }
 }
 
