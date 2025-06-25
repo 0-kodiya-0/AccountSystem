@@ -56,7 +56,7 @@ export function RedirectingDisplay({ destination, reason, delay = 1 }: Redirecti
 
         {remainingTime > 0 ? (
           <p className="text-sm text-muted-foreground">
-            Redirecting in {remainingTime} second{remainingTime !== 1 ? 's' : ''}...
+            Redirecting in {remainingTime} second{remainingTime !== 1 ? 's' : ''} to {destination} ...
           </p>
         ) : (
           !hasRedirected && (
@@ -72,7 +72,7 @@ export function RedirectingDisplay({ destination, reason, delay = 1 }: Redirecti
           )
         )}
 
-        {hasRedirected && <p className="text-sm text-green-600">Redirecting now...</p>}
+        {hasRedirected && <p className="text-sm text-green-600">Redirecting to {destination} now...</p>}
       </div>
     </div>
   );

@@ -247,7 +247,7 @@ export default function ForgotPasswordPage() {
     <AuthGuard
       allowGuests={true}
       requireAccount={false}
-      redirectOnAuthenticated="/dashboard"
+      redirectOnAuthenticated={process.env.NEXT_PUBLIC_HOME_URL}
       loadingComponent={LoadingSpinner}
       redirectingComponent={RedirectingDisplay}
       errorComponent={ErrorDisplay}

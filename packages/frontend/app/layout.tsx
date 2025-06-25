@@ -12,14 +12,14 @@ const config = getEnvironmentConfig();
 
 export const metadata: Metadata = {
   title: {
-    default: config.appName,
+    default: config.appName as string,
     template: `%s | ${config.appName}`,
   },
   description: 'Secure authentication and account management system',
   keywords: ['authentication', 'login', 'signup', 'account', 'security', '2fa'],
   authors: [{ name: config.companyName || config.appName }],
   creator: config.companyName || config.appName,
-  metadataBase: new URL(config.backendUrl),
+  metadataBase: new URL(config.backendUrl as string),
   openGraph: {
     type: 'website',
     title: config.appName,

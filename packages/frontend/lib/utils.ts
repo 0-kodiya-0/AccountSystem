@@ -61,10 +61,10 @@ export function validatePasswordStrength(password: string): {
 
 export function getEnvironmentConfig() {
   return {
-    backendUrl: process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000',
-    socketUrl: process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000',
+    backendUrl: process.env.NEXT_PUBLIC_BACKEND_URL,
     proxyPath: process.env.NEXT_PUBLIC_PROXY_PATH,
-    appName: process.env.NEXT_PUBLIC_APP_NAME || 'AccountSystem',
+    backendProxyPath: process.env.NEXT_PUBLIC_BACKEND_PROXY_PATH,
+    appName: process.env.NEXT_PUBLIC_APP_NAME,
     homeUrl: process.env.NEXT_PUBLIC_HOME_URL,
     enableOAuth: process.env.NEXT_PUBLIC_ENABLE_OAUTH !== 'false',
     enableLocalAuth: process.env.NEXT_PUBLIC_ENABLE_LOCAL_AUTH !== 'false',

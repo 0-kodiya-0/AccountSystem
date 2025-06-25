@@ -4,14 +4,12 @@ const nextConfig = {
   env: {
     // Expose environment variables to the client
     NEXT_PUBLIC_BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL,
+    NEXT_PUBLIC_PROXY_PATH: process.env.NEXT_PUBLIC_PROXY_PATH,
+    NEXT_PUBLIC_BACKEND_PROXY_PATH: process.env.NEXT_PUBLIC_BACKEND_PROXY_PATH,
     NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME,
     NEXT_PUBLIC_HOME_URL: process.env.NEXT_PUBLIC_HOME_URL,
-    NEXT_PUBLIC_SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL,
   },
-  // Enable static generation for auth pages
-  trailingSlash: false,
-  poweredByHeader: false,
-  compress: true,
+  basePath: '/account',
 
   // Image optimization
   images: {
@@ -19,27 +17,11 @@ const nextConfig = {
     formats: ['image/webp', 'image/avif'],
   },
 
-  // Security headers
-  async headers() {
-    return [
-      {
-        source: '/(.*)',
-        headers: [
-          {
-            key: 'X-Frame-Options',
-            value: 'DENY',
-          },
-          {
-            key: 'X-Content-Type-Options',
-            value: 'nosniff',
-          },
-          {
-            key: 'Referrer-Policy',
-            value: 'strict-origin-when-cross-origin',
-          },
-        ],
-      },
-    ];
+  logging: {
+    fetches: {
+      fullUrl: true,
+      hmrRefreshes: true,
+    },
   },
 };
 

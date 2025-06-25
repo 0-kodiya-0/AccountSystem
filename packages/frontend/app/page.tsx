@@ -10,8 +10,8 @@ export default function RootPage() {
     <AuthGuard
       allowGuests={false}
       requireAccount={true}
-      redirectDelay={0}
-      redirectOnAuthenticated="/dashboard"
+      redirectDelay={10}
+      redirectOnAuthenticated={process.env.NEXT_PUBLIC_HOME_URL}
       redirectToAccountSelection="/accounts"
       redirectToLogin="/login"
       loadingComponent={LoadingSpinner}

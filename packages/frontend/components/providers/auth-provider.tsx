@@ -15,7 +15,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     <ServicesProvider
       config={{
         sdkConfig: {
-          backendUrl: `${config.backendUrl}${config.proxyPath}`,
+          backendUrl: config.backendUrl as string,
+          backendProxyUrl: config.backendProxyPath,
+          frontendProxyUrl: config.proxyPath,
           timeout: 30000,
           withCredentials: true,
         },
