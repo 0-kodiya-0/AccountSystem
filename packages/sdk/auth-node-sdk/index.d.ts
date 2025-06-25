@@ -1,3 +1,4 @@
+import { Account, AccountSessionInfo } from './src';
 import { InternalHttpClient } from './src/client/auth-client';
 import { InternalSocketClient } from './src/client/socket-client';
 
@@ -8,8 +9,16 @@ declare global {
   namespace Express {
     interface Request {
       // Token data
+      account?: Account;
+      oauthAccount?: Account;
+      localAccount?: Account;
+
+      // Token data (set by validateTokenAccess)
       accessToken?: string;
       refreshToken?: string;
+      oauthAccessToken?: string; // For OAuth accounts
+      oauthRefreshToken?: string; // For OAuth accounts
+
       tokenData?: {
         valid: boolean;
         accountId?: string;
@@ -18,30 +27,16 @@ declare global {
         expiresAt?: number;
       };
 
-      // User data
-      currentUser?: {
-        _id: string;
-        email: string;
-        accountType: string;
-        name?: string;
-        profilePicture?: string;
-        isEmailVerified?: boolean;
-      };
-
       // Session data
-      sessionInfo?: {
-        accountIds: string[];
-        currentAccountId: string;
-        sessionId: string;
-        createdAt: string;
-        lastActivity: string;
-      };
+      sessionInfo?: AccountSessionInfo;
 
       // Internal API clients
       internalApi?: {
         http: InternalHttpClient;
         socket?: InternalSocketClient;
       };
+
+      parentUrl?: string;
     }
   }
 }

@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import { ApiErrorCode, InternalApiError, TokenVerificationResponse } from '../types';
+import { ApiErrorCode, InternalApiError, TokenVerificationResponse, ApiResponse } from '../types';
 import { InternalHttpClient } from '../client/auth-client';
 import { InternalSocketClient } from '../client/socket-client';
+import { ValidationUtils, ErrorUtils, PathUtils } from '../utils';
 
 // ============================================================================
 // SDK Configuration
@@ -13,6 +14,24 @@ export interface InternalApiSdkConfig {
   enableLogging?: boolean;
   preferSocket?: boolean;
   accountServerBaseUrl?: string; // For token refresh redirects
+}
+
+// ============================================================================
+// Response Helper Functions
+// ============================================================================
+
+function createErrorResponse<T>(code: ApiErrorCode, message: string, statusCode: number = 400): ApiResponse<T> {
+  return {
+    success: false,
+    error: {
+      code,
+      message,
+    },
+  };
+}
+
+function sendErrorResponse(res: Response, code: ApiErrorCode, message: string, statusCode: number = 400): void {
+  res.status(statusCode).json(createErrorResponse(code, message, statusCode));
 }
 
 // ============================================================================
@@ -46,9 +65,51 @@ export class InternalApiSdk {
     }
   }
 
-  // ========================================================================
+  // ============================================================================
+  // Token Extraction (Matching Backend Pattern)
+  // ============================================================================
+
+  /**
+   * Extract access token following backend pattern: access_token_${accountId}
+   */
+  private extractAccessToken(req: Request, accountId: string): string | null {
+    // Check authorization header first (Bearer token)
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      return authHeader.substring(7);
+    }
+
+    // Check account-specific cookie (backend pattern)
+    const cookieToken = req.cookies?.[`access_token_${accountId}`];
+    if (cookieToken) {
+      return cookieToken;
+    }
+
+    return null;
+  }
+
+  /**
+   * Extract refresh token following backend pattern: refresh_token_${accountId}
+   */
+  private extractRefreshToken(req: Request, accountId: string): string | null {
+    // Check refresh header
+    const refreshHeader = req.headers['x-refresh-token'] as string;
+    if (refreshHeader) {
+      return refreshHeader;
+    }
+
+    // Check account-specific cookie (backend pattern)
+    const cookieToken = req.cookies?.[`refresh_token_${accountId}`];
+    if (cookieToken) {
+      return cookieToken;
+    }
+
+    return null;
+  }
+
+  // ============================================================================
   // Client Selection Utilities
-  // ========================================================================
+  // ============================================================================
 
   private shouldUseSocket(): boolean {
     return this.preferSocket && !!this.socketClient && this.socketClient.isConnected();
@@ -64,28 +125,14 @@ export class InternalApiSdk {
           if (response.success) {
             resolve(response.data as TokenVerificationResponse);
           } else {
-            reject(new Error(response.error?.message || 'Socket verification failed'));
+            reject(
+              new InternalApiError(ApiErrorCode.TOKEN_INVALID, response.error?.message || 'Socket verification failed'),
+            );
           }
         });
       });
     } else {
       return this.httpClient.verifyToken(token, tokenType);
-    }
-  }
-
-  private async callGetUserById(accountId: string): Promise<any> {
-    if (this.shouldUseSocket()) {
-      return new Promise((resolve, reject) => {
-        this.socketClient!.getUserById(accountId, (response) => {
-          if (response.success) {
-            resolve(response.data);
-          } else {
-            reject(new Error(response.error?.message || 'Socket user fetch failed'));
-          }
-        });
-      });
-    } else {
-      return this.httpClient.getUserById(accountId);
     }
   }
 
@@ -96,7 +143,9 @@ export class InternalApiSdk {
           if (response.success) {
             resolve(response.data);
           } else {
-            reject(new Error(response.error?.message || 'Socket user check failed'));
+            reject(
+              new InternalApiError(ApiErrorCode.USER_NOT_FOUND, response.error?.message || 'Socket user check failed'),
+            );
           }
         });
       });
@@ -105,138 +154,91 @@ export class InternalApiSdk {
     }
   }
 
-  private async callGetSessionInfo(sessionCookie?: string): Promise<any> {
+  private async callGetUserById(accountId: string): Promise<any> {
     if (this.shouldUseSocket()) {
       return new Promise((resolve, reject) => {
-        this.socketClient!.getSessionInfo(sessionCookie, (response) => {
+        this.socketClient!.getUserById(accountId, (response) => {
           if (response.success) {
             resolve(response.data);
           } else {
-            reject(new Error(response.error?.message || 'Socket session fetch failed'));
+            reject(
+              new InternalApiError(ApiErrorCode.USER_NOT_FOUND, response.error?.message || 'Socket user fetch failed'),
+            );
           }
         });
       });
     } else {
-      return this.httpClient.getSessionInfo(sessionCookie);
+      return this.httpClient.getUserById(accountId);
     }
   }
 
-  private async callValidateSession(accountId?: string, sessionCookie?: string): Promise<any> {
-    if (this.shouldUseSocket()) {
-      return new Promise((resolve, reject) => {
-        this.socketClient!.validateSession({ accountId, sessionCookie }, (response) => {
-          if (response.success) {
-            resolve(response.data);
-          } else {
-            reject(new Error(response.error?.message || 'Socket session validation failed'));
-          }
-        });
-      });
-    } else {
-      return this.httpClient.validateSession(accountId, sessionCookie);
-    }
-  }
+  // ============================================================================
+  // Redirect Handling (Using PathUtils)
+  // ============================================================================
 
-  // ========================================================================
-  // Token Refresh Utilities
-  // ========================================================================
-
+  /**
+   * Build refresh URL following backend redirect pattern
+   */
   private buildRefreshUrl(req: Request, accountId: string): string {
     if (!this.accountServerBaseUrl) {
-      throw new Error('Account server base URL not configured for token refresh');
+      throw new InternalApiError(ApiErrorCode.SERVER_ERROR, 'Account server base URL not configured for token refresh');
     }
 
-    if (!accountId) {
-      throw new Error('Account ID is required for token refresh redirect');
-    }
-
+    const pathPrefix = PathUtils.getPathPrefix(req.headers);
     const baseUrl = this.accountServerBaseUrl.replace(/\/$/, '');
-    const refreshPath = `/${accountId}/tokens/refresh`;
-
-    // Include original URL as redirect parameter
+    const refreshPath = PathUtils.buildRefreshPath(accountId, pathPrefix);
     const originalUrl = encodeURIComponent(req.originalUrl);
+
     return `${baseUrl}${refreshPath}?redirectUrl=${originalUrl}`;
   }
 
-  private handleTokenError(req: Request, res: Response, error: any, accountId?: string) {
+  /**
+   * Handle token errors with proper redirect logic (mirrors backend)
+   */
+  private handleTokenError(req: Request, res: Response, error: any, accountId?: string): void {
+    this.logError('Token error occurred', {
+      error: ErrorUtils.getErrorMessage(error),
+      accountId,
+    });
+
     if (error instanceof InternalApiError) {
-      // Handle token expiration with redirect to refresh
+      // Handle token expiration/invalidity with redirect
       if (error.code === ApiErrorCode.TOKEN_EXPIRED || error.code === ApiErrorCode.TOKEN_INVALID) {
         if (this.accountServerBaseUrl && accountId) {
-          const refreshUrl = this.buildRefreshUrl(req, accountId);
-          this.log('Redirecting to token refresh', { refreshUrl, originalUrl: req.originalUrl });
+          try {
+            const refreshUrl = this.buildRefreshUrl(req, accountId);
+            this.log('Redirecting to token refresh', {
+              refreshUrl,
+              originalUrl: req.originalUrl,
+              accountId,
+            });
 
-          return res.redirect(302, refreshUrl);
-        }
-
-        // If missing required parameters, throw error without handling
-        if (!this.accountServerBaseUrl) {
-          throw new Error('Account server base URL not configured for token refresh');
-        }
-
-        if (!accountId) {
-          throw new Error('Account ID is required for token refresh redirect');
+            res.redirect(302, refreshUrl);
+            return;
+          } catch (redirectError) {
+            this.logError('Failed to build refresh URL', redirectError);
+          }
         }
       }
 
-      // Handle other API errors
-      if (error.code === ApiErrorCode.CONNECTION_ERROR || error.code === ApiErrorCode.TIMEOUT_ERROR) {
-        return res.status(503).json({
-          success: false,
-          error: {
-            code: ApiErrorCode.SERVICE_UNAVAILABLE,
-            message: 'Authentication service temporarily unavailable',
-          },
-        });
+      // Handle service unavailability
+      if (ErrorUtils.isNetworkError(error)) {
+        sendErrorResponse(res, ApiErrorCode.SERVICE_UNAVAILABLE, 'Authentication service temporarily unavailable', 503);
+        return;
       }
     }
 
     // Generic auth failure
-    return res.status(401).json({
-      success: false,
-      error: {
-        code: ApiErrorCode.AUTH_FAILED,
-        message: 'Token verification failed',
-      },
-    });
+    sendErrorResponse(res, ApiErrorCode.AUTH_FAILED, 'Authentication failed', 401);
   }
 
-  private extractTokenFromHeader(req: Request, type: 'access' | 'refresh' = 'access'): string | null {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) return null;
+  // ============================================================================
+  // Core Middleware Functions (Following Backend Pattern)
+  // ============================================================================
 
-    if (type === 'access' && authHeader.startsWith('Bearer ')) {
-      return authHeader.substring(7);
-    }
-
-    const refreshHeader = req.headers['x-refresh-token'] as string;
-    if (type === 'refresh' && refreshHeader) {
-      return refreshHeader;
-    }
-
-    return null;
-  }
-
-  private extractTokenFromCookie(
-    req: Request,
-    accountId?: string,
-    type: 'access' | 'refresh' = 'access',
-  ): string | null {
-    if (!req.cookies) return null;
-
-    if (accountId) {
-      const cookieName = `${accountId}_${type}_token`;
-      return req.cookies[cookieName] || null;
-    }
-
-    const cookieName = `${type}_token`;
-    return req.cookies[cookieName] || null;
-  }
-
-  // ========================================================================
-  // Core Middleware Functions
-  // ========================================================================
-
+  /**
+   * Inject API clients into request
+   */
   injectClients() {
     return (req: Request, res: Response, next: NextFunction) => {
       req.internalApi = {
@@ -247,60 +249,309 @@ export class InternalApiSdk {
     };
   }
 
-  verifyAccessToken(
+  /**
+   * Step 1: Authenticate Session (mirrors backend authenticateSession)
+   * Validates accountId parameter format
+   */
+  authenticateSession(accountIdParam: string = 'accountId') {
+    return (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const accountId = req.params[accountIdParam];
+
+        if (!accountId) {
+          this.logError('Account ID parameter missing', { param: accountIdParam });
+          sendErrorResponse(
+            res,
+            ApiErrorCode.MISSING_DATA,
+            `Account ID parameter '${accountIdParam}' is required`,
+            400,
+          );
+          return;
+        }
+
+        // Validate ObjectId format using ValidationUtils
+        if (!ValidationUtils.isValidObjectId(accountId)) {
+          this.logError('Invalid account ID format', { accountId });
+          sendErrorResponse(res, ApiErrorCode.VALIDATION_ERROR, 'Invalid Account ID format', 400);
+          return;
+        }
+
+        this.log('Session authenticated', { accountId });
+        next();
+      } catch (error) {
+        this.logError('Session authentication failed', error);
+        sendErrorResponse(res, ApiErrorCode.SERVER_ERROR, 'Session authentication failed', 500);
+      }
+    };
+  }
+
+  /**
+   * Step 2: Validate Account Access (mirrors backend validateAccountAccess)
+   * Verifies account exists and loads account data
+   */
+  validateAccountAccess(accountIdParam: string = 'accountId') {
+    return async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const accountId = req.params[accountIdParam];
+
+        this.log(`Validating account access via ${this.shouldUseSocket() ? 'Socket' : 'HTTP'}`, { accountId });
+
+        // Check if account exists
+        const existsResult = await this.callCheckUserExists(accountId);
+
+        if (!existsResult.exists) {
+          this.logError('Account not found', { accountId });
+          sendErrorResponse(res, ApiErrorCode.USER_NOT_FOUND, 'Account not found', 404);
+          return;
+        }
+
+        // Load full account data (mirrors backend behavior)
+        const userResult = await this.callGetUserById(accountId);
+        req.account = userResult.user;
+
+        // Set legacy properties for backward compatibility
+        if (userResult.user.accountType === 'oauth') {
+          req.oauthAccount = userResult.user;
+        } else {
+          req.localAccount = userResult.user;
+        }
+
+        this.log('Account access validated', { accountId, accountType: userResult.user.accountType });
+        next();
+      } catch (error) {
+        this.logError('Account validation failed', error);
+
+        if (error instanceof InternalApiError && error.code === ApiErrorCode.USER_NOT_FOUND) {
+          sendErrorResponse(res, ApiErrorCode.USER_NOT_FOUND, 'Account not found', 404);
+          return;
+        }
+
+        sendErrorResponse(res, ApiErrorCode.SERVER_ERROR, 'Account validation failed', 500);
+      }
+    };
+  }
+
+  /**
+   * Step 3: Validate Token Access (mirrors backend validateTokenAccess)
+   * Extracts and validates both access and refresh tokens
+   */
+  validateTokenAccess(accountIdParam: string = 'accountId') {
+    return async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const accountId = req.params[accountIdParam];
+        const account = req.account;
+
+        if (!account) {
+          this.logError('Account not loaded in middleware chain');
+          sendErrorResponse(res, ApiErrorCode.SERVER_ERROR, 'Account not loaded in middleware chain', 500);
+          return;
+        }
+
+        // Extract both tokens
+        const accessToken = this.extractAccessToken(req, accountId);
+        const refreshToken = this.extractRefreshToken(req, accountId);
+
+        // Ensure at least one token is present
+        if (!accessToken && !refreshToken) {
+          this.logError('No tokens provided', { accountId });
+          this.handleTokenError(
+            req,
+            res,
+            new InternalApiError(ApiErrorCode.TOKEN_INVALID, 'Access or refresh token required'),
+            accountId,
+          );
+          return;
+        }
+
+        // Verify access token if present
+        if (accessToken) {
+          try {
+            this.log(`Verifying access token via ${this.shouldUseSocket() ? 'Socket' : 'HTTP'}`);
+            const accessResult = await this.callVerifyToken(accessToken, 'access');
+
+            // Validate token ownership
+            if (accessResult.accountId !== accountId) {
+              this.logError('Access token ownership mismatch', {
+                tokenAccountId: accessResult.accountId,
+                requestAccountId: accountId,
+              });
+              this.handleTokenError(
+                req,
+                res,
+                new InternalApiError(ApiErrorCode.TOKEN_INVALID, 'Access token does not belong to this account'),
+                accountId,
+              );
+              return;
+            }
+
+            // Validate account type consistency
+            if (accessResult.accountType !== account.accountType) {
+              this.logError('Access token account type mismatch', {
+                tokenAccountType: accessResult.accountType,
+                accountType: account.accountType,
+              });
+              this.handleTokenError(
+                req,
+                res,
+                new InternalApiError(ApiErrorCode.TOKEN_INVALID, 'Access token account type mismatch'),
+                accountId,
+              );
+              return;
+            }
+
+            // Attach access token data to request
+            req.accessToken = accessToken;
+            if (accessResult.accountType === 'oauth' && accessResult.oauthAccessToken) {
+              req.oauthAccessToken = accessResult.oauthAccessToken;
+            }
+
+            this.log('Access token validated', { accountId, accountType: accessResult.accountType });
+          } catch (error) {
+            this.logError('Access token validation failed', error);
+            this.handleTokenError(req, res, error, accountId);
+            return;
+          }
+        }
+
+        // Verify refresh token if present
+        if (refreshToken) {
+          try {
+            this.log(`Verifying refresh token via ${this.shouldUseSocket() ? 'Socket' : 'HTTP'}`);
+            const refreshResult = await this.callVerifyToken(refreshToken, 'refresh');
+
+            // Validate token ownership
+            if (refreshResult.accountId !== accountId) {
+              this.logError('Refresh token ownership mismatch', {
+                tokenAccountId: refreshResult.accountId,
+                requestAccountId: accountId,
+              });
+              this.handleTokenError(
+                req,
+                res,
+                new InternalApiError(ApiErrorCode.TOKEN_INVALID, 'Refresh token does not belong to this account'),
+                accountId,
+              );
+              return;
+            }
+
+            // Validate account type consistency
+            if (refreshResult.accountType !== account.accountType) {
+              this.logError('Refresh token account type mismatch', {
+                tokenAccountType: refreshResult.accountType,
+                accountType: account.accountType,
+              });
+              this.handleTokenError(
+                req,
+                res,
+                new InternalApiError(ApiErrorCode.TOKEN_INVALID, 'Refresh token account type mismatch'),
+                accountId,
+              );
+              return;
+            }
+
+            // Attach refresh token data to request
+            req.refreshToken = refreshToken;
+            if (refreshResult.accountType === 'oauth' && refreshResult.oauthRefreshToken) {
+              req.oauthRefreshToken = refreshResult.oauthRefreshToken;
+            }
+
+            this.log('Refresh token validated', { accountId, accountType: refreshResult.accountType });
+          } catch (error) {
+            this.logError('Refresh token validation failed', error);
+            this.handleTokenError(req, res, error, accountId);
+            return;
+          }
+        }
+
+        this.log('Token access validated', {
+          accountId,
+          hasAccessToken: !!accessToken,
+          hasRefreshToken: !!refreshToken,
+          accountType: account.accountType,
+        });
+
+        next();
+      } catch (error) {
+        this.logError('Token validation failed', error);
+        const accountId = req.params[accountIdParam];
+        this.handleTokenError(req, res, error, accountId);
+      }
+    };
+  }
+
+  // ============================================================================
+  // Combined Middleware (Following Backend Pattern)
+  // ============================================================================
+
+  /**
+   * Full authentication middleware that mirrors backend middleware chain:
+   * authenticateSession -> validateAccountAccess -> validateTokenAccess
+   */
+  authenticate(accountIdParam: string = 'accountId') {
+    return [
+      this.injectClients(),
+      this.authenticateSession(accountIdParam),
+      this.validateAccountAccess(accountIdParam),
+      this.validateTokenAccess(accountIdParam),
+    ];
+  }
+
+  /**
+   * Lightweight token verification without full account loading
+   */
+  verifyToken(
     options: {
       fromHeader?: boolean;
       fromCookie?: boolean;
       accountIdParam?: string;
       required?: boolean;
-      enableRefreshRedirect?: boolean;
     } = {},
   ) {
-    const {
-      fromHeader = true,
-      fromCookie = true,
-      accountIdParam,
-      required = true,
-      enableRefreshRedirect = true,
-    } = options;
+    const { fromHeader = true, fromCookie = true, accountIdParam = 'accountId', required = true } = options;
 
-    return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    return async (req: Request, res: Response, next: NextFunction) => {
       try {
         let token: string | null = null;
-        const accountId = accountIdParam ? req.params[accountIdParam] : undefined;
+        const accountId = req.params[accountIdParam];
 
-        if (fromHeader) {
-          token = this.extractTokenFromHeader(req, 'access');
+        if (!accountId && required) {
+          sendErrorResponse(res, ApiErrorCode.MISSING_DATA, 'Account ID required', 400);
+          return;
         }
 
-        if (!token && fromCookie) {
-          token = this.extractTokenFromCookie(req, accountId, 'access');
+        if (!ValidationUtils.isValidObjectId(accountId)) {
+          sendErrorResponse(res, ApiErrorCode.VALIDATION_ERROR, 'Invalid Account ID format', 400);
+          return;
+        }
+
+        if (fromHeader) {
+          const authHeader = req.headers.authorization;
+          if (authHeader && authHeader.startsWith('Bearer ')) {
+            token = authHeader.substring(7);
+          }
+        }
+
+        if (!token && fromCookie && accountId) {
+          token = this.extractAccessToken(req, accountId);
         }
 
         if (!token) {
           if (required) {
-            this.logError('Access token not found');
-            res.status(401).json({
-              success: false,
-              error: {
-                code: ApiErrorCode.TOKEN_INVALID,
-                message: 'Access token required',
-              },
-            });
+            sendErrorResponse(res, ApiErrorCode.TOKEN_INVALID, 'Access token required', 401);
             return;
           }
           return next();
         }
 
-        this.log(`Verifying access token via ${this.shouldUseSocket() ? 'Socket' : 'HTTP'}`);
         const tokenResult = await this.callVerifyToken(token, 'access');
 
         if (!tokenResult.valid) {
-          this.logError('Invalid access token', tokenResult.error);
-
-          // Handle token invalidity with potential redirect
-          const error = new InternalApiError(ApiErrorCode.TOKEN_INVALID, tokenResult.error || 'Invalid access token');
-          this.handleTokenError(req, res, error, accountId);
+          this.handleTokenError(
+            req,
+            res,
+            new InternalApiError(ApiErrorCode.TOKEN_INVALID, tokenResult.error || 'Invalid access token'),
+            accountId,
+          );
           return;
         }
 
@@ -313,372 +564,99 @@ export class InternalApiSdk {
           expiresAt: tokenResult.expiresAt,
         };
 
-        this.log('Access token verified successfully', { accountId: tokenResult.accountId });
         next();
       } catch (error) {
         this.logError('Token verification failed', error);
-        this.handleTokenError(req, res, error);
+        this.handleTokenError(req, res, error, req.params[accountIdParam]);
       }
     };
   }
 
-  loadUser(options: { required?: boolean } = {}) {
-    const { required = true } = options;
+  // ============================================================================
+  // Session and Permission Middleware
+  // ============================================================================
 
-    return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  /**
+   * Load session information (optional middleware)
+   */
+  loadSession(options: { required?: boolean } = {}) {
+    const { required = false } = options;
+
+    return async (req: Request, res: Response, next: NextFunction) => {
       try {
-        if (!req.tokenData?.accountId) {
-          if (required) {
-            this.logError('No account ID in token data');
-            res.status(401).json({
-              success: false,
-              error: {
-                code: ApiErrorCode.AUTH_FAILED,
-                message: 'Valid token required to load user',
-              },
-            });
-            return;
-          }
-          return next();
-        }
-
-        this.log(`Loading user data via ${this.shouldUseSocket() ? 'Socket' : 'HTTP'}`, {
-          accountId: req.tokenData.accountId,
-        });
-        const userResult = await this.callGetUserById(req.tokenData.accountId);
-
-        req.currentUser = userResult.user;
-        this.log('User loaded successfully', { email: userResult.user.email });
-        next();
-      } catch (error) {
-        this.logError('Failed to load user', error);
-
-        if (error instanceof InternalApiError) {
-          if (error.code === ApiErrorCode.USER_NOT_FOUND) {
-            res.status(404).json({
-              success: false,
-              error: {
-                code: ApiErrorCode.USER_NOT_FOUND,
-                message: 'User not found',
-              },
-            });
-            return;
-          }
-        }
-
-        res.status(500).json({
-          success: false,
-          error: {
-            code: ApiErrorCode.SERVER_ERROR,
-            message: 'Failed to load user data',
-          },
-        });
-      }
-    };
-  }
-
-  validateAccountAccess(accountIdParam: string = 'accountId') {
-    return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-      try {
-        const accountId = req.params[accountIdParam];
-
-        if (!accountId) {
-          this.logError('Account ID parameter missing');
-          res.status(400).json({
-            success: false,
-            error: {
-              code: ApiErrorCode.MISSING_DATA,
-              message: `Account ID parameter '${accountIdParam}' is required`,
-            },
-          });
-          return;
-        }
-
-        this.log(`Validating account access via ${this.shouldUseSocket() ? 'Socket' : 'HTTP'}`, { accountId });
-        const existsResult = await this.callCheckUserExists(accountId);
-
-        if (!existsResult.exists) {
-          this.logError('Account not found', { accountId });
-          res.status(404).json({
-            success: false,
-            error: {
-              code: ApiErrorCode.USER_NOT_FOUND,
-              message: 'Account not found',
-            },
-          });
-          return;
-        }
-
-        if (req.tokenData?.accountId && req.tokenData.accountId !== accountId) {
-          this.logError('Account access denied', {
-            requestedAccount: accountId,
-            currentAccount: req.tokenData.accountId,
-          });
-          res.status(403).json({
-            success: false,
-            error: {
-              code: ApiErrorCode.PERMISSION_DENIED,
-              message: 'Access denied to this account',
-            },
-          });
-          return;
-        }
-
-        this.log('Account access validated', { accountId });
-        next();
-      } catch (error) {
-        this.logError('Account validation failed', error);
-        res.status(500).json({
-          success: false,
-          error: {
-            code: ApiErrorCode.SERVER_ERROR,
-            message: 'Account validation failed',
-          },
-        });
-      }
-    };
-  }
-
-  loadSession(
-    options: {
-      cookieName?: string;
-      required?: boolean;
-      validateAccount?: boolean;
-    } = {},
-  ) {
-    const { cookieName = 'account_session', required = true, validateAccount = false } = options;
-
-    return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-      try {
-        const sessionCookie = req.cookies?.[cookieName];
+        const sessionCookie = req.cookies?.['account_session'];
 
         if (!sessionCookie) {
           if (required) {
-            this.logError('Session cookie not found');
-            res.status(401).json({
-              success: false,
-              error: {
-                code: ApiErrorCode.AUTH_FAILED,
-                message: 'Session required',
-              },
-            });
+            sendErrorResponse(res, ApiErrorCode.AUTH_FAILED, 'Session required', 401);
             return;
           }
           return next();
         }
 
-        this.log(`Loading session information via ${this.shouldUseSocket() ? 'Socket' : 'HTTP'}`);
-        const sessionResult = await this.callGetSessionInfo(sessionCookie);
-
+        // Call session info via internal API
+        const sessionResult = await this.httpClient.getSessionInfo(sessionCookie);
         req.sessionInfo = sessionResult.session;
 
-        if (validateAccount && req.tokenData?.accountId) {
-          const accountInSession = sessionResult.session.accountIds.includes(req.tokenData.accountId);
-
-          if (!accountInSession) {
-            this.logError('Account not in session', {
-              accountId: req.tokenData.accountId,
-              sessionAccounts: sessionResult.session.accountIds,
-            });
-            res.status(403).json({
-              success: false,
-              error: {
-                code: ApiErrorCode.PERMISSION_DENIED,
-                message: 'Account not authorized in current session',
-              },
-            });
-            return;
-          }
-        }
-
-        this.log('Session loaded successfully', {
-          sessionId: sessionResult.session.sessionId,
+        this.log('Session loaded', {
           accountCount: sessionResult.session.accountIds.length,
+          currentAccountId: sessionResult.session.currentAccountId,
         });
+
         next();
       } catch (error) {
         this.logError('Session loading failed', error);
-        res.status(500).json({
-          success: false,
-          error: {
-            code: ApiErrorCode.SERVER_ERROR,
-            message: 'Session validation failed',
-          },
-        });
+
+        if (required) {
+          sendErrorResponse(res, ApiErrorCode.AUTH_FAILED, 'Invalid session', 401);
+          return;
+        }
+
+        next();
       }
     };
   }
 
+  /**
+   * Require specific permissions
+   */
   requirePermission(options: {
     accountTypes?: string[];
     emailVerified?: boolean;
-    customValidator?: (user: any) => boolean | Promise<boolean>;
+    customValidator?: (account: any) => boolean | Promise<boolean>;
   }) {
     const { accountTypes, emailVerified, customValidator } = options;
 
-    return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    return async (req: Request, res: Response, next: NextFunction) => {
       try {
-        if (!req.currentUser) {
-          this.logError('User data required for permission check');
-          res.status(401).json({
-            success: false,
-            error: {
-              code: ApiErrorCode.AUTH_FAILED,
-              message: 'User authentication required',
-            },
-          });
+        if (!req.account) {
+          sendErrorResponse(res, ApiErrorCode.AUTH_FAILED, 'Account authentication required', 401);
           return;
         }
 
-        if (accountTypes && !accountTypes.includes(req.currentUser.accountType)) {
-          this.logError('Account type not authorized', {
-            required: accountTypes,
-            actual: req.currentUser.accountType,
-          });
-          res.status(403).json({
-            success: false,
-            error: {
-              code: ApiErrorCode.PERMISSION_DENIED,
-              message: 'Account type not authorized',
-            },
-          });
+        if (accountTypes && !accountTypes.includes(req.account.accountType)) {
+          sendErrorResponse(res, ApiErrorCode.PERMISSION_DENIED, 'Account type not authorized', 403);
           return;
         }
 
-        if (emailVerified && !req.currentUser.isEmailVerified) {
-          this.logError('Email verification required');
-          res.status(403).json({
-            success: false,
-            error: {
-              code: ApiErrorCode.PERMISSION_DENIED,
-              message: 'Email verification required',
-            },
-          });
+        if (emailVerified && !req.account.userDetails?.emailVerified) {
+          sendErrorResponse(res, ApiErrorCode.PERMISSION_DENIED, 'Email verification required', 403);
           return;
         }
 
         if (customValidator) {
-          const isValid = await customValidator(req.currentUser);
+          const isValid = await customValidator(req.account);
           if (!isValid) {
-            this.logError('Custom permission check failed');
-            res.status(403).json({
-              success: false,
-              error: {
-                code: ApiErrorCode.PERMISSION_DENIED,
-                message: 'Permission denied',
-              },
-            });
+            sendErrorResponse(res, ApiErrorCode.PERMISSION_DENIED, 'Permission denied', 403);
             return;
           }
         }
 
-        this.log('Permission check passed');
         next();
       } catch (error) {
         this.logError('Permission check failed', error);
-        res.status(500).json({
-          success: false,
-          error: {
-            code: ApiErrorCode.SERVER_ERROR,
-            message: 'Permission validation failed',
-          },
-        });
+        sendErrorResponse(res, ApiErrorCode.SERVER_ERROR, 'Permission validation failed', 500);
       }
-    };
-  }
-
-  // ========================================================================
-  // Convenience Middleware Combinations - Return arrays of middleware
-  // ========================================================================
-
-  authenticate(
-    options: {
-      fromHeader?: boolean;
-      fromCookie?: boolean;
-      accountIdParam?: string;
-      loadUser?: boolean;
-      enableRefreshRedirect?: boolean;
-    } = {},
-  ) {
-    const { loadUser = true, enableRefreshRedirect = true, ...tokenOptions } = options;
-
-    const middlewares = [this.injectClients(), this.verifyAccessToken({ ...tokenOptions, enableRefreshRedirect })];
-
-    if (loadUser) {
-      middlewares.push(this.loadUser());
-    }
-
-    return middlewares;
-  }
-
-  authorize(
-    options: {
-      accountIdParam?: string;
-      sessionCookieName?: string;
-      validateSessionAccount?: boolean;
-      enableRefreshRedirect?: boolean;
-    } = {},
-  ) {
-    const {
-      accountIdParam = 'accountId',
-      sessionCookieName = 'account_session',
-      validateSessionAccount = true,
-      enableRefreshRedirect = true,
-    } = options;
-
-    return [
-      this.injectClients(),
-      this.verifyAccessToken({ accountIdParam, enableRefreshRedirect }),
-      this.loadUser(),
-      this.validateAccountAccess(accountIdParam),
-      this.loadSession({
-        cookieName: sessionCookieName,
-        validateAccount: validateSessionAccount,
-      }),
-    ];
-  }
-
-  // ========================================================================
-  // Client Selection Override Methods - Return objects instead of functions
-  // ========================================================================
-
-  useHttp() {
-    const originalPreference = this.preferSocket;
-    this.preferSocket = false;
-
-    const instance = this;
-
-    return {
-      verifyAccessToken: (options?: any) => instance.verifyAccessToken(options),
-      loadUser: (options?: any) => instance.loadUser(options),
-      validateAccountAccess: (accountIdParam?: string) => instance.validateAccountAccess(accountIdParam),
-      loadSession: (options?: any) => instance.loadSession(options),
-      requirePermission: (options: any) => instance.requirePermission(options),
-      authenticate: (options?: any) => instance.authenticate(options),
-      authorize: (options?: any) => instance.authorize(options),
-      restore: () => {
-        instance.preferSocket = originalPreference;
-      },
-    };
-  }
-
-  useSocket() {
-    const originalPreference = this.preferSocket;
-    this.preferSocket = true;
-
-    const instance = this;
-
-    return {
-      verifyAccessToken: (options?: any) => instance.verifyAccessToken(options),
-      loadUser: (options?: any) => instance.loadUser(options),
-      validateAccountAccess: (accountIdParam?: string) => instance.validateAccountAccess(accountIdParam),
-      loadSession: (options?: any) => instance.loadSession(options),
-      requirePermission: (options: any) => instance.requirePermission(options),
-      authenticate: (options?: any) => instance.authenticate(options),
-      authorize: (options?: any) => instance.authorize(options),
-      restore: () => {
-        instance.preferSocket = originalPreference;
-      },
     };
   }
 }

@@ -45,49 +45,84 @@ export enum ApiErrorCode {
 }
 
 // ============================================================================
-// Type Definitions
+// Type Definitions (matching backend types)
 // ============================================================================
 
 export enum AccountType {
-  OAuth = 'OAuth',
-  Local = 'Local',
+  OAuth = 'oauth',
+  Local = 'local',
+}
+
+export enum AccountStatus {
+  Active = 'active',
+  Inactive = 'inactive',
+  Unverified = 'unverified',
+  Suspended = 'suspended',
+}
+
+export enum OAuthProviders {
+  Google = 'google',
+  Microsoft = 'microsoft',
+  Facebook = 'facebook',
+}
+
+export interface UserDetails {
+  firstName?: string;
+  lastName?: string;
+  name: string;
+  email?: string;
+  imageUrl?: string;
+  birthdate?: string;
+  username?: string;
+  emailVerified?: boolean;
+}
+
+export interface SecuritySettings {
+  twoFactorEnabled: boolean;
+  sessionTimeout: number;
+  autoLock: boolean;
+  // Note: password and sensitive fields are not exposed in SDK
 }
 
 export interface Account {
-  _id: string;
-  email: string;
+  id: string;
+  created: string;
+  updated: string;
   accountType: AccountType;
-  name?: string;
-  profilePicture?: string;
-  isEmailVerified?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
+  status: AccountStatus;
+  userDetails: UserDetails;
+  security: SecuritySettings;
+  provider?: OAuthProviders; // Required when accountType === 'oauth'
 }
 
 export interface TokenInfo {
-  type: string;
-  format: string;
-  algorithm?: string;
-  issuer?: string;
-  audience?: string;
+  type: 'local_jwt' | 'oauth_jwt' | 'local_refresh_jwt' | 'oauth_refresh_jwt';
+  isExpired: boolean;
   isValid: boolean;
-  createdAt?: string;
-  expiresAt?: string;
+  expiresAt?: number;
+  timeRemaining?: number;
+  accountId?: string;
+  error?: string;
 }
 
 export interface SessionAccount {
-  accountId: string;
-  email: string;
-  name?: string;
+  id: string;
   accountType: AccountType;
+  status: AccountStatus;
+  userDetails: {
+    name: string;
+    email?: string;
+    username?: string;
+    imageUrl?: string;
+  };
+  provider?: OAuthProviders;
 }
 
 export interface AccountSessionInfo {
+  hasSession: boolean;
   accountIds: string[];
-  currentAccountId: string;
-  sessionId: string;
-  createdAt: string;
-  lastActivity: string;
+  currentAccountId: string | null;
+  isValid: boolean;
 }
 
 // ============================================================================
@@ -247,7 +282,10 @@ export interface SocketResponse<T = unknown> {
 
 export type SocketCallback<T = unknown> = (response: SocketResponse<T>) => void;
 
-// Socket Event Interfaces
+// ============================================================================
+// Socket Event Interfaces (matching backend)
+// ============================================================================
+
 export interface ServerToClientEvents {
   connected: (data: {
     success: true;

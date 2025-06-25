@@ -1,424 +1,813 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { InternalApiSdk } from '../auth-middleware';
-import { ApiErrorCode } from '../../types';
+import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
+import { Request, Response, NextFunction } from 'express';
+import { InternalApiSdk } from '../../middleware/auth-middleware';
+import { InternalHttpClient } from '../../client/auth-client';
+import { InternalSocketClient } from '../../client/socket-client';
+import {
+  ApiErrorCode,
+  TokenVerificationResponse,
+  UserResponse,
+  UserExistsResponse,
+  AccountType,
+  AccountStatus,
+  OAuthProviders,
+} from '../../types';
 
-// Mock the client classes
-vi.mock('../../client/auth-client');
-vi.mock('../../client/socket-client');
+// ============================================================================
+// Mock Setup
+// ============================================================================
 
-describe('InternalApiSdk - Custom Logic Only', () => {
+// Mock HTTP Client
+const mockHttpClient = {
+  verifyToken: vi.fn(),
+  checkUserExists: vi.fn(),
+  getUserById: vi.fn(),
+  getSessionInfo: vi.fn(),
+  isNetworkError: vi.fn(),
+  isAuthError: vi.fn(),
+  getErrorMessage: vi.fn(),
+} as unknown as InternalHttpClient;
+
+// Mock Socket Client
+const mockSocketClient = {
+  verifyToken: vi.fn(),
+  checkUserExists: vi.fn(),
+  getUserById: vi.fn(),
+  isConnected: vi.fn(),
+} as unknown as InternalSocketClient;
+
+// Mock Request/Response/NextFunction
+const createMockRequest = (overrides: Partial<Request> = {}): Request =>
+  ({
+    params: {},
+    headers: {},
+    cookies: {},
+    originalUrl: '/test',
+    path: '/test',
+    ...overrides,
+  } as Request);
+
+const createMockResponse = (): Response => {
+  const res = {
+    status: vi.fn().mockReturnThis(),
+    json: vi.fn().mockReturnThis(),
+    redirect: vi.fn().mockReturnThis(),
+  } as unknown as Response;
+  return res;
+};
+
+const mockNext: NextFunction = vi.fn();
+
+// ============================================================================
+// Test Data
+// ============================================================================
+
+const mockAccountId = '507f1f77bcf86cd799439011';
+const mockInvalidAccountId = 'invalid-id';
+
+const mockAccount = {
+  id: mockAccountId,
+  created: '2024-01-01T00:00:00.000Z',
+  updated: '2024-01-01T00:00:00.000Z',
+  accountType: AccountType.OAuth,
+  status: AccountStatus.Active,
+  userDetails: {
+    name: 'Test User',
+    email: 'test@example.com',
+    emailVerified: true,
+  },
+  security: {
+    twoFactorEnabled: false,
+    sessionTimeout: 3600,
+    autoLock: false,
+  },
+  provider: OAuthProviders.Google,
+};
+
+const mockTokenVerificationResponse: TokenVerificationResponse = {
+  valid: true,
+  accountId: mockAccountId,
+  accountType: AccountType.OAuth,
+  isRefreshToken: false,
+  expiresAt: Date.now() + 3600000,
+  oauthAccessToken: 'mock-oauth-token',
+};
+
+const mockUserExistsResponse: UserExistsResponse = {
+  exists: true,
+  accountId: mockAccountId,
+};
+
+const mockUserResponse: UserResponse = {
+  user: mockAccount,
+  accountId: mockAccountId,
+};
+
+// ============================================================================
+// Test Suite
+// ============================================================================
+
+describe('InternalApiSdk', () => {
   let sdk: InternalApiSdk;
-  let mockHttpClient: any;
-  let mockSocketClient: any;
+  let req: Request;
+  let res: Response;
 
   beforeEach(() => {
+    // Reset all mocks
     vi.clearAllMocks();
 
-    mockHttpClient = {
-      verifyToken: vi.fn(),
-      getUserById: vi.fn(),
-      checkUserExists: vi.fn(),
-      getSessionInfo: vi.fn(),
-      validateSession: vi.fn(),
-    };
-
-    mockSocketClient = {
-      isConnected: vi.fn().mockReturnValue(true),
-      verifyToken: vi.fn(),
-      getUserById: vi.fn(),
-      checkUserExists: vi.fn(),
-      getSessionInfo: vi.fn(),
-      validateSession: vi.fn(),
-    };
-
+    // Create SDK instance
     sdk = new InternalApiSdk({
       httpClient: mockHttpClient,
       socketClient: mockSocketClient,
       enableLogging: false,
       preferSocket: false,
-      accountServerBaseUrl: 'http://localhost:3001',
+      accountServerBaseUrl: 'http://localhost:3000',
+    });
+
+    // Create fresh request/response mocks
+    req = createMockRequest();
+    res = createMockResponse();
+
+    // Setup default mock responses
+    (mockHttpClient.verifyToken as Mock).mockResolvedValue(mockTokenVerificationResponse);
+    (mockHttpClient.checkUserExists as Mock).mockResolvedValue(mockUserExistsResponse);
+    (mockHttpClient.getUserById as Mock).mockResolvedValue(mockUserResponse);
+    (mockSocketClient.isConnected as Mock).mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  // ============================================================================
+  // injectClients Tests
+  // ============================================================================
+
+  describe('injectClients', () => {
+    it('should inject HTTP and Socket clients into request', () => {
+      const middleware = sdk.injectClients();
+      middleware(req, res, mockNext);
+
+      expect(req.internalApi).toBeDefined();
+      expect(req.internalApi?.http).toBe(mockHttpClient);
+      expect(req.internalApi?.socket).toBe(mockSocketClient);
+      expect(mockNext).toHaveBeenCalled();
     });
   });
 
-  describe('Configuration Handling (Our Logic)', () => {
-    it('should initialize with provided configuration', () => {
-      expect(sdk.httpClient).toBe(mockHttpClient);
-      expect(sdk.socketClient).toBe(mockSocketClient);
+  // ============================================================================
+  // authenticateSession Tests
+  // ============================================================================
+
+  describe('authenticateSession', () => {
+    it('should pass with valid account ID', () => {
+      req.params.accountId = mockAccountId;
+      const middleware = sdk.authenticateSession();
+      middleware(req, res, mockNext);
+
+      expect(mockNext).toHaveBeenCalled();
+      expect(res.status).not.toHaveBeenCalled();
     });
 
-    it('should handle optional socket client', () => {
-      const sdkWithoutSocket = new InternalApiSdk({
-        httpClient: mockHttpClient,
-        enableLogging: true,
-      });
+    it('should fail with missing account ID', () => {
+      req.params = {}; // No accountId
+      const middleware = sdk.authenticateSession();
+      middleware(req, res, mockNext);
 
-      expect(sdkWithoutSocket.httpClient).toBe(mockHttpClient);
-      expect(sdkWithoutSocket.socketClient).toBeUndefined();
-    });
-
-    it('should store configuration options correctly', () => {
-      const sdk = new InternalApiSdk({
-        httpClient: mockHttpClient,
-        socketClient: mockSocketClient,
-        enableLogging: true,
-        preferSocket: true,
-        accountServerBaseUrl: 'http://auth.example.com',
-      });
-
-      // Test our configuration storage
-      expect(sdk.httpClient).toBe(mockHttpClient);
-      expect(sdk.socketClient).toBe(mockSocketClient);
-    });
-  });
-
-  describe('Client Selection Logic (Our Logic)', () => {
-    it('should prefer HTTP when preferSocket is false', () => {
-      const httpSdk = new InternalApiSdk({
-        httpClient: mockHttpClient,
-        socketClient: mockSocketClient,
-        preferSocket: false,
-      });
-
-      // Test our client selection logic
-      const shouldUseSocket = httpSdk['shouldUseSocket']();
-      expect(shouldUseSocket).toBe(false);
-    });
-
-    it('should prefer socket when configured and connected', () => {
-      const socketSdk = new InternalApiSdk({
-        httpClient: mockHttpClient,
-        socketClient: mockSocketClient,
-        preferSocket: true,
-      });
-
-      mockSocketClient.isConnected.mockReturnValue(true);
-      const shouldUseSocket = socketSdk['shouldUseSocket']();
-      expect(shouldUseSocket).toBe(true);
-    });
-
-    it('should fallback to HTTP when socket preferred but not connected', () => {
-      const socketSdk = new InternalApiSdk({
-        httpClient: mockHttpClient,
-        socketClient: mockSocketClient,
-        preferSocket: true,
-      });
-
-      mockSocketClient.isConnected.mockReturnValue(false);
-      const shouldUseSocket = socketSdk['shouldUseSocket']();
-      expect(shouldUseSocket).toBe(false);
-    });
-
-    it('should fallback to HTTP when socket preferred but not available', () => {
-      const noSocketSdk = new InternalApiSdk({
-        httpClient: mockHttpClient,
-        preferSocket: true,
-      });
-
-      const shouldUseSocket = noSocketSdk['shouldUseSocket']();
-      expect(shouldUseSocket).toBe(false);
-    });
-  });
-
-  describe('Token Extraction Logic (Our Logic)', () => {
-    it('should extract Bearer token from authorization header', () => {
-      const mockReq = {
-        headers: { authorization: 'Bearer test-token' },
-        cookies: {},
-      };
-
-      const token = sdk['extractTokenFromHeader'](mockReq as any, 'access');
-      expect(token).toBe('test-token');
-    });
-
-    it('should return null when no authorization header', () => {
-      const mockReq = {
-        headers: {},
-        cookies: {},
-      };
-
-      const token = sdk['extractTokenFromHeader'](mockReq as any, 'access');
-      expect(token).toBeNull();
-    });
-
-    it('should extract refresh token from custom header', () => {
-      const mockReq = {
-        headers: {
-          authorization: 'Bearer access-token',
-          'x-refresh-token': 'refresh-token',
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: {
+          code: ApiErrorCode.MISSING_DATA,
+          message: "Account ID parameter 'accountId' is required",
         },
-        cookies: {},
-      };
-
-      const token = sdk['extractTokenFromHeader'](mockReq as any, 'refresh');
-      expect(token).toBe('refresh-token');
+      });
+      expect(mockNext).not.toHaveBeenCalled();
     });
 
-    it('should extract token from generic cookie', () => {
-      const mockReq = {
-        headers: {},
-        cookies: { access_token: 'cookie-token' },
-      };
+    it('should fail with invalid account ID format', () => {
+      req.params.accountId = mockInvalidAccountId;
+      const middleware = sdk.authenticateSession();
+      middleware(req, res, mockNext);
 
-      const token = sdk['extractTokenFromCookie'](mockReq as any, undefined, 'access');
-      expect(token).toBe('cookie-token');
-    });
-
-    it('should extract token from account-specific cookie', () => {
-      const mockReq = {
-        headers: {},
-        cookies: {
-          access_token: 'generic-token',
-          user123_access_token: 'account-specific-token',
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: {
+          code: ApiErrorCode.VALIDATION_ERROR,
+          message: 'Invalid Account ID format',
         },
-      };
-
-      const token = sdk['extractTokenFromCookie'](mockReq as any, 'user123', 'access');
-      expect(token).toBe('account-specific-token');
+      });
+      expect(mockNext).not.toHaveBeenCalled();
     });
 
-    it('should return null when cookies not available', () => {
-      const mockReq = {
-        headers: {},
-        cookies: undefined,
-      };
+    it('should work with custom parameter name', () => {
+      req.params.userId = mockAccountId;
+      const middleware = sdk.authenticateSession('userId');
+      middleware(req, res, mockNext);
 
-      const token = sdk['extractTokenFromCookie'](mockReq as any, 'user123', 'access');
-      expect(token).toBeNull();
+      expect(mockNext).toHaveBeenCalled();
     });
   });
 
-  describe('URL Building Logic (Our Logic)', () => {
-    it('should build refresh URL correctly', () => {
-      const mockReq = {
-        originalUrl: '/api/users/profile',
-      };
+  // ============================================================================
+  // validateAccountAccess Tests
+  // ============================================================================
 
-      const refreshUrl = sdk['buildRefreshUrl'](mockReq as any, 'user123');
-
-      expect(refreshUrl).toBe('http://localhost:3001/user123/tokens/refresh?redirectUrl=%2Fapi%2Fusers%2Fprofile');
+  describe('validateAccountAccess', () => {
+    beforeEach(() => {
+      req.params.accountId = mockAccountId;
     });
 
-    it('should encode special characters in original URL', () => {
-      const mockReq = {
-        originalUrl: '/api/search?q=test+query&filter=active',
-      };
+    it('should successfully validate existing account', async () => {
+      const middleware = sdk.validateAccountAccess();
+      await middleware(req, res, mockNext);
 
-      const refreshUrl = sdk['buildRefreshUrl'](mockReq as any, 'user456');
-
-      expect(refreshUrl).toContain('redirectUrl=%2Fapi%2Fsearch%3Fq%3Dtest%2Bquery%26filter%3Dactive');
+      expect(mockHttpClient.checkUserExists).toHaveBeenCalledWith(mockAccountId);
+      expect(mockHttpClient.getUserById).toHaveBeenCalledWith(mockAccountId);
+      expect(req.account).toEqual(mockAccount);
+      expect(req.oauthAccount).toEqual(mockAccount); // OAuth account
+      expect(mockNext).toHaveBeenCalled();
     });
 
-    it('should throw error when account server base URL not configured', () => {
-      const sdkWithoutBaseUrl = new InternalApiSdk({
-        httpClient: mockHttpClient,
+    it('should fail when account does not exist', async () => {
+      (mockHttpClient.checkUserExists as Mock).mockResolvedValue({ exists: false, accountId: mockAccountId });
+
+      const middleware = sdk.validateAccountAccess();
+      await middleware(req, res, mockNext);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: {
+          code: ApiErrorCode.USER_NOT_FOUND,
+          message: 'Account not found',
+        },
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should handle API errors gracefully', async () => {
+      (mockHttpClient.checkUserExists as Mock).mockRejectedValue(new Error('API Error'));
+
+      const middleware = sdk.validateAccountAccess();
+      await middleware(req, res, mockNext);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: {
+          code: ApiErrorCode.SERVER_ERROR,
+          message: 'Account validation failed',
+        },
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should set localAccount for local account type', async () => {
+      const localAccount = { ...mockAccount, accountType: 'local' };
+      (mockHttpClient.getUserById as Mock).mockResolvedValue({
+        user: localAccount,
+        accountId: mockAccountId,
       });
 
-      const mockReq = { originalUrl: '/test' };
+      const middleware = sdk.validateAccountAccess();
+      await middleware(req, res, mockNext);
 
-      expect(() => {
-        sdkWithoutBaseUrl['buildRefreshUrl'](mockReq as any, 'user123');
-      }).toThrow('Account server base URL not configured for token refresh');
-    });
-
-    it('should throw error when account ID not provided', () => {
-      const mockReq = { originalUrl: '/test' };
-
-      expect(() => {
-        sdk['buildRefreshUrl'](mockReq as any, '');
-      }).toThrow('Account ID is required for token refresh redirect');
+      expect(req.account).toEqual(localAccount);
+      expect(req.localAccount).toEqual(localAccount);
+      expect(req.oauthAccount).toBeUndefined();
     });
   });
 
-  describe('Middleware Composition Logic (Our Logic)', () => {
-    it('should return array of middleware functions for authenticate', () => {
+  // ============================================================================
+  // validateTokenAccess Tests
+  // ============================================================================
+
+  describe('validateTokenAccess', () => {
+    beforeEach(() => {
+      req.params.accountId = mockAccountId;
+      req.account = mockAccount;
+      req.cookies = { [`access_token_${mockAccountId}`]: 'mock-access-token' };
+    });
+
+    it('should successfully validate access token', async () => {
+      const middleware = sdk.validateTokenAccess();
+      await middleware(req, res, mockNext);
+
+      expect(mockHttpClient.verifyToken).toHaveBeenCalledWith('mock-access-token', 'access');
+      expect(req.accessToken).toBe('mock-access-token');
+      expect(req.oauthAccessToken).toBe('mock-oauth-token');
+      expect(req.tokenData).toBeUndefined(); // No longer set
+      expect(mockNext).toHaveBeenCalled();
+    });
+
+    it('should validate refresh token when present', async () => {
+      req.cookies = {
+        [`access_token_${mockAccountId}`]: 'mock-access-token',
+        [`refresh_token_${mockAccountId}`]: 'mock-refresh-token',
+      };
+      const refreshTokenResponse = {
+        ...mockTokenVerificationResponse,
+        isRefreshToken: true,
+        oauthRefreshToken: 'mock-oauth-refresh-token',
+      };
+      (mockHttpClient.verifyToken as Mock)
+        .mockResolvedValueOnce(mockTokenVerificationResponse) // access token
+        .mockResolvedValueOnce(refreshTokenResponse); // refresh token
+
+      const middleware = sdk.validateTokenAccess();
+      await middleware(req, res, mockNext);
+
+      expect(mockHttpClient.verifyToken).toHaveBeenCalledWith('mock-access-token', 'access');
+      expect(mockHttpClient.verifyToken).toHaveBeenCalledWith('mock-refresh-token', 'refresh');
+      expect(req.accessToken).toBe('mock-access-token');
+      expect(req.refreshToken).toBe('mock-refresh-token');
+      expect(req.oauthRefreshToken).toBe('mock-oauth-refresh-token');
+      expect(req.tokenData).toBeUndefined(); // No longer set
+    });
+
+    it('should validate only refresh token if no access token', async () => {
+      req.cookies = { [`refresh_token_${mockAccountId}`]: 'mock-refresh-token' };
+      const refreshTokenResponse = {
+        ...mockTokenVerificationResponse,
+        isRefreshToken: true,
+        oauthRefreshToken: 'mock-oauth-refresh-token',
+      };
+      (mockHttpClient.verifyToken as Mock).mockResolvedValue(refreshTokenResponse);
+
+      const middleware = sdk.validateTokenAccess();
+      await middleware(req, res, mockNext);
+
+      expect(mockHttpClient.verifyToken).toHaveBeenCalledWith('mock-refresh-token', 'refresh');
+      expect(req.refreshToken).toBe('mock-refresh-token');
+      expect(req.oauthRefreshToken).toBe('mock-oauth-refresh-token');
+      expect(req.accessToken).toBeUndefined();
+      expect(req.tokenData).toBeUndefined(); // No longer set
+    });
+
+    it('should extract token from Authorization header', async () => {
+      req.cookies = {}; // No cookies
+      req.headers = { authorization: 'Bearer header-token' };
+
+      const middleware = sdk.validateTokenAccess();
+      await middleware(req, res, mockNext);
+
+      expect(mockHttpClient.verifyToken).toHaveBeenCalledWith('header-token', 'access');
+      expect(req.accessToken).toBe('header-token');
+      expect(req.tokenData).toBeDefined(); // verifyToken still sets tokenData
+      expect(req.tokenData).toBeUndefined(); // No longer set
+    });
+
+    it('should fail when no token provided', async () => {
+      req.cookies = {}; // No cookies
+      req.headers = {}; // No headers
+
+      const middleware = sdk.validateTokenAccess();
+      await middleware(req, res, mockNext);
+
+      expect(res.redirect).toHaveBeenCalledWith(
+        302,
+        'http://localhost:3000/507f1f77bcf86cd799439011/tokens/refresh?redirectUrl=%2Ftest',
+      );
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should fail when no tokens provided', async () => {
+      req.cookies = {}; // No cookies
+      req.headers = {}; // No headers
+
+      const middleware = sdk.validateTokenAccess();
+      await middleware(req, res, mockNext);
+
+      expect(res.redirect).toHaveBeenCalledWith(
+        302,
+        'http://localhost:3000/507f1f77bcf86cd799439011/tokens/refresh?redirectUrl=%2Ftest',
+      );
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should redirect to refresh for token errors', async () => {
+      req.cookies = { [`refresh_token_${mockAccountId}`]: 'mock-refresh-token' };
+      (mockHttpClient.verifyToken as Mock).mockRejectedValue(new Error('Token expired'));
+
+      const middleware = sdk.validateTokenAccess();
+      await middleware(req, res, mockNext);
+
+      expect(res.redirect).toHaveBeenCalledWith(302, expect.stringContaining('/tokens/refresh'));
+    });
+
+    it('should fail when token belongs to different account', async () => {
+      const differentAccountResponse = {
+        ...mockTokenVerificationResponse,
+        accountId: '507f1f77bcf86cd799439012', // Different account
+      };
+      (mockHttpClient.verifyToken as Mock).mockResolvedValue(differentAccountResponse);
+
+      const middleware = sdk.validateTokenAccess();
+      await middleware(req, res, mockNext);
+
+      expect(res.redirect).toHaveBeenCalledWith(302, expect.stringContaining('/tokens/refresh'));
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should fail when account type mismatch', async () => {
+      const mismatchResponse = {
+        ...mockTokenVerificationResponse,
+        accountType: AccountType.Local, // Different from account type
+      };
+      (mockHttpClient.verifyToken as Mock).mockResolvedValue(mismatchResponse);
+
+      const middleware = sdk.validateTokenAccess();
+      await middleware(req, res, mockNext);
+
+      expect(res.redirect).toHaveBeenCalledWith(302, expect.stringContaining('/tokens/refresh'));
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should fail when account not loaded', async () => {
+      req.account = undefined; // No account loaded
+
+      const middleware = sdk.validateTokenAccess();
+      await middleware(req, res, mockNext);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: {
+          code: ApiErrorCode.SERVER_ERROR,
+          message: 'Account not loaded in middleware chain',
+        },
+      });
+    });
+  });
+
+  // ============================================================================
+  // authenticate (Combined Middleware) Tests
+  // ============================================================================
+
+  describe('authenticate', () => {
+    it('should return array of middleware functions', () => {
       const middlewares = sdk.authenticate();
 
       expect(Array.isArray(middlewares)).toBe(true);
-      expect(middlewares.length).toBeGreaterThan(0);
-
-      // Each middleware should be a function with Express signature
-      middlewares.forEach((middleware) => {
-        expect(typeof middleware).toBe('function');
-        expect(middleware.length).toBe(3); // (req, res, next)
-      });
+      expect(middlewares).toHaveLength(4);
+      expect(typeof middlewares[0]).toBe('function'); // injectClients
+      expect(typeof middlewares[1]).toBe('function'); // authenticateSession
+      expect(typeof middlewares[2]).toBe('function'); // validateAccountAccess
+      expect(typeof middlewares[3]).toBe('function'); // validateTokenAccess
     });
 
-    it('should customize middleware chain based on options', () => {
-      const withUser = sdk.authenticate({ loadUser: true });
-      const withoutUser = sdk.authenticate({ loadUser: false });
-
-      expect(withUser.length).toBeGreaterThan(withoutUser.length);
-    });
-
-    it('should return array of middleware functions for authorize', () => {
-      const middlewares = sdk.authorize();
-
-      expect(Array.isArray(middlewares)).toBe(true);
-      expect(middlewares.length).toBeGreaterThan(2);
-
-      middlewares.forEach((middleware) => {
-        expect(typeof middleware).toBe('function');
-        expect(middleware.length).toBe(3);
-      });
-    });
-
-    it('should configure authorize middleware with options', () => {
-      const customAuth = sdk.authorize({
-        accountIdParam: 'userId',
-        sessionCookieName: 'custom_session',
-        validateSessionAccount: false,
-        enableRefreshRedirect: false,
-      });
-
-      expect(Array.isArray(customAuth)).toBe(true);
-      expect(customAuth.length).toBeGreaterThan(0);
+    it('should work with custom accountId parameter', () => {
+      const middlewares = sdk.authenticate('userId');
+      expect(middlewares).toHaveLength(4);
     });
   });
 
-  describe('Client Override Logic (Our Logic)', () => {
-    it('should create HTTP-only instance and preserve original preference', () => {
-      const originalPreference = sdk['preferSocket'];
-      const httpInstance = sdk.useHttp();
+  // ============================================================================
+  // verifyToken (Lightweight) Tests
+  // ============================================================================
 
-      // Should return object with middleware methods
-      expect(httpInstance).toHaveProperty('verifyAccessToken');
-      expect(httpInstance).toHaveProperty('loadUser');
-      expect(httpInstance).toHaveProperty('restore');
-
-      // Should be functions
-      expect(typeof httpInstance.verifyAccessToken).toBe('function');
-      expect(typeof httpInstance.restore).toBe('function');
-
-      // Should change preference temporarily
-      expect(sdk['preferSocket']).toBe(false);
-
-      // Should restore original preference
-      httpInstance.restore();
-      expect(sdk['preferSocket']).toBe(originalPreference);
+  describe('verifyToken', () => {
+    beforeEach(() => {
+      req.params.accountId = mockAccountId;
+      req.cookies = { [`access_token_${mockAccountId}`]: 'mock-token' };
     });
 
-    it('should create socket-preferred instance and preserve original preference', () => {
-      const originalPreference = sdk['preferSocket'];
-      const socketInstance = sdk.useSocket();
+    it('should successfully verify token without loading account', async () => {
+      const middleware = sdk.verifyToken();
+      await middleware(req, res, mockNext);
 
-      expect(socketInstance).toHaveProperty('verifyAccessToken');
-      expect(socketInstance).toHaveProperty('restore');
-
-      // Should change preference temporarily
-      expect(sdk['preferSocket']).toBe(true);
-
-      // Should restore original preference
-      socketInstance.restore();
-      expect(sdk['preferSocket']).toBe(originalPreference);
+      expect(mockHttpClient.verifyToken).toHaveBeenCalledWith('mock-token', 'access');
+      expect(req.accessToken).toBe('mock-token');
+      expect(req.tokenData).toBeDefined();
+      expect(req.account).toBeUndefined(); // No account loaded
+      expect(mockHttpClient.getUserById).not.toHaveBeenCalled(); // No account loading
+      expect(mockNext).toHaveBeenCalled();
     });
-  });
 
-  describe('Error Classification Logic (Our Logic)', () => {
-    it('should classify token-related errors for redirect handling', () => {
-      // Test our error handling logic without Express
-      const tokenExpiredError = { code: ApiErrorCode.TOKEN_EXPIRED };
-      const tokenInvalidError = { code: ApiErrorCode.TOKEN_INVALID };
-      const connectionError = { code: ApiErrorCode.CONNECTION_ERROR };
-      const authError = { code: ApiErrorCode.AUTH_FAILED };
+    it('should work with authorization header', async () => {
+      req.cookies = {};
+      req.headers = { authorization: 'Bearer header-token' };
 
-      // Test that our logic identifies redirect-worthy errors
-      const redirectErrors = [ApiErrorCode.TOKEN_EXPIRED, ApiErrorCode.TOKEN_INVALID];
-      const serviceErrors = [ApiErrorCode.CONNECTION_ERROR, ApiErrorCode.TIMEOUT_ERROR];
+      const middleware = sdk.verifyToken({ fromHeader: true, fromCookie: false });
+      await middleware(req, res, mockNext);
 
-      expect(redirectErrors).toContain(tokenExpiredError.code);
-      expect(redirectErrors).toContain(tokenInvalidError.code);
-      expect(serviceErrors).toContain(connectionError.code);
-      expect(redirectErrors).not.toContain(authError.code);
+      expect(mockHttpClient.verifyToken).toHaveBeenCalledWith('header-token', 'access');
+      expect(req.accessToken).toBe('header-token');
     });
-  });
 
-  describe('Logging Logic (Our Logic)', () => {
-    it('should handle logging when enabled', () => {
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    it('should pass when token not required and not provided', async () => {
+      req.cookies = {};
+      req.headers = {};
 
-      const loggingSdk = new InternalApiSdk({
-        httpClient: mockHttpClient,
-        enableLogging: true,
+      const middleware = sdk.verifyToken({ required: false });
+      await middleware(req, res, mockNext);
+
+      expect(mockHttpClient.verifyToken).not.toHaveBeenCalled();
+      expect(mockNext).toHaveBeenCalled();
+    });
+
+    it('should fail when token required but not provided', async () => {
+      req.cookies = {};
+      req.headers = {};
+
+      const middleware = sdk.verifyToken({ required: true });
+      await middleware(req, res, mockNext);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: {
+          code: ApiErrorCode.TOKEN_INVALID,
+          message: 'Access token required',
+        },
       });
-
-      // Test our logging logic
-      loggingSdk['log']('Test message', { data: 'test' });
-
-      expect(consoleSpy).toHaveBeenCalledWith('[Internal API SDK] Test message', { data: 'test' });
-
-      consoleSpy.mockRestore();
     });
 
-    it('should skip logging when disabled', () => {
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    it('should fail with invalid account ID', async () => {
+      req.params.accountId = 'invalid-id';
 
-      // Test with logging disabled
-      sdk['log']('Test message');
+      const middleware = sdk.verifyToken();
+      await middleware(req, res, mockNext);
 
-      expect(consoleSpy).not.toHaveBeenCalled();
-
-      consoleSpy.mockRestore();
-    });
-
-    it('should handle error logging', () => {
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-      const loggingSdk = new InternalApiSdk({
-        httpClient: mockHttpClient,
-        enableLogging: true,
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: {
+          code: ApiErrorCode.VALIDATION_ERROR,
+          message: 'Invalid Account ID format',
+        },
       });
-
-      loggingSdk['logError']('Error message', new Error('test'));
-
-      expect(consoleSpy).toHaveBeenCalledWith('[Internal API SDK Error] Error message', new Error('test'));
-
-      consoleSpy.mockRestore();
     });
   });
 
-  describe('Client Method Calling Logic (Our Logic)', () => {
-    it('should call HTTP client when socket not preferred', async () => {
-      mockHttpClient.verifyToken.mockResolvedValue({ valid: true });
+  // ============================================================================
+  // loadSession Tests
+  // ============================================================================
 
-      const result = await sdk['callVerifyToken']('test-token', 'access');
+  describe('loadSession', () => {
+    const mockSessionResponse = {
+      session: {
+        hasSession: true,
+        accountIds: [mockAccountId],
+        currentAccountId: mockAccountId,
+        isValid: true,
+      },
+    };
 
-      expect(mockHttpClient.verifyToken).toHaveBeenCalledWith('test-token', 'access');
-      expect(mockSocketClient.verifyToken).not.toHaveBeenCalled();
-      expect(result).toEqual({ valid: true });
+    it('should successfully load session', async () => {
+      req.cookies = { account_session: 'session-cookie' };
+      (mockHttpClient.getSessionInfo as Mock).mockResolvedValue(mockSessionResponse);
+
+      const middleware = sdk.loadSession();
+      await middleware(req, res, mockNext);
+
+      expect(mockHttpClient.getSessionInfo).toHaveBeenCalledWith('session-cookie');
+      expect(req.sessionInfo).toEqual(mockSessionResponse.session);
+      expect(mockNext).toHaveBeenCalled();
     });
 
-    it('should call socket client when preferred and connected', async () => {
-      const socketSdk = new InternalApiSdk({
+    it('should pass when session not required and not provided', async () => {
+      req.cookies = {};
+
+      const middleware = sdk.loadSession({ required: false });
+      await middleware(req, res, mockNext);
+
+      expect(mockHttpClient.getSessionInfo).not.toHaveBeenCalled();
+      expect(mockNext).toHaveBeenCalled();
+    });
+
+    it('should fail when session required but not provided', async () => {
+      req.cookies = {};
+
+      const middleware = sdk.loadSession({ required: true });
+      await middleware(req, res, mockNext);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: {
+          code: ApiErrorCode.AUTH_FAILED,
+          message: 'Session required',
+        },
+      });
+    });
+  });
+
+  // ============================================================================
+  // requirePermission Tests
+  // ============================================================================
+
+  describe('requirePermission', () => {
+    beforeEach(() => {
+      req.account = mockAccount;
+    });
+
+    it('should pass with correct account type', async () => {
+      const middleware = sdk.requirePermission({ accountTypes: ['oauth'] });
+      await middleware(req, res, mockNext);
+
+      expect(mockNext).toHaveBeenCalled();
+    });
+
+    it('should fail with incorrect account type', async () => {
+      const middleware = sdk.requirePermission({ accountTypes: ['local'] });
+      await middleware(req, res, mockNext);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: {
+          code: ApiErrorCode.PERMISSION_DENIED,
+          message: 'Account type not authorized',
+        },
+      });
+    });
+
+    it('should pass with verified email', async () => {
+      const middleware = sdk.requirePermission({ emailVerified: true });
+      await middleware(req, res, mockNext);
+
+      expect(mockNext).toHaveBeenCalled();
+    });
+
+    it('should fail with unverified email', async () => {
+      req.account = {
+        ...mockAccount,
+        userDetails: { ...mockAccount.userDetails, emailVerified: false },
+      };
+
+      const middleware = sdk.requirePermission({ emailVerified: true });
+      await middleware(req, res, mockNext);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: {
+          code: ApiErrorCode.PERMISSION_DENIED,
+          message: 'Email verification required',
+        },
+      });
+    });
+
+    it('should pass custom validator', async () => {
+      const customValidator = vi.fn().mockReturnValue(true);
+      const middleware = sdk.requirePermission({ customValidator });
+      await middleware(req, res, mockNext);
+
+      expect(customValidator).toHaveBeenCalledWith(mockAccount);
+      expect(mockNext).toHaveBeenCalled();
+    });
+
+    it('should fail custom validator', async () => {
+      const customValidator = vi.fn().mockReturnValue(false);
+      const middleware = sdk.requirePermission({ customValidator });
+      await middleware(req, res, mockNext);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: {
+          code: ApiErrorCode.PERMISSION_DENIED,
+          message: 'Permission denied',
+        },
+      });
+    });
+
+    it('should fail when no account loaded', async () => {
+      req.account = undefined;
+
+      const middleware = sdk.requirePermission({ accountTypes: ['oauth'] });
+      await middleware(req, res, mockNext);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: {
+          code: ApiErrorCode.AUTH_FAILED,
+          message: 'Account authentication required',
+        },
+      });
+    });
+  });
+
+  // ============================================================================
+  // Socket Client Preference Tests
+  // ============================================================================
+
+  describe('Socket Client Preference', () => {
+    beforeEach(() => {
+      req.params.accountId = mockAccountId;
+      req.account = mockAccount;
+      req.cookies = { [`access_token_${mockAccountId}`]: 'mock-token' };
+    });
+
+    it('should prefer HTTP when socket not connected', async () => {
+      (mockSocketClient.isConnected as Mock).mockReturnValue(false);
+
+      const sdkWithSocketPreference = new InternalApiSdk({
         httpClient: mockHttpClient,
         socketClient: mockSocketClient,
         preferSocket: true,
       });
 
-      mockSocketClient.isConnected.mockReturnValue(true);
-      mockSocketClient.verifyToken.mockImplementation((token: string, type: string, callback: any) => {
-        callback({ success: true, data: { valid: true } });
+      const middleware = sdkWithSocketPreference.validateTokenAccess();
+      await middleware(req, res, mockNext);
+
+      expect(mockHttpClient.verifyToken).toHaveBeenCalled();
+      expect(mockSocketClient.verifyToken).not.toHaveBeenCalled();
+    });
+
+    it('should use socket when connected and preferred', async () => {
+      (mockSocketClient.isConnected as Mock).mockReturnValue(true);
+      (mockSocketClient.verifyToken as Mock).mockImplementation((token, type, callback) => {
+        callback({ success: true, data: mockTokenVerificationResponse });
       });
 
-      const result = await socketSdk['callVerifyToken']('test-token', 'access');
+      const sdkWithSocketPreference = new InternalApiSdk({
+        httpClient: mockHttpClient,
+        socketClient: mockSocketClient,
+        preferSocket: true,
+      });
+
+      const middleware = sdkWithSocketPreference.validateTokenAccess();
+      await middleware(req, res, mockNext);
 
       expect(mockSocketClient.verifyToken).toHaveBeenCalled();
       expect(mockHttpClient.verifyToken).not.toHaveBeenCalled();
-      expect(result).toEqual({ valid: true });
+    });
+  });
+
+  // ============================================================================
+  // Error Handling Tests
+  // ============================================================================
+
+  describe('Error Handling', () => {
+    beforeEach(() => {
+      req.params.accountId = mockAccountId;
+      req.account = mockAccount; // Load account for token validation
+      req.cookies = { [`access_token_${mockAccountId}`]: 'mock-token' };
     });
 
-    it('should handle socket callback errors', async () => {
-      const socketSdk = new InternalApiSdk({
-        httpClient: mockHttpClient,
-        socketClient: mockSocketClient,
-        preferSocket: true,
-      });
+    it('should handle token verification errors with redirect', async () => {
+      (mockHttpClient.verifyToken as Mock).mockRejectedValue(new Error('Token expired'));
 
-      mockSocketClient.isConnected.mockReturnValue(true);
-      mockSocketClient.verifyToken.mockImplementation((token: string, type: string, callback: any) => {
-        callback({ success: false, error: { message: 'Socket error' } });
-      });
+      const middleware = sdk.validateTokenAccess();
+      await middleware(req, res, mockNext);
 
-      await expect(socketSdk['callVerifyToken']('test-token', 'access')).rejects.toThrow('Socket error');
+      expect(res.redirect).toHaveBeenCalledWith(302, expect.stringContaining('/tokens/refresh'));
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should handle network errors appropriately', async () => {
+      const networkError = new Error('Network error');
+      (mockHttpClient.verifyToken as Mock).mockRejectedValue(networkError);
+
+      const middleware = sdk.verifyToken();
+      await middleware(req, res, mockNext);
+
+      // Should redirect since token verification failed
+      expect(res.redirect).toHaveBeenCalledWith(302, expect.stringContaining('/tokens/refresh'));
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should handle service unavailable errors', async () => {
+      const serviceError = new Error('Service unavailable');
+      (mockHttpClient.checkUserExists as Mock).mockRejectedValue(serviceError);
+
+      const middleware = sdk.validateAccountAccess();
+      await middleware(req, res, mockNext);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: {
+          code: ApiErrorCode.SERVER_ERROR,
+          message: 'Account validation failed',
+        },
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+  });
+
+  // ============================================================================
+  // Path Prefix Handling Tests
+  // ============================================================================
+
+  describe('Path Prefix Handling', () => {
+    it('should handle X-Path-Prefix header in redirects', async () => {
+      req.params.accountId = mockAccountId;
+      req.headers = { 'x-path-prefix': '/api/v1' };
+      req.cookies = {}; // No token to trigger redirect
+
+      const middleware = sdk.validateTokenAccess();
+      req.account = mockAccount; // Need account loaded
+
+      await middleware(req, res, mockNext);
+
+      expect(res.redirect).toHaveBeenCalledWith(302, expect.stringContaining('/api/v1'));
     });
   });
 });
