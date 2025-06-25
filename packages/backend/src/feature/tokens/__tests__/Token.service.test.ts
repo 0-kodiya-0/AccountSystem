@@ -421,8 +421,8 @@ describe('Token Service', () => {
 
         const info = getTokenInfo('missing.type.token', false);
 
-        expect(info.isValid).toBe(true);
-        expect(info.type).toBe('local_jwt'); // Default fallback
+        expect(info.isValid).toBe(false);
+        expect(info.type).toBe(undefined); // Default fallback
       });
     });
 

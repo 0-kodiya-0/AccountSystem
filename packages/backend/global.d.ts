@@ -1,10 +1,10 @@
-import { AccountDocument } from "./feature/account/Account.model";
+import { AccountDocument } from './src/feature/account/Account.model';
 
 declare global {
   namespace NodeJS {
     interface ProcessEnv {
       // Server configuration
-      NODE_ENV: "development" | "production" | "test";
+      NODE_ENV: 'development' | 'production' | 'test';
       PORT?: string;
 
       // Database configuration
