@@ -1,31 +1,21 @@
 {
-    "compilerOptions": {
-        "target": "ES2020",
-        "module": "ES2020",
-        "lib": [
-            "ES2020"
-        ],
-        "declaration": true,
-        "outDir": "./dist",
-        "rootDir": "./src",
-        "strict": true,
-        "esModuleInterop": true,
-        "allowSyntheticDefaultImports": true,
-        "skipLibCheck": true,
-        "forceConsistentCasingInFileNames": true,
-        "moduleResolution": "node",
-        "resolveJsonModule": true,
-        "declarationMap": true,
-        "sourceMap": false
-    },
-    "include": [
-        "src/**/*",
-        "src/global.d.ts",
-        "src/cli.ts"
-    ],
-    "exclude": [
-        "node_modules",
-        "dist",
-        "**/*.test.ts"
-    ]
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ES2020",
+    "lib": ["ES2020"],
+    "declaration": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "declarationMap": true,
+    "sourceMap": false
+  },
+  "include": ["src/**/*", "global.d.ts", "src/cli.ts"],
+  "exclude": ["node_modules", "dist"]
 }
