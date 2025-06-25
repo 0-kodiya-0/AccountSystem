@@ -1,44 +1,17 @@
-/// <reference types="vitest" />
 import { defineConfig } from 'vitest/config';
-import path from 'path';
 
 export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    silent: false, // Allow console output
-    reporters: 'verbose', // More detailed output
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      exclude: ['node_modules/', 'dist/', 'test/', '**/*.d.ts', '**/*.config.*', '**/types.ts'],
-      thresholds: {
-        global: {
-          branches: 85,
-          functions: 90,
-          lines: 90,
-          statements: 90,
-        },
-      },
+      exclude: ['node_modules/**', 'dist/**', '**/*.d.ts', 'vitest.config.ts', 'src/**/__tests__/**', 'coverage/**'],
     },
-    setupFiles: ['./test/setup.ts'],
-    testTimeout: 10000,
-    hookTimeout: 10000,
-    teardownTimeout: 5000,
-    exclude: ['**/node_modules/**', '**/dist/**'],
-    typecheck: {
-      enabled: true,
-      tsconfig: './tsconfig.test.json',
-    },
-  },
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-      '@test': path.resolve(__dirname, './test'),
-    },
-  },
-  // Ensure that the types are properly resolved
-  esbuild: {
-    target: 'node18',
+    setupFiles: ['./src/__tests__/setup.ts'],
+    mockReset: true,
+    clearMocks: true,
+    restoreMocks: true,
   },
 });

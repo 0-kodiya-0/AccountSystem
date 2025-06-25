@@ -1,8 +1,5 @@
-// @types/express/index.d.ts
-// Use this if the express-serve-static-core solution doesn't work
-
-import { InternalHttpClient } from '../../src/client/auth-client';
-import { InternalSocketClient } from '../../src/client/socket-client';
+import { InternalHttpClient } from './src/client/auth-client';
+import { InternalSocketClient } from './src/client/socket-client';
 
 // This export {} is crucial - it makes this file a module
 export {};

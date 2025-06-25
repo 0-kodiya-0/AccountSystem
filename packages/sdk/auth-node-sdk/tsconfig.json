@@ -15,9 +15,8 @@
     "moduleResolution": "node",
     "resolveJsonModule": true,
     "declarationMap": true,
-    "sourceMap": false,
-    "typeRoots": ["./@types", "./node_modules/@types"]
+    "sourceMap": false
   },
-  "include": ["src/**/*", "@types/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  "include": ["src/**/*", "index.d.ts"],
+  "exclude": ["node_modules", "dist"]
 }
