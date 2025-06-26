@@ -1,7 +1,7 @@
-import axios, { AxiosInstance, AxiosResponse, AxiosError, AxiosRequestConfig } from 'axios';
+import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import {
   HttpClientConfig,
-  InternalApiError,
+  ApiError,
   ApiErrorCode,
   HealthCheckResponse,
   TokenVerificationResponse,
@@ -51,7 +51,7 @@ export class HttpClient {
           if (response.data.success) {
             return { ...response, data: response.data.data };
           } else {
-            throw new InternalApiError(
+            throw new ApiError(
               response.data.error?.code || ApiErrorCode.SERVER_ERROR,
               response.data.error?.message || 'API error',
               response.status,
@@ -66,7 +66,7 @@ export class HttpClient {
           console.error(`[API Error] ${error.message}`);
         }
 
-        throw new InternalApiError(
+        throw new ApiError(
           ApiErrorCode.CONNECTION_ERROR,
           error.response?.data?.error?.message || error.message,
           error.response?.status || 503,
@@ -143,14 +143,14 @@ export class HttpClient {
   // Utility Methods
   // ========================================================================
 
-  isApiError(error: unknown, code?: ApiErrorCode): error is InternalApiError {
-    if (!(error instanceof InternalApiError)) {
+  isApiError(error: unknown, code?: ApiErrorCode): error is ApiError {
+    if (!(error instanceof ApiError)) {
       return false;
     }
     return code ? error.code === code : true;
   }
 
-  isNetworkError(error: unknown): error is InternalApiError {
+  isNetworkError(error: unknown): error is ApiError {
     return (
       this.isApiError(error, ApiErrorCode.CONNECTION_ERROR) ||
       this.isApiError(error, ApiErrorCode.TIMEOUT_ERROR) ||
@@ -158,7 +158,7 @@ export class HttpClient {
     );
   }
 
-  isAuthError(error: unknown): error is InternalApiError {
+  isAuthError(error: unknown): error is ApiError {
     return (
       this.isApiError(error, ApiErrorCode.AUTH_FAILED) ||
       this.isApiError(error, ApiErrorCode.TOKEN_EXPIRED) ||
@@ -168,7 +168,7 @@ export class HttpClient {
   }
 
   getErrorMessage(error: unknown): string {
-    if (error instanceof InternalApiError) {
+    if (error instanceof ApiError) {
       return error.message;
     }
     if (error instanceof Error) {

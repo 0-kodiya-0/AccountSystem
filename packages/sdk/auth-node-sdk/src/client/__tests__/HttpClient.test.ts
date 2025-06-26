@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import axios from 'axios';
-import { HttpClient } from '../auth-client';
-import { InternalApiError, ApiErrorCode } from '../../types';
+import { HttpClient } from '../HttpClient';
+import { ApiError, ApiErrorCode } from '../../types';
 
 // Mock axios - let our code create the real instance
 vi.mock('axios');
@@ -97,8 +97,8 @@ describe('HttpClient - Custom Logic Only', () => {
 
   describe('Error Handling Utilities (Our Logic)', () => {
     describe('isApiError', () => {
-      it('should identify InternalApiError instances correctly', () => {
-        const apiError = new InternalApiError(ApiErrorCode.AUTH_FAILED, 'Auth failed');
+      it('should identify ApiError instances correctly', () => {
+        const apiError = new ApiError(ApiErrorCode.AUTH_FAILED, 'Auth failed');
         const regularError = new Error('Regular error');
 
         expect(client.isApiError(apiError)).toBe(true);
@@ -106,26 +106,26 @@ describe('HttpClient - Custom Logic Only', () => {
       });
 
       it('should match specific error codes when provided', () => {
-        const authError = new InternalApiError(ApiErrorCode.AUTH_FAILED, 'Auth failed');
-        const serverError = new InternalApiError(ApiErrorCode.SERVER_ERROR, 'Server error');
+        const authError = new ApiError(ApiErrorCode.AUTH_FAILED, 'Auth failed');
+        const serverError = new ApiError(ApiErrorCode.SERVER_ERROR, 'Server error');
 
         expect(client.isApiError(authError, ApiErrorCode.AUTH_FAILED)).toBe(true);
         expect(client.isApiError(authError, ApiErrorCode.SERVER_ERROR)).toBe(false);
         expect(client.isApiError(serverError, ApiErrorCode.SERVER_ERROR)).toBe(true);
       });
 
-      it('should return true for any InternalApiError when no code specified', () => {
-        const error = new InternalApiError(ApiErrorCode.VALIDATION_ERROR, 'Validation failed');
+      it('should return true for any ApiError when no code specified', () => {
+        const error = new ApiError(ApiErrorCode.VALIDATION_ERROR, 'Validation failed');
         expect(client.isApiError(error)).toBe(true);
       });
     });
 
     describe('isNetworkError', () => {
       it('should identify network-related error codes', () => {
-        const connectionError = new InternalApiError(ApiErrorCode.CONNECTION_ERROR, 'Connection failed');
-        const timeoutError = new InternalApiError(ApiErrorCode.TIMEOUT_ERROR, 'Timeout');
-        const unavailableError = new InternalApiError(ApiErrorCode.SERVICE_UNAVAILABLE, 'Service unavailable');
-        const authError = new InternalApiError(ApiErrorCode.AUTH_FAILED, 'Auth failed');
+        const connectionError = new ApiError(ApiErrorCode.CONNECTION_ERROR, 'Connection failed');
+        const timeoutError = new ApiError(ApiErrorCode.TIMEOUT_ERROR, 'Timeout');
+        const unavailableError = new ApiError(ApiErrorCode.SERVICE_UNAVAILABLE, 'Service unavailable');
+        const authError = new ApiError(ApiErrorCode.AUTH_FAILED, 'Auth failed');
 
         expect(client.isNetworkError(connectionError)).toBe(true);
         expect(client.isNetworkError(timeoutError)).toBe(true);
@@ -133,7 +133,7 @@ describe('HttpClient - Custom Logic Only', () => {
         expect(client.isNetworkError(authError)).toBe(false);
       });
 
-      it('should return false for non-InternalApiError', () => {
+      it('should return false for non-ApiError', () => {
         const regularError = new Error('Regular error');
         expect(client.isNetworkError(regularError)).toBe(false);
       });
@@ -141,11 +141,11 @@ describe('HttpClient - Custom Logic Only', () => {
 
     describe('isAuthError', () => {
       it('should identify authentication-related error codes', () => {
-        const authError = new InternalApiError(ApiErrorCode.AUTH_FAILED, 'Auth failed');
-        const tokenExpiredError = new InternalApiError(ApiErrorCode.TOKEN_EXPIRED, 'Token expired');
-        const tokenInvalidError = new InternalApiError(ApiErrorCode.TOKEN_INVALID, 'Token invalid');
-        const permissionError = new InternalApiError(ApiErrorCode.PERMISSION_DENIED, 'Permission denied');
-        const serverError = new InternalApiError(ApiErrorCode.SERVER_ERROR, 'Server error');
+        const authError = new ApiError(ApiErrorCode.AUTH_FAILED, 'Auth failed');
+        const tokenExpiredError = new ApiError(ApiErrorCode.TOKEN_EXPIRED, 'Token expired');
+        const tokenInvalidError = new ApiError(ApiErrorCode.TOKEN_INVALID, 'Token invalid');
+        const permissionError = new ApiError(ApiErrorCode.PERMISSION_DENIED, 'Permission denied');
+        const serverError = new ApiError(ApiErrorCode.SERVER_ERROR, 'Server error');
 
         expect(client.isAuthError(authError)).toBe(true);
         expect(client.isAuthError(tokenExpiredError)).toBe(true);
@@ -156,8 +156,8 @@ describe('HttpClient - Custom Logic Only', () => {
     });
 
     describe('getErrorMessage', () => {
-      it('should extract message from InternalApiError', () => {
-        const apiError = new InternalApiError(ApiErrorCode.AUTH_FAILED, 'Custom auth message');
+      it('should extract message from ApiError', () => {
+        const apiError = new ApiError(ApiErrorCode.AUTH_FAILED, 'Custom auth message');
         expect(client.getErrorMessage(apiError)).toBe('Custom auth message');
       });
 

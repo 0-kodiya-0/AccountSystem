@@ -1,7 +1,7 @@
-import { HttpClient } from '../client/auth-client';
-import { InternalSocketClient } from '../client/socket-client';
-import { InternalApiSdk, InternalApiSdkConfig } from '../middleware/auth-middleware';
-import { HttpClientConfig, InternalSocketClientConfig } from '../types';
+import { HttpClient } from '../client/HttpClient';
+import { SocketClient } from '../client/SocketClient';
+import { ApiSdk, ApiSdkConfig } from '../middleware/Auth.middleware';
+import { HttpClientConfig, SocketClientConfig } from '../types';
 
 /**
  * Create HTTP client for internal API communication
@@ -13,15 +13,15 @@ export function createHttpClient(config: HttpClientConfig): HttpClient {
 /**
  * Create Socket client for real-time internal API communication
  */
-export function createSocketClient(config: InternalSocketClientConfig): InternalSocketClient {
-  return new InternalSocketClient(config);
+export function createSocketClient(config: SocketClientConfig): SocketClient {
+  return new SocketClient(config);
 }
 
 /**
  * Create complete Internal API SDK with both HTTP and Socket clients
  */
-export function createInternalApiSdk(config: InternalApiSdkConfig): InternalApiSdk {
-  return new InternalApiSdk(config);
+export function createInternalApiSdk(config: ApiSdkConfig): ApiSdk {
+  return new ApiSdk(config);
 }
 
 /**
@@ -40,7 +40,7 @@ export function createQuickSdk(options: {
   enableLogging?: boolean;
   preferSocket?: boolean;
   timeout?: number;
-}): InternalApiSdk {
+}): ApiSdk {
   const {
     baseUrl,
     serviceId,
@@ -63,7 +63,7 @@ export function createQuickSdk(options: {
   });
 
   // Create Socket client if enabled
-  let socketClient: InternalSocketClient | undefined;
+  let socketClient: SocketClient | undefined;
   if (enableSocket) {
     socketClient = createSocketClient({
       baseUrl,

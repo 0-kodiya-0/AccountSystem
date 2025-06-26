@@ -2,7 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import {
   ServerToClientEvents,
   ClientToServerEvents,
-  InternalSocketClientConfig,
+  SocketClientConfig,
   SocketCallback,
   TokenVerificationResponse,
   TokenInfoResponse,
@@ -15,12 +15,12 @@ import {
   Account,
 } from '../types';
 
-export class InternalSocketClient {
+export class SocketClient {
   private socket: Socket<ServerToClientEvents, ClientToServerEvents> | null = null;
-  private config: InternalSocketClientConfig;
+  private config: SocketClientConfig;
   private reconnectAttempts = 0;
 
-  constructor(config: InternalSocketClientConfig) {
+  constructor(config: SocketClientConfig) {
     this.config = {
       namespace: '/internal-socket',
       timeout: 30000,

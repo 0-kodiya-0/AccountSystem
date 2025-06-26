@@ -1,16 +1,16 @@
 import { Request, Response, NextFunction } from 'express';
-import { ApiErrorCode, InternalApiError, TokenVerificationResponse, ApiResponse } from '../types';
-import { HttpClient } from '../client/auth-client';
-import { InternalSocketClient } from '../client/socket-client';
+import { ApiErrorCode, ApiError, TokenVerificationResponse, ApiResponse } from '../types';
+import { HttpClient } from '../client/HttpClient';
+import { SocketClient } from '../client/SocketClient';
 import { ValidationUtils, ErrorUtils, PathUtils } from '../utils';
 
 // ============================================================================
 // SDK Configuration
 // ============================================================================
 
-export interface InternalApiSdkConfig {
+export interface ApiSdkConfig {
   httpClient: HttpClient;
-  socketClient?: InternalSocketClient;
+  socketClient?: SocketClient;
   enableLogging?: boolean;
   preferSocket?: boolean;
   accountServerBaseUrl?: string; // For token refresh redirects
@@ -38,14 +38,14 @@ function sendErrorResponse(res: Response, code: ApiErrorCode, message: string, s
 // SDK Class
 // ============================================================================
 
-export class InternalApiSdk {
+export class ApiSdk {
   public httpClient: HttpClient;
-  public socketClient?: InternalSocketClient;
+  public socketClient?: SocketClient;
   private enableLogging: boolean;
   private preferSocket: boolean;
   private accountServerBaseUrl?: string;
 
-  constructor(config: InternalApiSdkConfig) {
+  constructor(config: ApiSdkConfig) {
     this.httpClient = config.httpClient;
     this.socketClient = config.socketClient;
     this.enableLogging = config.enableLogging || false;
@@ -55,13 +55,13 @@ export class InternalApiSdk {
 
   private log(message: string, data?: any): void {
     if (this.enableLogging) {
-      console.log(`[Internal API SDK] ${message}`, data || '');
+      console.log(`[API SDK] ${message}`, data || '');
     }
   }
 
   private logError(message: string, error?: any): void {
     if (this.enableLogging) {
-      console.error(`[Internal API SDK Error] ${message}`, error || '');
+      console.error(`[API SDK Error] ${message}`, error || '');
     }
   }
 
@@ -125,9 +125,7 @@ export class InternalApiSdk {
           if (response.success) {
             resolve(response.data as TokenVerificationResponse);
           } else {
-            reject(
-              new InternalApiError(ApiErrorCode.TOKEN_INVALID, response.error?.message || 'Socket verification failed'),
-            );
+            reject(new ApiError(ApiErrorCode.TOKEN_INVALID, response.error?.message || 'Socket verification failed'));
           }
         });
       });
@@ -143,9 +141,7 @@ export class InternalApiSdk {
           if (response.success) {
             resolve(response.data);
           } else {
-            reject(
-              new InternalApiError(ApiErrorCode.USER_NOT_FOUND, response.error?.message || 'Socket user check failed'),
-            );
+            reject(new ApiError(ApiErrorCode.USER_NOT_FOUND, response.error?.message || 'Socket user check failed'));
           }
         });
       });
@@ -161,9 +157,7 @@ export class InternalApiSdk {
           if (response.success) {
             resolve(response.data);
           } else {
-            reject(
-              new InternalApiError(ApiErrorCode.USER_NOT_FOUND, response.error?.message || 'Socket user fetch failed'),
-            );
+            reject(new ApiError(ApiErrorCode.USER_NOT_FOUND, response.error?.message || 'Socket user fetch failed'));
           }
         });
       });
@@ -181,7 +175,7 @@ export class InternalApiSdk {
    */
   private buildRefreshUrl(req: Request, accountId: string): string {
     if (!this.accountServerBaseUrl) {
-      throw new InternalApiError(ApiErrorCode.SERVER_ERROR, 'Account server base URL not configured for token refresh');
+      throw new ApiError(ApiErrorCode.SERVER_ERROR, 'Account server base URL not configured for token refresh');
     }
 
     const pathPrefix = PathUtils.getPathPrefix(req.headers);
@@ -201,7 +195,7 @@ export class InternalApiSdk {
       accountId,
     });
 
-    if (error instanceof InternalApiError) {
+    if (error instanceof ApiError) {
       // Handle token expiration/invalidity with redirect
       if (error.code === ApiErrorCode.TOKEN_EXPIRED || error.code === ApiErrorCode.TOKEN_INVALID) {
         if (this.accountServerBaseUrl && accountId) {
@@ -241,7 +235,7 @@ export class InternalApiSdk {
    */
   injectClients() {
     return (req: Request, res: Response, next: NextFunction) => {
-      req.internalApi = {
+      req.apiClients = {
         http: this.httpClient,
         socket: this.socketClient,
       };
@@ -321,7 +315,7 @@ export class InternalApiSdk {
       } catch (error) {
         this.logError('Account validation failed', error);
 
-        if (error instanceof InternalApiError && error.code === ApiErrorCode.USER_NOT_FOUND) {
+        if (error instanceof ApiError && error.code === ApiErrorCode.USER_NOT_FOUND) {
           sendErrorResponse(res, ApiErrorCode.USER_NOT_FOUND, 'Account not found', 404);
           return;
         }
@@ -357,7 +351,7 @@ export class InternalApiSdk {
           this.handleTokenError(
             req,
             res,
-            new InternalApiError(ApiErrorCode.TOKEN_INVALID, 'Access or refresh token required'),
+            new ApiError(ApiErrorCode.TOKEN_INVALID, 'Access or refresh token required'),
             accountId,
           );
           return;
@@ -378,7 +372,7 @@ export class InternalApiSdk {
               this.handleTokenError(
                 req,
                 res,
-                new InternalApiError(ApiErrorCode.TOKEN_INVALID, 'Access token does not belong to this account'),
+                new ApiError(ApiErrorCode.TOKEN_INVALID, 'Access token does not belong to this account'),
                 accountId,
               );
               return;
@@ -393,7 +387,7 @@ export class InternalApiSdk {
               this.handleTokenError(
                 req,
                 res,
-                new InternalApiError(ApiErrorCode.TOKEN_INVALID, 'Access token account type mismatch'),
+                new ApiError(ApiErrorCode.TOKEN_INVALID, 'Access token account type mismatch'),
                 accountId,
               );
               return;
@@ -428,7 +422,7 @@ export class InternalApiSdk {
               this.handleTokenError(
                 req,
                 res,
-                new InternalApiError(ApiErrorCode.TOKEN_INVALID, 'Refresh token does not belong to this account'),
+                new ApiError(ApiErrorCode.TOKEN_INVALID, 'Refresh token does not belong to this account'),
                 accountId,
               );
               return;
@@ -443,7 +437,7 @@ export class InternalApiSdk {
               this.handleTokenError(
                 req,
                 res,
-                new InternalApiError(ApiErrorCode.TOKEN_INVALID, 'Refresh token account type mismatch'),
+                new ApiError(ApiErrorCode.TOKEN_INVALID, 'Refresh token account type mismatch'),
                 accountId,
               );
               return;
@@ -549,7 +543,7 @@ export class InternalApiSdk {
           this.handleTokenError(
             req,
             res,
-            new InternalApiError(ApiErrorCode.TOKEN_INVALID, tokenResult.error || 'Invalid access token'),
+            new ApiError(ApiErrorCode.TOKEN_INVALID, tokenResult.error || 'Invalid access token'),
             accountId,
           );
           return;

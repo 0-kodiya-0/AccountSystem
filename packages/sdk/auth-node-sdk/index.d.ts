@@ -1,6 +1,6 @@
 import { Account, AccountSessionInfo } from './src';
-import { InternalHttpClient } from './src/client/auth-client';
-import { InternalSocketClient } from './src/client/socket-client';
+import { HttpClient } from './src/client/HttpClient';
+import { SocketClient } from './src/client/SocketClient';
 
 // This export {} is crucial - it makes this file a module
 export {};
@@ -31,9 +31,9 @@ declare global {
       sessionInfo?: AccountSessionInfo;
 
       // Internal API clients
-      internalApi?: {
-        http: InternalHttpClient;
-        socket?: InternalSocketClient;
+      apiClients?: {
+        http: HttpClient;
+        socket?: SocketClient;
       };
 
       parentUrl?: string;

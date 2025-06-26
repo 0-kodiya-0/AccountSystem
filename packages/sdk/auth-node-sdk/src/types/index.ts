@@ -129,24 +129,20 @@ export interface AccountSessionInfo {
 // API Response Types
 // ============================================================================
 
-export interface ApiError {
-  code: ApiErrorCode;
-  message: string;
-  details?: Record<string, unknown>;
-  timestamp?: string;
-}
-
 export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
-  error?: ApiError;
+  error?: {
+    code: ApiErrorCode;
+    message: string;
+  };
 }
 
 // ============================================================================
 // Custom Error Class
 // ============================================================================
 
-export class InternalApiError extends Error {
+export class ApiError extends Error {
   public readonly code: ApiErrorCode;
   public readonly statusCode: number;
   public readonly details?: Record<string, unknown>;
@@ -154,14 +150,14 @@ export class InternalApiError extends Error {
 
   constructor(code: ApiErrorCode, message: string, statusCode: number = 500, details?: Record<string, unknown>) {
     super(message);
-    this.name = 'InternalApiError';
+    this.name = 'ApiError';
     this.code = code;
     this.statusCode = statusCode;
     this.details = details;
     this.timestamp = new Date().toISOString();
 
     if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, InternalApiError);
+      Error.captureStackTrace(this, ApiError);
     }
   }
 
@@ -262,7 +258,7 @@ export interface HttpClientConfig {
   enableLogging?: boolean;
 }
 
-export interface InternalSocketClientConfig {
+export interface SocketClientConfig {
   baseUrl: string;
   serviceId: string;
   serviceName: string;

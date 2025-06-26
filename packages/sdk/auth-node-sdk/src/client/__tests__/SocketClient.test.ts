@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { io } from 'socket.io-client';
-import { InternalSocketClient } from '../socket-client';
+import { SocketClient } from '../SocketClient';
 
 // Mock socket.io-client
 vi.mock('socket.io-client');
 const mockedIo = vi.mocked(io);
 
-describe('InternalSocketClient - Custom Logic Only', () => {
-  let client: InternalSocketClient;
+describe('SocketClient - Custom Logic Only', () => {
+  let client: SocketClient;
   let mockSocket: any;
 
   beforeEach(() => {
@@ -22,7 +22,7 @@ describe('InternalSocketClient - Custom Logic Only', () => {
 
     mockedIo.mockReturnValue(mockSocket);
 
-    client = new InternalSocketClient({
+    client = new SocketClient({
       baseUrl: 'http://localhost:3000',
       serviceId: 'test-service',
       serviceName: 'test-service-name',
@@ -32,7 +32,7 @@ describe('InternalSocketClient - Custom Logic Only', () => {
 
   describe('Configuration Handling (Our Logic)', () => {
     it('should merge config with proper defaults', () => {
-      const clientWithDefaults = new InternalSocketClient({
+      const clientWithDefaults = new SocketClient({
         baseUrl: 'http://localhost:3000',
         serviceId: 'test',
         serviceName: 'test-name',
@@ -44,7 +44,7 @@ describe('InternalSocketClient - Custom Logic Only', () => {
     });
 
     it('should handle custom configuration overrides', () => {
-      const customClient = new InternalSocketClient({
+      const customClient = new SocketClient({
         baseUrl: 'http://localhost:4000',
         serviceId: 'custom-service',
         serviceName: 'custom-name',

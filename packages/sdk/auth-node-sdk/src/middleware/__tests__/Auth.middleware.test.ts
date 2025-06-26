@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
 import { Request, Response, NextFunction } from 'express';
-import { InternalApiSdk } from '../../middleware/auth-middleware';
-import { HttpClient } from '../../client/auth-client';
-import { InternalSocketClient } from '../../client/socket-client';
+import { ApiSdk } from '../Auth.middleware';
+import { HttpClient } from '../../client/HttpClient';
+import { SocketClient } from '../../client/SocketClient';
 import {
   ApiErrorCode,
   TokenVerificationResponse,
@@ -34,7 +34,7 @@ const mockSocketClient = {
   checkUserExists: vi.fn(),
   getUserById: vi.fn(),
   isConnected: vi.fn(),
-} as unknown as InternalSocketClient;
+} as unknown as SocketClient;
 
 // Mock Request/Response/NextFunction
 const createMockRequest = (overrides: Partial<Request> = {}): Request =>
@@ -107,8 +107,8 @@ const mockUserResponse: UserResponse = {
 // Test Suite
 // ============================================================================
 
-describe('InternalApiSdk', () => {
-  let sdk: InternalApiSdk;
+describe('ApiSdk', () => {
+  let sdk: ApiSdk;
   let req: Request;
   let res: Response;
 
@@ -117,7 +117,7 @@ describe('InternalApiSdk', () => {
     vi.clearAllMocks();
 
     // Create SDK instance
-    sdk = new InternalApiSdk({
+    sdk = new ApiSdk({
       httpClient: mockHttpClient,
       socketClient: mockSocketClient,
       enableLogging: false,
@@ -149,9 +149,9 @@ describe('InternalApiSdk', () => {
       const middleware = sdk.injectClients();
       middleware(req, res, mockNext);
 
-      expect(req.internalApi).toBeDefined();
-      expect(req.internalApi?.http).toBe(mockHttpClient);
-      expect(req.internalApi?.socket).toBe(mockSocketClient);
+      expect(req.apiClients).toBeDefined();
+      expect(req.apiClients?.http).toBe(mockHttpClient);
+      expect(req.apiClients?.socket).toBe(mockSocketClient);
       expect(mockNext).toHaveBeenCalled();
     });
   });
@@ -707,7 +707,7 @@ describe('InternalApiSdk', () => {
     it('should prefer HTTP when socket not connected', async () => {
       (mockSocketClient.isConnected as Mock).mockReturnValue(false);
 
-      const sdkWithSocketPreference = new InternalApiSdk({
+      const sdkWithSocketPreference = new ApiSdk({
         httpClient: mockHttpClient,
         socketClient: mockSocketClient,
         preferSocket: true,
@@ -726,7 +726,7 @@ describe('InternalApiSdk', () => {
         callback({ success: true, data: mockTokenVerificationResponse });
       });
 
-      const sdkWithSocketPreference = new InternalApiSdk({
+      const sdkWithSocketPreference = new ApiSdk({
         httpClient: mockHttpClient,
         socketClient: mockSocketClient,
         preferSocket: true,
