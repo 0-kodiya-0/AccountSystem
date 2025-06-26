@@ -1,248 +1,208 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { io } from 'socket.io-client';
-import { SocketClient } from '../SocketClient';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { SocketClient } from '../../client/SocketClient';
+import { SocketClientConfig, SocketResponse } from '../../types';
 
-// Mock socket.io-client
-vi.mock('socket.io-client');
-const mockedIo = vi.mocked(io);
+// Mock socket.io-client - we only test our configuration and logic
+const mockSocket = {
+  id: 'mock-socket-id',
+  connected: false,
+  on: vi.fn(),
+  off: vi.fn(),
+  once: vi.fn(),
+  emit: vi.fn(),
+  disconnect: vi.fn(),
+  removeAllListeners: vi.fn(),
+  io: {
+    engine: {
+      transport: {
+        name: 'websocket',
+      },
+    },
+  },
+};
 
-describe('SocketClient - Custom Logic Only', () => {
-  let client: SocketClient;
-  let mockSocket: any;
+const mockIo = vi.fn(() => mockSocket);
+
+vi.mock('socket.io-client', () => ({
+  io: mockIo,
+}));
+
+describe('SocketClient', () => {
+  let socketClient: SocketClient;
+  let config: SocketClientConfig;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-
-    mockSocket = {
-      on: vi.fn(),
-      emit: vi.fn(),
-      disconnect: vi.fn(),
-      connected: false,
+    config = {
+      baseUrl: 'https://api.example.com',
+      serviceId: 'test-service-123',
+      serviceName: 'TestService',
+      serviceSecret: 'super-secret-key',
+      namespace: '/custom-namespace',
+      timeout: 15000,
+      enableLogging: false,
+      autoConnect: true,
+      maxReconnectAttempts: 3,
     };
 
-    mockedIo.mockReturnValue(mockSocket);
+    vi.clearAllMocks();
 
-    client = new SocketClient({
-      baseUrl: 'http://localhost:3000',
-      serviceId: 'test-service',
-      serviceName: 'test-service-name',
-      serviceSecret: 'test-secret',
-    });
+    // Reset mock socket state
+    mockSocket.connected = false;
+    mockSocket.id = 'mock-socket-id';
   });
 
-  describe('Configuration Handling (Our Logic)', () => {
-    it('should merge config with proper defaults', () => {
-      const clientWithDefaults = new SocketClient({
-        baseUrl: 'http://localhost:3000',
-        serviceId: 'test',
-        serviceName: 'test-name',
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe('constructor and configuration processing', () => {
+    it('should apply default values for missing config properties', () => {
+      const minimalConfig = {
+        baseUrl: 'https://api.example.com',
+        serviceId: 'test-service',
+        serviceName: 'TestService',
         serviceSecret: 'secret',
-      });
+      };
 
-      // Test that our config merging works
-      expect(clientWithDefaults).toBeDefined();
+      socketClient = new SocketClient(minimalConfig);
+
+      expect(socketClient.getConfig()).toEqual(
+        expect.objectContaining({
+          namespace: '/internal-socket',
+          timeout: 30000,
+          enableLogging: false,
+          autoConnect: true,
+          maxReconnectAttempts: 5,
+        }),
+      );
     });
 
-    it('should handle custom configuration overrides', () => {
-      const customClient = new SocketClient({
-        baseUrl: 'http://localhost:4000',
-        serviceId: 'custom-service',
-        serviceName: 'custom-name',
-        serviceSecret: 'custom-secret',
-        timeout: 15000,
-        enableLogging: true,
-        autoConnect: false,
-        maxReconnectAttempts: 10,
-      });
+    it('should preserve provided config values over defaults', () => {
+      socketClient = new SocketClient(config);
 
-      expect(customClient).toBeDefined();
+      expect(socketClient.getConfig()).toEqual(
+        expect.objectContaining({
+          namespace: '/custom-namespace',
+          timeout: 15000,
+          enableLogging: false,
+          autoConnect: true,
+          maxReconnectAttempts: 3,
+        }),
+      );
     });
   });
 
-  describe('Connection State Management (Our Logic)', () => {
-    it('should track connection state correctly', () => {
-      // Initially disconnected
-      expect(client.isConnected()).toBe(false);
+  describe('URL construction logic', () => {
+    it('should construct correct socket URL with namespace', () => {
+      const socketClient = new SocketClient(config);
+      socketClient.connect();
+
+      expect(mockIo).toHaveBeenCalledWith('https://api.example.com/custom-namespace', expect.any(Object));
     });
 
-    it('should track reconnection attempts', () => {
-      expect(client.getReconnectAttempts()).toBe(0);
+    it('should use default namespace when not provided', () => {
+      const configWithoutNamespace = { ...config };
+      delete configWithoutNamespace.namespace;
 
-      // Simulate reconnection attempt tracking (our custom logic)
-      client['reconnectAttempts'] = 3;
-      expect(client.getReconnectAttempts()).toBe(3);
+      const client = new SocketClient(configWithoutNamespace);
+      client.connect();
+
+      expect(mockIo).toHaveBeenCalledWith('https://api.example.com/internal-socket', expect.any(Object));
     });
+  });
 
-    it('should return correct connection status when socket is connected', () => {
+  describe('communication logic', () => {
+    beforeEach(() => {
+      socketClient = new SocketClient(config);
       mockSocket.connected = true;
-      client['socket'] = mockSocket;
-
-      expect(client.isConnected()).toBe(true);
     });
 
-    it('should return false when socket is null', () => {
-      client['socket'] = null;
-      expect(client.isConnected()).toBe(false);
-    });
-  });
-
-  describe('Connection Validation (Our Logic)', () => {
-    it('should throw error when calling API methods without connection', () => {
-      // Socket not connected
+    it('should throw error when emitting while not connected', () => {
       mockSocket.connected = false;
-      client['socket'] = mockSocket;
 
-      expect(() => {
-        client.verifyToken('token', 'access', vi.fn());
-      }).toThrow('Socket not connected. Call connect() first.');
+      expect(() => socketClient.emit('test', {})).toThrow('Socket not connected. Call connect() first.');
     });
 
-    it('should throw error when socket is null', () => {
-      client['socket'] = null;
+    it('should resolve promise with successful response', async () => {
+      const testData = { message: 'test' };
+      const mockResponse: SocketResponse<any> = {
+        success: true,
+        data: { result: 'success' },
+      };
 
-      expect(() => {
-        client.getUserById('user123', vi.fn());
-      }).toThrow('Socket not connected. Call connect() first.');
+      // Mock emit to call callback with response
+      mockSocket.emit.mockImplementation((event, data, callback) => {
+        if (callback) callback(mockResponse);
+      });
+
+      const result = await socketClient.emitWithResponse('test-event', testData);
+
+      expect(result).toEqual({ result: 'success' });
     });
 
-    it('should allow API calls when properly connected', () => {
-      mockSocket.connected = true;
-      client['socket'] = mockSocket;
+    it('should reject promise with error response', async () => {
+      const testData = { message: 'test' };
+      const mockResponse: SocketResponse<any> = {
+        success: false,
+        error: { code: 'TEST_ERROR', message: 'Test error occurred' },
+      };
 
-      expect(() => {
-        client.verifyToken('token', 'access', vi.fn());
-      }).not.toThrow();
+      mockSocket.emit.mockImplementation((event, data, callback) => {
+        if (callback) callback(mockResponse);
+      });
 
-      expect(mockSocket.emit).toHaveBeenCalled();
+      await expect(socketClient.emitWithResponse('test-event', testData)).rejects.toThrow('Test error occurred');
+    });
+
+    it('should reject with default message when error message missing', async () => {
+      const mockResponse: SocketResponse<any> = {
+        success: false,
+        error: { code: 'TEST_ERROR' } as any,
+      };
+
+      mockSocket.emit.mockImplementation((event, data, callback) => {
+        if (callback) callback(mockResponse);
+      });
+
+      await expect(socketClient.emitWithResponse('test-event', {})).rejects.toThrow('Socket request failed');
     });
   });
 
-  describe('Event Handler Registration (Our Logic)', () => {
+  describe('ping functionality', () => {
     beforeEach(() => {
+      socketClient = new SocketClient(config);
       mockSocket.connected = true;
-      client['socket'] = mockSocket;
     });
 
-    it('should register event listeners with correct event names', () => {
-      const callback = vi.fn();
-
-      client.onUserUpdated(callback);
-      expect(mockSocket.on).toHaveBeenCalledWith('user-updated', callback);
-
-      client.onUserDeleted(callback);
-      expect(mockSocket.on).toHaveBeenCalledWith('user-deleted', callback);
-
-      client.onSessionExpired(callback);
-      expect(mockSocket.on).toHaveBeenCalledWith('session-expired', callback);
-    });
-
-    it('should require connection for event listener registration', () => {
-      client['socket'] = null;
-
-      expect(() => {
-        client.onUserUpdated(vi.fn());
-      }).toThrow('Socket not connected. Call connect() first.');
-    });
-  });
-
-  describe('API Method Parameter Handling (Our Logic)', () => {
-    beforeEach(() => {
-      mockSocket.connected = true;
-      client['socket'] = mockSocket;
-    });
-
-    it('should handle token verification with correct parameters', () => {
-      const callback = vi.fn();
-
-      client.verifyToken('test-token', 'access', callback);
-
-      expect(mockSocket.emit).toHaveBeenCalledWith(
-        'auth:verify-token',
-        { token: 'test-token', tokenType: 'access' },
-        callback,
-      );
-    });
-
-    it('should use default token type when not specified', () => {
-      const callback = vi.fn();
-
-      client.verifyToken('test-token', undefined, callback);
-
-      expect(mockSocket.emit).toHaveBeenCalledWith(
-        'auth:token-info',
-        { token: 'test-token', tokenType: 'access' },
-        callback,
-      );
-    });
-
-    it('should handle session methods with proper data structure', () => {
-      const callback = vi.fn();
-      const data = { accountIds: ['user123'], sessionCookie: 'cookie' };
-
-      client.getSessionAccounts(data, callback);
-
-      expect(mockSocket.emit).toHaveBeenCalledWith('session:get-accounts', data, callback);
-    });
-
-    it('should handle undefined session cookie properly', () => {
-      const callback = vi.fn();
-
-      client.getSessionInfo(undefined, callback);
-
-      expect(mockSocket.emit).toHaveBeenCalledWith('session:get-info', { sessionCookie: undefined }, callback);
-    });
-  });
-
-  describe('Disconnect Handling (Our Logic)', () => {
-    it('should handle disconnect when socket exists', () => {
-      client['socket'] = mockSocket;
-
-      client.disconnect();
-
-      expect(mockSocket.disconnect).toHaveBeenCalled();
-    });
-
-    it('should handle disconnect gracefully when socket is null', () => {
-      client['socket'] = null;
-
-      expect(() => client.disconnect()).not.toThrow();
-    });
-
-    it('should reset socket reference after disconnect', () => {
-      client['socket'] = mockSocket;
-
-      client.disconnect();
-
-      // Our logic should set socket to null
-      expect(client['socket']).toBeNull();
-    });
-  });
-
-  describe('Error Handling During Connection (Our Logic)', () => {
-    it('should handle connection errors properly', async () => {
-      // Test our error handling logic
-      mockSocket.on.mockImplementation((event: string, callback: Function) => {
-        if (event === 'connect_error') {
-          setTimeout(() => callback(new Error('Connection failed')), 0);
+    it('should resolve with latency on successful ping', async () => {
+      mockSocket.emit.mockImplementation((event, data, callback) => {
+        if (event === 'ping' && callback) {
+          // Simulate 50ms delay
+          setTimeout(() => callback(), 50);
         }
       });
 
-      await expect(client.connect()).rejects.toThrow('Socket connection failed: Connection failed');
+      const latency = await socketClient.ping();
+
+      expect(latency).toBeGreaterThanOrEqual(40); // Allow for some variance
+      expect(latency).toBeLessThan(100);
     });
 
-    it('should track reconnection attempts during reconnect events', async () => {
-      mockSocket.on.mockImplementation((event: string, callback: Function) => {
-        if (event === 'connect') {
-          setTimeout(() => callback(), 0);
-        } else if (event === 'reconnect_attempt') {
-          setTimeout(() => callback(2), 10);
-        }
-      });
+    it('should reject when not connected', async () => {
+      mockSocket.connected = false;
 
-      await client.connect();
+      await expect(socketClient.ping()).rejects.toThrow('Socket not connected');
+    });
 
-      // Our logic should track this
-      expect(client.getReconnectAttempts()).toBe(2);
+    it('should reject on timeout', async () => {
+      const quickTimeoutConfig = { ...config, timeout: 100 };
+      const quickClient = new SocketClient(quickTimeoutConfig);
+      mockSocket.connected = true;
+
+      // Don't call the callback to simulate timeout
+      mockSocket.emit.mockImplementation(() => {});
+
+      await expect(quickClient.ping()).rejects.toThrow('Ping timeout');
     });
   });
 });
