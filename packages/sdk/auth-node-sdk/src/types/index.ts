@@ -253,7 +253,7 @@ export interface HealthCheckResponse {
 // Configuration Interfaces
 // ============================================================================
 
-export interface InternalHttpClientConfig {
+export interface HttpClientConfig {
   baseUrl: string;
   serviceId: string;
   serviceSecret: string;

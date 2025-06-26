@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import axios from 'axios';
-import { InternalHttpClient } from '../auth-client';
+import { HttpClient } from '../auth-client';
 import { InternalApiError, ApiErrorCode } from '../../types';
 
 // Mock axios - let our code create the real instance
 vi.mock('axios');
 const mockedAxios = vi.mocked(axios, true);
 
-describe('InternalHttpClient - Custom Logic Only', () => {
-  let client: InternalHttpClient;
+describe('HttpClient - Custom Logic Only', () => {
+  let client: HttpClient;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -24,7 +24,7 @@ describe('InternalHttpClient - Custom Logic Only', () => {
 
     (mockedAxios.create as any).mockReturnValue(mockInstance);
 
-    client = new InternalHttpClient({
+    client = new HttpClient({
       baseUrl: 'http://localhost:3000',
       serviceId: 'test-service',
       serviceSecret: 'test-secret',
@@ -37,7 +37,7 @@ describe('InternalHttpClient - Custom Logic Only', () => {
     it('should normalize baseUrl by removing trailing slash', () => {
       vi.clearAllMocks();
 
-      new InternalHttpClient({
+      new HttpClient({
         baseUrl: 'http://localhost:3000/',
         serviceId: 'test-service',
         serviceSecret: 'test-secret',
@@ -81,7 +81,7 @@ describe('InternalHttpClient - Custom Logic Only', () => {
     it('should use default timeout when not provided', () => {
       vi.clearAllMocks();
 
-      new InternalHttpClient({
+      new HttpClient({
         baseUrl: 'http://localhost:3000',
         serviceId: 'test-service',
         serviceSecret: 'test-secret',

@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ApiErrorCode, InternalApiError, TokenVerificationResponse, ApiResponse } from '../types';
-import { InternalHttpClient } from '../client/auth-client';
+import { HttpClient } from '../client/auth-client';
 import { InternalSocketClient } from '../client/socket-client';
 import { ValidationUtils, ErrorUtils, PathUtils } from '../utils';
 
@@ -9,7 +9,7 @@ import { ValidationUtils, ErrorUtils, PathUtils } from '../utils';
 // ============================================================================
 
 export interface InternalApiSdkConfig {
-  httpClient: InternalHttpClient;
+  httpClient: HttpClient;
   socketClient?: InternalSocketClient;
   enableLogging?: boolean;
   preferSocket?: boolean;
@@ -39,7 +39,7 @@ function sendErrorResponse(res: Response, code: ApiErrorCode, message: string, s
 // ============================================================================
 
 export class InternalApiSdk {
-  public httpClient: InternalHttpClient;
+  public httpClient: HttpClient;
   public socketClient?: InternalSocketClient;
   private enableLogging: boolean;
   private preferSocket: boolean;

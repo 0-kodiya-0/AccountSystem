@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
 import { Request, Response, NextFunction } from 'express';
 import { InternalApiSdk } from '../../middleware/auth-middleware';
-import { InternalHttpClient } from '../../client/auth-client';
+import { HttpClient } from '../../client/auth-client';
 import { InternalSocketClient } from '../../client/socket-client';
 import {
   ApiErrorCode,
@@ -26,7 +26,7 @@ const mockHttpClient = {
   isNetworkError: vi.fn(),
   isAuthError: vi.fn(),
   getErrorMessage: vi.fn(),
-} as unknown as InternalHttpClient;
+} as unknown as HttpClient;
 
 // Mock Socket Client
 const mockSocketClient = {

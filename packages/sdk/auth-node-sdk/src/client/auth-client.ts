@@ -1,7 +1,6 @@
 import axios, { AxiosInstance, AxiosResponse, AxiosError, AxiosRequestConfig } from 'axios';
 import {
-  InternalHttpClientConfig,
-  ApiResponse,
+  HttpClientConfig,
   InternalApiError,
   ApiErrorCode,
   HealthCheckResponse,
@@ -15,11 +14,11 @@ import {
   SessionValidationResponse,
 } from '../types';
 
-export class InternalHttpClient {
+export class HttpClient {
   private client: AxiosInstance;
-  private config: InternalHttpClientConfig;
+  private config: HttpClientConfig;
 
-  constructor(config: InternalHttpClientConfig) {
+  constructor(config: HttpClientConfig) {
     this.config = config;
     this.client = this.createAxiosInstance();
     this.setupInterceptors();
@@ -41,112 +40,39 @@ export class InternalHttpClient {
   }
 
   private setupInterceptors(): void {
-    // Request interceptor
-    this.client.interceptors.request.use(
-      (config) => {
-        if (this.config.enableLogging) {
-          console.debug(`[Internal API] ${config.method?.toUpperCase()} ${config.url}`);
-        }
-        return config;
-      },
-      (error) => Promise.reject(error),
-    );
-
-    // Response interceptor
     this.client.interceptors.response.use(
-      (response: AxiosResponse) => {
+      (response) => {
         if (this.config.enableLogging) {
-          console.debug(`[Internal API] ${response.status} ${response.config.url}`);
+          console.debug(`[API Success] ${response.status} ${response.config.url}`);
         }
 
-        const apiResponse: ApiResponse = response.data;
-
-        if (apiResponse.success) {
-          // Return unwrapped data
-          return { ...response, data: apiResponse.data };
-        } else {
-          // API-level error
-          const apiError = apiResponse.error!;
-          throw new InternalApiError(apiError.code as ApiErrorCode, apiError.message, response.status, {
-            endpoint: response.config.url,
-            method: response.config.method?.toUpperCase(),
-            ...(apiError.details && { apiDetails: apiError.details }),
-          });
+        // Handle ApiResponse structure
+        if (response.data && typeof response.data === 'object' && 'success' in response.data) {
+          if (response.data.success) {
+            return { ...response, data: response.data.data };
+          } else {
+            throw new InternalApiError(
+              response.data.error?.code || ApiErrorCode.SERVER_ERROR,
+              response.data.error?.message || 'API error',
+              response.status,
+            );
+          }
         }
+
+        return response;
       },
-      (error: AxiosError) => {
+      (error) => {
         if (this.config.enableLogging) {
-          console.error(`[Internal API Error] ${error.message}`);
+          console.error(`[API Error] ${error.message}`);
         }
 
-        // Network/connection errors
-        if (!error.response) {
-          if (error.code === 'ECONNABORTED') {
-            throw new InternalApiError(
-              ApiErrorCode.TIMEOUT_ERROR,
-              'Request timeout - internal server did not respond in time',
-              408,
-            );
-          }
-
-          if (error.code === 'ECONNREFUSED') {
-            throw new InternalApiError(
-              ApiErrorCode.CONNECTION_ERROR,
-              'Connection refused - internal server is not running or unreachable',
-              503,
-            );
-          }
-
-          if (error.code === 'ENOTFOUND') {
-            throw new InternalApiError(
-              ApiErrorCode.CONNECTION_ERROR,
-              'DNS resolution failed - check internal server hostname',
-              503,
-            );
-          }
-
-          throw new InternalApiError(ApiErrorCode.CONNECTION_ERROR, `Network error: ${error.message}`, 503);
-        }
-
-        // HTTP response errors
-        const status = error.response.status;
-        const responseData = error.response.data as any;
-
-        // Structured API error response
-        if (responseData?.error) {
-          const apiError = responseData.error;
-          throw new InternalApiError(
-            (apiError.code as ApiErrorCode) || this.mapStatusToErrorCode(status),
-            apiError.message || 'Internal API error',
-            status,
-          );
-        }
-
-        // Non-structured error response
-        const errorMessage =
-          typeof responseData === 'string' ? responseData : responseData?.message || `HTTP ${status} error`;
-
-        throw new InternalApiError(this.mapStatusToErrorCode(status), errorMessage, status);
+        throw new InternalApiError(
+          ApiErrorCode.CONNECTION_ERROR,
+          error.response?.data?.error?.message || error.message,
+          error.response?.status || 503,
+        );
       },
     );
-  }
-
-  private mapStatusToErrorCode(status: number): ApiErrorCode {
-    const statusMap: Record<number, ApiErrorCode> = {
-      400: ApiErrorCode.INVALID_REQUEST,
-      401: ApiErrorCode.AUTH_FAILED,
-      403: ApiErrorCode.PERMISSION_DENIED,
-      404: ApiErrorCode.RESOURCE_NOT_FOUND,
-      409: ApiErrorCode.RESOURCE_EXISTS,
-      422: ApiErrorCode.VALIDATION_ERROR,
-      429: ApiErrorCode.RATE_LIMIT_EXCEEDED,
-      500: ApiErrorCode.SERVER_ERROR,
-      502: ApiErrorCode.SERVICE_UNAVAILABLE,
-      503: ApiErrorCode.SERVICE_UNAVAILABLE,
-      504: ApiErrorCode.SERVICE_UNAVAILABLE,
-    };
-
-    return statusMap[status] || ApiErrorCode.SERVER_ERROR;
   }
 
   // ========================================================================

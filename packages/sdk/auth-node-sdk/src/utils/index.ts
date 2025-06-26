@@ -1,12 +1,12 @@
 import { HttpClient } from '../client/auth-client';
 import { InternalSocketClient } from '../client/socket-client';
 import { InternalApiSdk, InternalApiSdkConfig } from '../middleware/auth-middleware';
-import { InternalHttpClientConfig, InternalSocketClientConfig } from '../types';
+import { HttpClientConfig, InternalSocketClientConfig } from '../types';
 
 /**
  * Create HTTP client for internal API communication
  */
-export function createHttpClient(config: InternalHttpClientConfig): HttpClient {
+export function createHttpClient(config: HttpClientConfig): HttpClient {
   return new HttpClient(config);
 }
 
