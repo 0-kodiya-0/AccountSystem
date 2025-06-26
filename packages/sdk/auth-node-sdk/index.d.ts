@@ -1,6 +1,8 @@
 import { Account, AccountSessionInfo } from './src';
 import { HttpClient } from './src/client/HttpClient';
 import { SocketClient } from './src/client/SocketClient';
+import { ApiService } from './src/services/ApiService';
+import { SocketService } from './src/services/SocketService';
 
 // This export {} is crucial - it makes this file a module
 export {};
@@ -33,7 +35,9 @@ declare global {
       // Internal API clients
       apiClients?: {
         http: HttpClient;
+        api: ApiService;
         socket?: SocketClient;
+        socketService?: SocketService;
       };
 
       parentUrl?: string;

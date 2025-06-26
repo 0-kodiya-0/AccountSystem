@@ -4,15 +4,7 @@ import {
   ClientToServerEvents,
   SocketClientConfig,
   SocketCallback,
-  TokenVerificationResponse,
-  TokenInfoResponse,
-  UserResponse,
-  UserEmailResponse,
-  UserExistsResponse,
-  SessionInfoResponse,
-  SessionAccountsResponse,
-  SessionValidationResponse,
-  Account,
+  SocketResponse,
 } from '../types';
 
 export class SocketClient {
@@ -113,118 +105,70 @@ export class SocketClient {
   }
 
   // ========================================================================
-  // API Methods
+  // Core Socket Communication Methods
   // ========================================================================
 
-  verifyToken(
-    token: string,
-    tokenType: 'access' | 'refresh' = 'access',
-    callback: SocketCallback<TokenVerificationResponse>,
-  ): void {
+  emit<T>(event: string, data: any, callback?: SocketCallback<T>): void {
     this.ensureConnected();
-    this.socket!.emit('auth:verify-token', { token, tokenType }, callback);
+    if (callback) {
+      this.socket!.emit(event as any, data, callback);
+    } else {
+      this.socket!.emit(event as any, data);
+    }
   }
 
-  getTokenInfo(
-    token: string,
-    tokenType: 'access' | 'refresh' = 'access',
-    callback: SocketCallback<TokenInfoResponse>,
-  ): void {
-    this.ensureConnected();
-    this.socket!.emit('auth:token-info', { token, tokenType }, callback);
+  emitWithResponse<T>(event: string, data: any): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this.ensureConnected();
+      this.socket!.emit(event as any, data, (response: SocketResponse<T>) => {
+        if (response.success) {
+          resolve(response.data as T);
+        } else {
+          reject(new Error(response.error?.message || 'Socket request failed'));
+        }
+      });
+    });
   }
 
-  getUserById(accountId: string, callback: SocketCallback<UserResponse>): void {
+  on<T>(event: string, handler: (data: T) => void): void {
     this.ensureConnected();
-    this.socket!.emit('users:get-by-id', { accountId }, callback);
+    this.socket!.on(event as any, handler);
   }
 
-  getUserByEmail(email: string, callback: SocketCallback<UserEmailResponse>): void {
-    this.ensureConnected();
-    this.socket!.emit('users:get-by-email', { email }, callback);
+  off(event: string, handler?: (...args: any[]) => void): void {
+    if (this.socket) {
+      if (handler) {
+        this.socket.off(event as any, handler);
+      } else {
+        this.socket.off(event as any);
+      }
+    }
   }
 
-  checkUserExists(accountId: string, callback: SocketCallback<UserExistsResponse>): void {
+  once<T>(event: string, handler: (data: T) => void): void {
     this.ensureConnected();
-    this.socket!.emit('users:exists', { accountId }, callback);
+    this.socket!.once(event as any, handler);
   }
 
-  getSessionInfo(sessionCookie: string | undefined, callback: SocketCallback<SessionInfoResponse>): void {
-    this.ensureConnected();
-    this.socket!.emit('session:get-info', { sessionCookie }, callback);
-  }
-
-  getSessionAccounts(
-    data: { accountIds?: string[]; sessionCookie?: string },
-    callback: SocketCallback<SessionAccountsResponse>,
-  ): void {
-    this.ensureConnected();
-    this.socket!.emit('session:get-accounts', data, callback);
-  }
-
-  validateSession(
-    data: { accountId?: string; sessionCookie?: string },
-    callback: SocketCallback<SessionValidationResponse>,
-  ): void {
-    this.ensureConnected();
-    this.socket!.emit('session:validate', data, callback);
-  }
-
-  healthCheck(
-    callback: SocketCallback<{
-      status: 'healthy';
-      timestamp: string;
-      server: 'internal-socket';
-      serviceId: string;
-      serviceName: string;
-      authenticated: boolean;
-    }>,
-  ): void {
-    this.ensureConnected();
-    this.socket!.emit('health', {}, callback);
-  }
-
-  ping(
-    callback: SocketCallback<{
-      pong: true;
-      timestamp: string;
-      serviceId: string;
-      serviceName: string;
-    }>,
-  ): void {
-    this.ensureConnected();
-    this.socket!.emit('ping', {}, callback);
+  removeAllListeners(event?: string): void {
+    if (this.socket) {
+      if (event) {
+        this.socket.removeAllListeners(event as any);
+      } else {
+        this.socket.removeAllListeners();
+      }
+    }
   }
 
   // ========================================================================
-  // Event Listeners
+  // Connection Management
   // ========================================================================
 
-  onUserUpdated(callback: (data: { accountId: string; user: Account; timestamp: string }) => void): void {
-    this.ensureConnected();
-    this.socket!.on('user-updated', callback);
-  }
-
-  onUserDeleted(callback: (data: { accountId: string; timestamp: string }) => void): void {
-    this.ensureConnected();
-    this.socket!.on('user-deleted', callback);
-  }
-
-  onSessionExpired(callback: (data: { accountId: string; sessionId: string; timestamp: string }) => void): void {
-    this.ensureConnected();
-    this.socket!.on('session-expired', callback);
-  }
-
-  onServiceNotification(
-    callback: (data: { message: string; level: 'info' | 'warn' | 'error'; timestamp: string }) => void,
-  ): void {
-    this.ensureConnected();
-    this.socket!.on('service-notification', callback);
-  }
-
-  onMaintenanceMode(callback: (data: { enabled: boolean; message?: string; timestamp: string }) => void): void {
-    this.ensureConnected();
-    this.socket!.on('maintenance-mode', callback);
+  async reconnect(): Promise<void> {
+    if (this.socket) {
+      this.socket.disconnect();
+    }
+    return this.connect();
   }
 
   // ========================================================================
@@ -237,5 +181,88 @@ export class SocketClient {
 
   getReconnectAttempts(): number {
     return this.reconnectAttempts;
+  }
+
+  getConnectionId(): string | undefined {
+    return this.socket?.id;
+  }
+
+  getTransport(): string | undefined {
+    return this.socket?.io.engine?.transport?.name;
+  }
+
+  isLoggingEnabled(): boolean {
+    return this.config.enableLogging || false;
+  }
+
+  getConfig(): SocketClientConfig {
+    return { ...this.config };
+  }
+
+  // ========================================================================
+  // Event Handler Helpers
+  // ========================================================================
+
+  onConnect(handler: () => void): void {
+    if (this.socket) {
+      this.socket.on('connect', handler);
+    }
+  }
+
+  onDisconnect(handler: (reason: string) => void): void {
+    if (this.socket) {
+      this.socket.on('disconnect', handler);
+    }
+  }
+
+  onConnectError(handler: (error: Error) => void): void {
+    if (this.socket) {
+      this.socket.on('connect_error', handler);
+    }
+  }
+
+  onReconnect(handler: (attemptNumber: number) => void): void {
+    if (this.socket) {
+      this.socket.on('reconnect_attempt', handler);
+    }
+  }
+
+  onReconnectFailed(handler: () => void): void {
+    if (this.socket) {
+      this.socket.on('reconnect_failed', handler);
+    }
+  }
+
+  // ========================================================================
+  // Ping/Pong Utilities
+  // ========================================================================
+
+  async ping(): Promise<number> {
+    const startTime = Date.now();
+
+    return new Promise((resolve, reject) => {
+      if (!this.isConnected()) {
+        reject(new Error('Socket not connected'));
+        return;
+      }
+
+      const timeout = setTimeout(() => {
+        reject(new Error('Ping timeout'));
+      }, this.config.timeout || 30000);
+
+      this.socket!.emit('ping', {}, () => {
+        clearTimeout(timeout);
+        const latency = Date.now() - startTime;
+        resolve(latency);
+      });
+    });
+  }
+
+  // ========================================================================
+  // Raw Socket Access (for advanced use cases)
+  // ========================================================================
+
+  getRawSocket(): Socket<ServerToClientEvents, ClientToServerEvents> | null {
+    return this.socket;
   }
 }

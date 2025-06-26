@@ -1,9 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { ApiErrorCode, ApiError, TokenVerificationResponse, ApiResponse } from '../types';
 import { HttpClient } from '../client/HttpClient';
-import { SocketClient } from '../client/SocketClient';
-import { ValidationUtils, ErrorUtils, PathUtils } from '../utils';
 import { ApiService } from '../services/ApiService';
+import { SocketClient } from '../client/SocketClient';
+import { SocketService } from '../services/SocketService';
+import { ValidationUtils, ErrorUtils, PathUtils } from '../utils';
 
 // ============================================================================
 // SDK Configuration
@@ -43,6 +44,7 @@ export class ApiSdk {
   public httpClient: HttpClient;
   public apiService: ApiService;
   public socketClient?: SocketClient;
+  public socketService?: SocketService;
   private enableLogging: boolean;
   private preferSocket: boolean;
   private accountServerBaseUrl?: string;
@@ -51,6 +53,7 @@ export class ApiSdk {
     this.httpClient = config.httpClient;
     this.apiService = new ApiService(config.httpClient);
     this.socketClient = config.socketClient;
+    this.socketService = config.socketClient ? new SocketService(config.socketClient) : undefined;
     this.enableLogging = config.enableLogging || false;
     this.preferSocket = config.preferSocket || false;
     this.accountServerBaseUrl = config.accountServerBaseUrl;
@@ -115,7 +118,7 @@ export class ApiSdk {
   // ============================================================================
 
   private shouldUseSocket(): boolean {
-    return this.preferSocket && !!this.socketClient && this.socketClient.isConnected();
+    return this.preferSocket && !!this.socketClient && !!this.socketService && this.socketClient.isConnected();
   }
 
   private async callVerifyToken(
@@ -123,15 +126,12 @@ export class ApiSdk {
     tokenType: 'access' | 'refresh' = 'access',
   ): Promise<TokenVerificationResponse> {
     if (this.shouldUseSocket()) {
-      return new Promise((resolve, reject) => {
-        this.socketClient!.verifyToken(token, tokenType, (response) => {
-          if (response.success) {
-            resolve(response.data as TokenVerificationResponse);
-          } else {
-            reject(new ApiError(ApiErrorCode.TOKEN_INVALID, response.error?.message || 'Socket verification failed'));
-          }
-        });
-      });
+      try {
+        return await this.socketService!.verifyTokenAsync(token, tokenType);
+      } catch (error) {
+        this.logError('Socket token verification failed, falling back to HTTP', error);
+        return this.apiService.verifyToken(token, tokenType);
+      }
     } else {
       return this.apiService.verifyToken(token, tokenType);
     }
@@ -139,15 +139,12 @@ export class ApiSdk {
 
   private async callCheckUserExists(accountId: string): Promise<any> {
     if (this.shouldUseSocket()) {
-      return new Promise((resolve, reject) => {
-        this.socketClient!.checkUserExists(accountId, (response) => {
-          if (response.success) {
-            resolve(response.data);
-          } else {
-            reject(new ApiError(ApiErrorCode.USER_NOT_FOUND, response.error?.message || 'Socket user check failed'));
-          }
-        });
-      });
+      try {
+        return await this.socketService!.checkUserExistsAsync(accountId);
+      } catch (error) {
+        this.logError('Socket user exists check failed, falling back to HTTP', error);
+        return this.apiService.checkUserExists(accountId);
+      }
     } else {
       return this.apiService.checkUserExists(accountId);
     }
@@ -155,17 +152,27 @@ export class ApiSdk {
 
   private async callGetUserById(accountId: string): Promise<any> {
     if (this.shouldUseSocket()) {
-      return new Promise((resolve, reject) => {
-        this.socketClient!.getUserById(accountId, (response) => {
-          if (response.success) {
-            resolve(response.data);
-          } else {
-            reject(new ApiError(ApiErrorCode.USER_NOT_FOUND, response.error?.message || 'Socket user fetch failed'));
-          }
-        });
-      });
+      try {
+        return await this.socketService!.getUserByIdAsync(accountId);
+      } catch (error) {
+        this.logError('Socket user fetch failed, falling back to HTTP', error);
+        return this.apiService.getUserById(accountId);
+      }
     } else {
       return this.apiService.getUserById(accountId);
+    }
+  }
+
+  private async callGetSessionInfo(sessionCookie?: string): Promise<any> {
+    if (this.shouldUseSocket()) {
+      try {
+        return await this.socketService!.getSessionInfoAsync(sessionCookie);
+      } catch (error) {
+        this.logError('Socket session info failed, falling back to HTTP', error);
+        return this.apiService.getSessionInfo(sessionCookie);
+      }
+    } else {
+      return this.apiService.getSessionInfo(sessionCookie);
     }
   }
 
@@ -196,6 +203,7 @@ export class ApiSdk {
     this.logError('Token error occurred', {
       error: ErrorUtils.getErrorMessage(error),
       accountId,
+      url: req.originalUrl,
     });
 
     if (error instanceof ApiError) {
@@ -240,7 +248,9 @@ export class ApiSdk {
     return (req: Request, res: Response, next: NextFunction) => {
       req.apiClients = {
         http: this.httpClient,
+        api: this.apiService,
         socket: this.socketClient,
+        socketService: this.socketService,
       };
       next();
     };
@@ -256,7 +266,7 @@ export class ApiSdk {
         const accountId = req.params[accountIdParam];
 
         if (!accountId) {
-          this.logError('Account ID parameter missing', { param: accountIdParam });
+          this.logError('Account ID parameter missing', { param: accountIdParam, url: req.originalUrl });
           sendErrorResponse(
             res,
             ApiErrorCode.MISSING_DATA,
@@ -268,12 +278,12 @@ export class ApiSdk {
 
         // Validate ObjectId format using ValidationUtils
         if (!ValidationUtils.isValidObjectId(accountId)) {
-          this.logError('Invalid account ID format', { accountId });
+          this.logError('Invalid account ID format', { accountId, url: req.originalUrl });
           sendErrorResponse(res, ApiErrorCode.VALIDATION_ERROR, 'Invalid Account ID format', 400);
           return;
         }
 
-        this.log('Session authenticated', { accountId });
+        this.log('Session authenticated', { accountId, url: req.originalUrl });
         next();
       } catch (error) {
         this.logError('Session authentication failed', error);
@@ -291,13 +301,16 @@ export class ApiSdk {
       try {
         const accountId = req.params[accountIdParam];
 
-        this.log(`Validating account access via ${this.shouldUseSocket() ? 'Socket' : 'HTTP'}`, { accountId });
+        this.log(`Validating account access via ${this.shouldUseSocket() ? 'Socket' : 'HTTP'}`, {
+          accountId,
+          url: req.originalUrl,
+        });
 
         // Check if account exists
         const existsResult = await this.callCheckUserExists(accountId);
 
         if (!existsResult.exists) {
-          this.logError('Account not found', { accountId });
+          this.logError('Account not found', { accountId, url: req.originalUrl });
           sendErrorResponse(res, ApiErrorCode.USER_NOT_FOUND, 'Account not found', 404);
           return;
         }
@@ -313,10 +326,14 @@ export class ApiSdk {
           req.localAccount = userResult.user;
         }
 
-        this.log('Account access validated', { accountId, accountType: userResult.user.accountType });
+        this.log('Account access validated', {
+          accountId,
+          accountType: userResult.user.accountType,
+          url: req.originalUrl,
+        });
         next();
       } catch (error) {
-        this.logError('Account validation failed', error);
+        this.logError('Account validation failed', { error: ErrorUtils.getErrorMessage(error), url: req.originalUrl });
 
         if (error instanceof ApiError && error.code === ApiErrorCode.USER_NOT_FOUND) {
           sendErrorResponse(res, ApiErrorCode.USER_NOT_FOUND, 'Account not found', 404);
@@ -339,7 +356,7 @@ export class ApiSdk {
         const account = req.account;
 
         if (!account) {
-          this.logError('Account not loaded in middleware chain');
+          this.logError('Account not loaded in middleware chain', { url: req.originalUrl });
           sendErrorResponse(res, ApiErrorCode.SERVER_ERROR, 'Account not loaded in middleware chain', 500);
           return;
         }
@@ -350,7 +367,7 @@ export class ApiSdk {
 
         // Ensure at least one token is present
         if (!accessToken && !refreshToken) {
-          this.logError('No tokens provided', { accountId });
+          this.logError('No tokens provided', { accountId, url: req.originalUrl });
           this.handleTokenError(
             req,
             res,
@@ -363,7 +380,10 @@ export class ApiSdk {
         // Verify access token if present
         if (accessToken) {
           try {
-            this.log(`Verifying access token via ${this.shouldUseSocket() ? 'Socket' : 'HTTP'}`);
+            this.log(`Verifying access token via ${this.shouldUseSocket() ? 'Socket' : 'HTTP'}`, {
+              accountId,
+              url: req.originalUrl,
+            });
             const accessResult = await this.callVerifyToken(accessToken, 'access');
 
             // Validate token ownership
@@ -371,6 +391,7 @@ export class ApiSdk {
               this.logError('Access token ownership mismatch', {
                 tokenAccountId: accessResult.accountId,
                 requestAccountId: accountId,
+                url: req.originalUrl,
               });
               this.handleTokenError(
                 req,
@@ -386,6 +407,7 @@ export class ApiSdk {
               this.logError('Access token account type mismatch', {
                 tokenAccountType: accessResult.accountType,
                 accountType: account.accountType,
+                url: req.originalUrl,
               });
               this.handleTokenError(
                 req,
@@ -402,9 +424,17 @@ export class ApiSdk {
               req.oauthAccessToken = accessResult.oauthAccessToken;
             }
 
-            this.log('Access token validated', { accountId, accountType: accessResult.accountType });
+            this.log('Access token validated', {
+              accountId,
+              accountType: accessResult.accountType,
+              expiresAt: accessResult.expiresAt,
+              url: req.originalUrl,
+            });
           } catch (error) {
-            this.logError('Access token validation failed', error);
+            this.logError('Access token validation failed', {
+              error: ErrorUtils.getErrorMessage(error),
+              url: req.originalUrl,
+            });
             this.handleTokenError(req, res, error, accountId);
             return;
           }
@@ -413,7 +443,10 @@ export class ApiSdk {
         // Verify refresh token if present
         if (refreshToken) {
           try {
-            this.log(`Verifying refresh token via ${this.shouldUseSocket() ? 'Socket' : 'HTTP'}`);
+            this.log(`Verifying refresh token via ${this.shouldUseSocket() ? 'Socket' : 'HTTP'}`, {
+              accountId,
+              url: req.originalUrl,
+            });
             const refreshResult = await this.callVerifyToken(refreshToken, 'refresh');
 
             // Validate token ownership
@@ -421,6 +454,7 @@ export class ApiSdk {
               this.logError('Refresh token ownership mismatch', {
                 tokenAccountId: refreshResult.accountId,
                 requestAccountId: accountId,
+                url: req.originalUrl,
               });
               this.handleTokenError(
                 req,
@@ -436,6 +470,7 @@ export class ApiSdk {
               this.logError('Refresh token account type mismatch', {
                 tokenAccountType: refreshResult.accountType,
                 accountType: account.accountType,
+                url: req.originalUrl,
               });
               this.handleTokenError(
                 req,
@@ -452,9 +487,17 @@ export class ApiSdk {
               req.oauthRefreshToken = refreshResult.oauthRefreshToken;
             }
 
-            this.log('Refresh token validated', { accountId, accountType: refreshResult.accountType });
+            this.log('Refresh token validated', {
+              accountId,
+              accountType: refreshResult.accountType,
+              expiresAt: refreshResult.expiresAt,
+              url: req.originalUrl,
+            });
           } catch (error) {
-            this.logError('Refresh token validation failed', error);
+            this.logError('Refresh token validation failed', {
+              error: ErrorUtils.getErrorMessage(error),
+              url: req.originalUrl,
+            });
             this.handleTokenError(req, res, error, accountId);
             return;
           }
@@ -465,11 +508,15 @@ export class ApiSdk {
           hasAccessToken: !!accessToken,
           hasRefreshToken: !!refreshToken,
           accountType: account.accountType,
+          url: req.originalUrl,
         });
 
         next();
       } catch (error) {
-        this.logError('Token validation failed', error);
+        this.logError('Token validation failed', {
+          error: ErrorUtils.getErrorMessage(error),
+          url: req.originalUrl,
+        });
         const accountId = req.params[accountIdParam];
         this.handleTokenError(req, res, error, accountId);
       }
@@ -516,7 +563,7 @@ export class ApiSdk {
           return;
         }
 
-        if (!ValidationUtils.isValidObjectId(accountId)) {
+        if (accountId && !ValidationUtils.isValidObjectId(accountId)) {
           sendErrorResponse(res, ApiErrorCode.VALIDATION_ERROR, 'Invalid Account ID format', 400);
           return;
         }
@@ -561,9 +608,18 @@ export class ApiSdk {
           expiresAt: tokenResult.expiresAt,
         };
 
+        this.log('Token verified', {
+          accountId: tokenResult.accountId,
+          accountType: tokenResult.accountType,
+          url: req.originalUrl,
+        });
+
         next();
       } catch (error) {
-        this.logError('Token verification failed', error);
+        this.logError('Token verification failed', {
+          error: ErrorUtils.getErrorMessage(error),
+          url: req.originalUrl,
+        });
         this.handleTokenError(req, res, error, req.params[accountIdParam]);
       }
     };
@@ -591,18 +647,22 @@ export class ApiSdk {
           return next();
         }
 
-        // Call session info via internal API
-        const sessionResult = await this.apiService.getSessionInfo(sessionCookie);
+        // Call session info via service
+        const sessionResult = await this.callGetSessionInfo(sessionCookie);
         req.sessionInfo = sessionResult.session;
 
         this.log('Session loaded', {
           accountCount: sessionResult.session.accountIds.length,
           currentAccountId: sessionResult.session.currentAccountId,
+          url: req.originalUrl,
         });
 
         next();
       } catch (error) {
-        this.logError('Session loading failed', error);
+        this.logError('Session loading failed', {
+          error: ErrorUtils.getErrorMessage(error),
+          url: req.originalUrl,
+        });
 
         if (required) {
           sendErrorResponse(res, ApiErrorCode.AUTH_FAILED, 'Invalid session', 401);
@@ -632,11 +692,22 @@ export class ApiSdk {
         }
 
         if (accountTypes && !accountTypes.includes(req.account.accountType)) {
+          this.logError('Account type not authorized', {
+            requiredTypes: accountTypes,
+            actualType: req.account.accountType,
+            accountId: req.account.id,
+            url: req.originalUrl,
+          });
           sendErrorResponse(res, ApiErrorCode.PERMISSION_DENIED, 'Account type not authorized', 403);
           return;
         }
 
         if (emailVerified && !req.account.userDetails?.emailVerified) {
+          this.logError('Email verification required', {
+            accountId: req.account.id,
+            emailVerified: req.account.userDetails?.emailVerified,
+            url: req.originalUrl,
+          });
           sendErrorResponse(res, ApiErrorCode.PERMISSION_DENIED, 'Email verification required', 403);
           return;
         }
@@ -644,14 +715,27 @@ export class ApiSdk {
         if (customValidator) {
           const isValid = await customValidator(req.account);
           if (!isValid) {
+            this.logError('Custom validation failed', {
+              accountId: req.account.id,
+              url: req.originalUrl,
+            });
             sendErrorResponse(res, ApiErrorCode.PERMISSION_DENIED, 'Permission denied', 403);
             return;
           }
         }
 
+        this.log('Permission check passed', {
+          accountId: req.account.id,
+          accountType: req.account.accountType,
+          url: req.originalUrl,
+        });
+
         next();
       } catch (error) {
-        this.logError('Permission check failed', error);
+        this.logError('Permission check failed', {
+          error: ErrorUtils.getErrorMessage(error),
+          url: req.originalUrl,
+        });
         sendErrorResponse(res, ApiErrorCode.SERVER_ERROR, 'Permission validation failed', 500);
       }
     };
