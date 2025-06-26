@@ -80,13 +80,13 @@ export const completeProfile = asyncHandler(async (req, res, next) => {
  * Cancel email verification (delete cache)
  */
 export const cancelEmailVerification = asyncHandler(async (req, res, next) => {
-  const { email } = req.body;
+  const { email } = req.query;
 
   if (!email) {
     throw new BadRequestError('Email is required', 400, ApiErrorCode.MISSING_DATA);
   }
 
-  await LocalAuthService.cancelEmailVerification(email);
+  await LocalAuthService.cancelEmailVerification(email as string);
 
   next(
     new JsonSuccess({
