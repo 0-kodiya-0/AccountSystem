@@ -9,7 +9,7 @@ export default defineConfig({
       reporter: ['text', 'json', 'html'],
       exclude: ['node_modules/**', 'dist/**', '**/*.d.ts', 'vitest.config.ts', 'src/**/__tests__/**', 'coverage/**'],
     },
-    setupFiles: ['./src/__tests__/setup.ts'],
+    setupFiles: ['./src/tests/setup.ts'],
     mockReset: true,
     clearMocks: true,
     restoreMocks: true,
