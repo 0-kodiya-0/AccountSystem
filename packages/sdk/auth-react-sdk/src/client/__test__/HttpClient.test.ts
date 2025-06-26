@@ -1,164 +1,394 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, test, expect, vi, beforeEach } from 'vitest';
+import axios from 'axios';
 import { HttpClient } from '../HttpClient';
-import { ApiErrorCode, AuthSDKError } from '../../types';
-import { createMockFetchResponse } from '../../test/utils';
+import { AuthSDKError, ApiErrorCode, SDKConfig } from '../../types';
+
+// Mock axios
+vi.mock('axios');
+const mockedAxios = vi.mocked(axios);
 
 describe('HttpClient', () => {
   let httpClient: HttpClient;
-  let mockFetch: any;
+  let mockAxiosInstance: any;
+
+  const defaultConfig: SDKConfig = {
+    backendUrl: 'https://api.example.com',
+    timeout: 30000,
+    withCredentials: true,
+  };
 
   beforeEach(() => {
-    mockFetch = vi.fn();
-    global.fetch = mockFetch;
+    vi.clearAllMocks();
 
-    httpClient = new HttpClient({
-      backendUrl: 'http://localhost:3001',
-      timeout: 30000,
-      withCredentials: true,
-    });
+    // Mock axios instance
+    mockAxiosInstance = {
+      interceptors: {
+        response: {
+          use: vi.fn(),
+        },
+      },
+      get: vi.fn(),
+      post: vi.fn(),
+      patch: vi.fn(),
+      delete: vi.fn(),
+      put: vi.fn(),
+    };
+
+    mockedAxios.create.mockReturnValue(mockAxiosInstance);
   });
 
-  describe('constructor', () => {
-    it('should initialize with correct config', () => {
-      expect(httpClient).toBeInstanceOf(HttpClient);
-    });
+  describe('Configuration and Setup', () => {
+    test('should initialize with correct configuration', () => {
+      httpClient = new HttpClient(defaultConfig);
 
-    it('should handle proxy URL configuration', () => {
-      const clientWithProxy = new HttpClient({
-        backendUrl: 'http://localhost:3001',
-        backendProxyUrl: '/api',
+      expect(mockedAxios.create).toHaveBeenCalledWith({
+        baseURL: 'https://api.example.com',
         timeout: 30000,
+        headers: {
+          'Content-Type': 'application/json',
+        },
         withCredentials: true,
       });
+    });
 
-      expect(clientWithProxy).toBeInstanceOf(HttpClient);
+    test('should apply proxy URLs correctly', () => {
+      const configWithProxy: SDKConfig = {
+        ...defaultConfig,
+        backendProxyUrl: '/api/v1',
+      };
+
+      httpClient = new HttpClient(configWithProxy);
+
+      expect(mockedAxios.create).toHaveBeenCalledWith({
+        baseURL: 'https://api.example.com/api/v1',
+        timeout: 30000,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        withCredentials: true,
+      });
+    });
+
+    test('should use default timeout when not provided', () => {
+      const configWithoutTimeout: SDKConfig = {
+        backendUrl: 'https://api.example.com',
+      };
+
+      httpClient = new HttpClient(configWithoutTimeout);
+
+      expect(mockedAxios.create).toHaveBeenCalledWith({
+        baseURL: 'https://api.example.com',
+        timeout: 30000, // default
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        withCredentials: true, // default
+      });
+    });
+
+    test('should set withCredentials to false when explicitly disabled', () => {
+      const configWithoutCredentials: SDKConfig = {
+        ...defaultConfig,
+        withCredentials: false,
+      };
+
+      httpClient = new HttpClient(configWithoutCredentials);
+
+      expect(mockedAxios.create).toHaveBeenCalledWith({
+        baseURL: 'https://api.example.com',
+        timeout: 30000,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        withCredentials: false,
+      });
+    });
+
+    test('should set up interceptors properly', () => {
+      httpClient = new HttpClient(defaultConfig);
+
+      expect(mockAxiosInstance.interceptors.response.use).toHaveBeenCalledWith(
+        expect.any(Function), // success handler
+        expect.any(Function), // error handler
+      );
     });
   });
 
-  describe('request method', () => {
-    it('should make successful GET request', async () => {
-      const mockData = { message: 'success' };
-      mockFetch.mockResolvedValue(createMockFetchResponse(mockData));
-
-      const result = await httpClient.get('/test');
-
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:3001/test',
-        expect.objectContaining({
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-        }),
-      );
-      expect(result).toEqual(mockData);
+  describe('Response Handling', () => {
+    beforeEach(() => {
+      httpClient = new HttpClient(defaultConfig);
     });
 
-    it('should make successful POST request with data', async () => {
-      const mockData = { message: 'created' };
-      const postData = { name: 'test' };
-      mockFetch.mockResolvedValue(createMockFetchResponse(mockData));
-
-      const result = await httpClient.post('/test', postData);
-
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:3001/test',
-        expect.objectContaining({
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify(postData),
-        }),
-      );
-      expect(result).toEqual(mockData);
-    });
-
-    it('should make successful PATCH request', async () => {
-      const mockData = { message: 'updated' };
-      const patchData = { name: 'updated' };
-      mockFetch.mockResolvedValue(createMockFetchResponse(mockData));
-
-      const result = await httpClient.patch('/test', patchData);
-
-      expect(result).toEqual(mockData);
-    });
-
-    it('should make successful DELETE request', async () => {
-      const mockData = { message: 'deleted' };
-      mockFetch.mockResolvedValue(createMockFetchResponse(mockData));
-
-      const result = await httpClient.delete('/test');
-
-      expect(result).toEqual(mockData);
-    });
-
-    it('should handle API error response', async () => {
-      const errorResponse = {
-        error: {
-          code: ApiErrorCode.VALIDATION_ERROR,
-          message: 'Validation failed',
+    test('should handle successful ApiResponse structure', async () => {
+      const mockResponse = {
+        status: 200,
+        config: { url: '/test' },
+        data: {
+          success: true,
+          data: { id: '123', name: 'Test' },
         },
       };
 
-      mockFetch.mockResolvedValue({
-        ok: false,
+      mockAxiosInstance.get.mockResolvedValue(mockResponse);
+
+      // Get the success interceptor handler
+      const successHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][0];
+
+      // Test the interceptor
+      const result = successHandler(mockResponse);
+
+      expect(result).toEqual({
+        ...mockResponse,
+        data: { id: '123', name: 'Test' }, // extracted data
+      });
+    });
+
+    test('should extract data from successful responses', async () => {
+      const expectedData = { id: '123', name: 'Test User' };
+      const mockResponse = {
+        status: 200,
+        config: { url: '/users/123' },
+        data: {
+          success: true,
+          data: expectedData,
+        },
+      };
+
+      mockAxiosInstance.get.mockResolvedValue({
+        ...mockResponse,
+        data: expectedData, // After interceptor processing
+      });
+
+      const result = await httpClient.get('/users/123');
+
+      expect(result).toEqual(expectedData);
+    });
+
+    test('should throw AuthSDKError on API errors with success: false', () => {
+      const mockResponse = {
         status: 400,
-        json: () => Promise.resolve(errorResponse),
-      });
+        config: { url: '/test' },
+        data: {
+          success: false,
+          error: {
+            code: ApiErrorCode.VALIDATION_ERROR,
+            message: 'Invalid input data',
+          },
+        },
+      };
 
-      await expect(httpClient.get('/test')).rejects.toThrow(AuthSDKError);
+      // Get the success interceptor handler
+      const successHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][0];
+
+      expect(() => {
+        successHandler(mockResponse);
+      }).toThrow(AuthSDKError);
+
+      try {
+        successHandler(mockResponse);
+      } catch (error) {
+        expect(error).toBeInstanceOf(AuthSDKError);
+        expect(error.message).toBe('Invalid input data');
+        expect(error.code).toBe(ApiErrorCode.VALIDATION_ERROR);
+      }
     });
 
-    it('should handle HTTP error without API error structure', async () => {
-      mockFetch.mockResolvedValue({
-        ok: false,
-        status: 500,
-        statusText: 'Internal Server Error',
-        json: () => Promise.resolve({}),
-      });
+    test('should handle network errors', () => {
+      const networkError = {
+        message: 'Network Error',
+        code: 'NETWORK_ERROR',
+        response: undefined,
+      };
 
-      await expect(httpClient.get('/test')).rejects.toThrow(AuthSDKError);
+      // Get the error interceptor handler
+      const errorHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][1];
+
+      expect(() => {
+        errorHandler(networkError);
+      }).toThrow(AuthSDKError);
+
+      try {
+        errorHandler(networkError);
+      } catch (error) {
+        expect(error).toBeInstanceOf(AuthSDKError);
+        expect(error.message).toBe('Network Error');
+        expect(error.code).toBe(ApiErrorCode.NETWORK_ERROR);
+      }
     });
 
-    it('should handle network errors', async () => {
-      mockFetch.mockRejectedValue(new Error('Network error'));
+    test('should handle timeout errors', () => {
+      const timeoutError = {
+        message: 'timeout of 30000ms exceeded',
+        code: 'ECONNABORTED',
+        response: undefined,
+      };
 
-      await expect(httpClient.get('/test')).rejects.toThrow();
+      // Get the error interceptor handler
+      const errorHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][1];
+
+      expect(() => {
+        errorHandler(timeoutError);
+      }).toThrow(AuthSDKError);
+
+      try {
+        errorHandler(timeoutError);
+      } catch (error) {
+        expect(error).toBeInstanceOf(AuthSDKError);
+        expect(error.message).toBe('timeout of 30000ms exceeded');
+        expect(error.code).toBe(ApiErrorCode.NETWORK_ERROR);
+      }
     });
 
-    it('should not include body for GET requests', async () => {
-      mockFetch.mockResolvedValue(createMockFetchResponse({}));
+    test('should handle errors with response data', () => {
+      const errorWithResponse = {
+        message: 'Request failed',
+        response: {
+          status: 401,
+          data: {
+            error: {
+              code: ApiErrorCode.AUTH_FAILED,
+              message: 'Authentication failed',
+            },
+          },
+        },
+      };
 
-      await httpClient.get('/test');
+      // Get the error interceptor handler
+      const errorHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][1];
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:3001/test',
-        expect.not.objectContaining({
-          body: expect.anything(),
-        }),
-      );
+      expect(() => {
+        errorHandler(errorWithResponse);
+      }).toThrow(AuthSDKError);
+
+      try {
+        errorHandler(errorWithResponse);
+      } catch (error) {
+        expect(error).toBeInstanceOf(AuthSDKError);
+        expect(error.message).toBe('Authentication failed');
+        expect(error.code).toBe(ApiErrorCode.AUTH_FAILED);
+        expect(error.statusCode).toBe(401);
+      }
+    });
+
+    test('should handle errors without specific error data', () => {
+      const genericError = {
+        message: 'Something went wrong',
+        response: {
+          status: 500,
+          data: {},
+        },
+      };
+
+      // Get the error interceptor handler
+      const errorHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][1];
+
+      expect(() => {
+        errorHandler(genericError);
+      }).toThrow(AuthSDKError);
+
+      try {
+        errorHandler(genericError);
+      } catch (error) {
+        expect(error).toBeInstanceOf(AuthSDKError);
+        expect(error.message).toBe('Something went wrong');
+        expect(error.code).toBe(ApiErrorCode.NETWORK_ERROR);
+        expect(error.statusCode).toBe(500);
+      }
+    });
+
+    test('should handle regular responses without ApiResponse structure', () => {
+      const regularResponse = {
+        status: 200,
+        config: { url: '/test' },
+        data: { id: '123', name: 'Direct data' },
+      };
+
+      // Get the success interceptor handler
+      const successHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][0];
+
+      const result = successHandler(regularResponse);
+
+      expect(result).toEqual(regularResponse);
     });
   });
 
-  describe('withCredentials configuration', () => {
-    it('should set credentials to omit when withCredentials is false', () => {
-      const client = new HttpClient({
-        backendUrl: 'http://localhost:3001',
-        withCredentials: false,
-      });
+  describe('Logging', () => {
+    test('should log successful requests when logging enabled', () => {
+      const consoleSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
 
-      mockFetch.mockResolvedValue(createMockFetchResponse({}));
-      client.get('/test');
+      const configWithLogging: SDKConfig = {
+        ...defaultConfig,
+        enableLogging: true,
+      };
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:3001/test',
-        expect.objectContaining({
-          credentials: 'omit',
-        }),
-      );
+      httpClient = new HttpClient(configWithLogging);
+
+      const mockResponse = {
+        status: 200,
+        config: { url: '/test' },
+        data: { success: true, data: {} },
+      };
+
+      // Get the success interceptor handler
+      const successHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][0];
+      successHandler(mockResponse);
+
+      expect(consoleSpy).toHaveBeenCalledWith('[API Success] 200 /test');
+
+      consoleSpy.mockRestore();
+    });
+
+    test('should log errors when logging enabled', () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const configWithLogging: SDKConfig = {
+        ...defaultConfig,
+        enableLogging: true,
+      };
+
+      httpClient = new HttpClient(configWithLogging);
+
+      const error = {
+        message: 'Test error',
+      };
+
+      // Get the error interceptor handler
+      const errorHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][1];
+
+      try {
+        errorHandler(error);
+      } catch (e) {
+        // Expected to throw
+      }
+
+      expect(consoleSpy).toHaveBeenCalledWith('[API Error] Test error');
+
+      consoleSpy.mockRestore();
+    });
+
+    test('should not log when logging disabled', () => {
+      const consoleSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+
+      const configWithoutLogging: SDKConfig = {
+        ...defaultConfig,
+        enableLogging: false,
+      };
+
+      httpClient = new HttpClient(configWithoutLogging);
+
+      const mockResponse = {
+        status: 200,
+        config: { url: '/test' },
+        data: { success: true, data: {} },
+      };
+
+      // Get the success interceptor handler
+      const successHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][0];
+      successHandler(mockResponse);
+
+      expect(consoleSpy).not.toHaveBeenCalled();
+
+      consoleSpy.mockRestore();
     });
   });
 });

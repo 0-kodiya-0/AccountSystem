@@ -1,836 +1,624 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { useAppStore } from '../useAppStore';
-import { createMockAccount, createMockSessionAccount, createMockSessionInfo } from '../../test/utils';
+import { describe, test, expect, beforeEach, vi, afterEach } from 'vitest';
+import {
+  useAppStore,
+  DEFAULT_SESSION_STATE,
+  DEFAULT_ACCOUNT_STATE,
+  DEFAULT_SESSION_ACCOUNTS_STATE,
+} from '../useAppStore';
+import { Account, AccountSessionInfo, SessionAccount, AccountType, AccountStatus } from '../../types';
+
+// Mock Date.now for consistent testing
+const mockDateNow = vi.fn();
+vi.stubGlobal('Date', {
+  ...Date,
+  now: mockDateNow,
+});
 
 describe('useAppStore', () => {
   beforeEach(() => {
-    // Reset store state before each test
+    // Reset store to initial state
     useAppStore.setState({
-      session: {
-        data: null,
-        status: 'idle',
-        currentOperation: null,
-        error: null,
-        lastLoaded: null,
-      },
+      session: { ...DEFAULT_SESSION_STATE },
       accounts: {},
-      sessionAccounts: {
-        data: [],
-        status: 'idle',
-        currentOperation: null,
-        error: null,
-        lastLoaded: null,
-      },
+      sessionAccounts: { ...DEFAULT_SESSION_ACCOUNTS_STATE, data: [] },
+    });
+
+    // Mock current time
+    mockDateNow.mockReturnValue(1640995200000); // 2022-01-01T00:00:00.000Z
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe('Initial State', () => {
+    test('should have correct initial state', () => {
+      const state = useAppStore.getState();
+
+      expect(state.session).toEqual(DEFAULT_SESSION_STATE);
+      expect(state.accounts).toEqual({});
+      expect(state.sessionAccounts).toEqual(DEFAULT_SESSION_ACCOUNTS_STATE);
+    });
+
+    test('should have empty accounts initially', () => {
+      const state = useAppStore.getState();
+
+      expect(state.accounts).toEqual({});
+      expect(Object.keys(state.accounts)).toHaveLength(0);
+    });
+
+    test('should have default session state', () => {
+      const state = useAppStore.getState();
+
+      expect(state.session.data).toBeNull();
+      expect(state.session.status).toBe('idle');
+      expect(state.session.currentOperation).toBeNull();
+      expect(state.session.error).toBeNull();
+      expect(state.session.lastLoaded).toBeNull();
     });
   });
 
-  describe('session management', () => {
-    it('should set session status', () => {
-      const { setSessionStatus, getSessionState } = useAppStore.getState();
+  describe('Session Actions', () => {
+    test('should set session status', () => {
+      const { setSessionStatus } = useAppStore.getState();
 
       setSessionStatus('loading', 'loadSession');
 
-      const sessionState = getSessionState();
-      expect(sessionState.status).toBe('loading');
-      expect(sessionState.currentOperation).toBe('loadSession');
-      expect(sessionState.error).toBeNull();
+      const state = useAppStore.getState();
+      expect(state.session.status).toBe('loading');
+      expect(state.session.currentOperation).toBe('loadSession');
+      expect(state.session.error).toBeNull();
     });
 
-    it('should set session data', () => {
-      const { setSessionData, getSessionState } = useAppStore.getState();
-      const mockSessionData = createMockSessionInfo();
+    test('should set session status without operation', () => {
+      const { setSessionStatus } = useAppStore.getState();
 
-      setSessionData(mockSessionData);
+      setSessionStatus('success');
 
-      const sessionState = getSessionState();
-      expect(sessionState.data).toEqual(mockSessionData);
-      expect(sessionState.status).toBe('success');
-      expect(sessionState.currentOperation).toBeNull();
-      expect(sessionState.error).toBeNull();
-      expect(sessionState.lastLoaded).toBeTruthy();
+      const state = useAppStore.getState();
+      expect(state.session.status).toBe('success');
+      expect(state.session.currentOperation).toBeNull();
     });
 
-    it('should set session error', () => {
-      const { setSessionError, getSessionState } = useAppStore.getState();
+    test('should set session data', () => {
+      const { setSessionData } = useAppStore.getState();
+      const sessionData: AccountSessionInfo = {
+        hasSession: true,
+        accountIds: ['507f1f77bcf86cd799439011'],
+        currentAccountId: '507f1f77bcf86cd799439011',
+        isValid: true,
+      };
 
-      setSessionError('Session load failed');
+      setSessionData(sessionData);
 
-      const sessionState = getSessionState();
-      expect(sessionState.error).toBe('Session load failed');
-      expect(sessionState.status).toBe('error');
-      expect(sessionState.currentOperation).toBeNull();
+      const state = useAppStore.getState();
+      expect(state.session.data).toEqual(sessionData);
+      expect(state.session.status).toBe('success');
+      expect(state.session.currentOperation).toBeNull();
+      expect(state.session.error).toBeNull();
+      expect(state.session.lastLoaded).toBe(1640995200000);
     });
 
-    it('should clear session error when setting status to non-error', () => {
-      const { setSessionError, setSessionStatus, getSessionState } = useAppStore.getState();
+    test('should set session error', () => {
+      const { setSessionError } = useAppStore.getState();
 
-      setSessionError('Session load failed');
-      setSessionStatus('loading');
+      setSessionError('Session failed');
 
-      const sessionState = getSessionState();
-      expect(sessionState.error).toBeNull();
-      expect(sessionState.status).toBe('loading');
+      const state = useAppStore.getState();
+      expect(state.session.error).toBe('Session failed');
+      expect(state.session.status).toBe('error');
+      expect(state.session.currentOperation).toBeNull();
     });
 
-    it('should clear session', () => {
-      const { setSessionData, clearSession, getSessionState, accounts, sessionAccounts } = useAppStore.getState();
-      const mockSessionData = createMockSessionInfo();
+    test('should clear session error when set to null', () => {
+      const { setSessionError } = useAppStore.getState();
 
-      setSessionData(mockSessionData);
+      // First set an error
+      setSessionError('Some error');
+      expect(useAppStore.getState().session.error).toBe('Some error');
+
+      // Then clear it
+      setSessionError(null);
+
+      const state = useAppStore.getState();
+      expect(state.session.error).toBeNull();
+      expect(state.session.status).toBe('idle');
+    });
+
+    test('should clear session', () => {
+      const { setSessionData, setAccountData, setSessionAccountsData, clearSession } = useAppStore.getState();
+
+      // First populate some data
+      setSessionData({
+        hasSession: true,
+        accountIds: ['507f1f77bcf86cd799439011'],
+        currentAccountId: '507f1f77bcf86cd799439011',
+        isValid: true,
+      });
+
+      setAccountData('507f1f77bcf86cd799439011', {
+        id: '507f1f77bcf86cd799439011',
+        accountType: AccountType.Local,
+        status: AccountStatus.Active,
+      } as Account);
+
+      setSessionAccountsData([
+        {
+          id: '507f1f77bcf86cd799439011',
+          accountType: AccountType.Local,
+          status: AccountStatus.Active,
+          userDetails: { name: 'John Doe' },
+        },
+      ]);
+
+      // Clear session
       clearSession();
 
-      const sessionState = getSessionState();
-      expect(sessionState.data).toBeNull();
-      expect(sessionState.status).toBe('idle');
-      expect(accounts).toEqual({});
-      expect(sessionAccounts.data).toEqual([]);
+      const state = useAppStore.getState();
+      expect(state.session).toEqual(DEFAULT_SESSION_STATE);
+      expect(state.accounts).toEqual({});
+      expect(state.sessionAccounts).toEqual({ ...DEFAULT_SESSION_ACCOUNTS_STATE, data: [] });
     });
 
-    it('should set session operation', () => {
-      const { setSessionOperation, getSessionState } = useAppStore.getState();
+    test('should update session operation', () => {
+      const { setSessionOperation } = useAppStore.getState();
 
-      setSessionOperation('customOperation');
+      setSessionOperation('setCurrentAccount');
 
-      const sessionState = getSessionState();
-      expect(sessionState.currentOperation).toBe('customOperation');
+      const state = useAppStore.getState();
+      expect(state.session.currentOperation).toBe('setCurrentAccount');
     });
   });
 
-  describe('account management', () => {
+  describe('Account Actions', () => {
     const accountId = '507f1f77bcf86cd799439011';
+    const mockAccount: Account = {
+      id: accountId,
+      created: '2024-01-01T00:00:00.000Z',
+      updated: '2024-01-01T00:00:00.000Z',
+      accountType: AccountType.Local,
+      status: AccountStatus.Active,
+      userDetails: {
+        firstName: 'John',
+        lastName: 'Doe',
+        name: 'John Doe',
+        email: 'john@example.com',
+        emailVerified: true,
+      },
+      security: {
+        twoFactorEnabled: false,
+        sessionTimeout: 3600,
+        autoLock: false,
+      },
+    };
 
-    it('should set account status', () => {
-      const { setAccountStatus, getAccountState } = useAppStore.getState();
+    test('should set account status', () => {
+      const { setAccountStatus } = useAppStore.getState();
 
       setAccountStatus(accountId, 'loading', 'loadAccount');
 
-      const accountState = getAccountState(accountId);
-      expect(accountState.status).toBe('loading');
-      expect(accountState.currentOperation).toBe('loadAccount');
-      expect(accountState.error).toBeNull();
+      const state = useAppStore.getState();
+      expect(state.accounts[accountId]).toBeDefined();
+      expect(state.accounts[accountId].status).toBe('loading');
+      expect(state.accounts[accountId].currentOperation).toBe('loadAccount');
+      expect(state.accounts[accountId].error).toBeNull();
     });
 
-    it('should set account data', () => {
-      const { setAccountData, getAccountState } = useAppStore.getState();
-      const mockAccount = createMockAccount({ id: accountId });
+    test('should set account data', () => {
+      const { setAccountData } = useAppStore.getState();
+
+      setAccountData(accountId, mockAccount);
+
+      const state = useAppStore.getState();
+      expect(state.accounts[accountId].data).toEqual(mockAccount);
+      expect(state.accounts[accountId].status).toBe('success');
+      expect(state.accounts[accountId].currentOperation).toBeNull();
+      expect(state.accounts[accountId].error).toBeNull();
+      expect(state.accounts[accountId].lastLoaded).toBe(1640995200000);
+    });
+
+    test('should set account data and update session account', () => {
+      const { setAccountData, setSessionAccountsData } = useAppStore.getState();
+
+      // First set up a session account
+      setSessionAccountsData([
+        {
+          id: accountId,
+          accountType: AccountType.Local,
+          status: AccountStatus.Active,
+          userDetails: { name: 'Old Name' },
+        },
+      ]);
+
+      // Update account data
+      setAccountData(accountId, mockAccount);
+
+      const state = useAppStore.getState();
+      const sessionAccount = state.sessionAccounts.data.find((acc) => acc.id === accountId);
+      expect(sessionAccount).toBeDefined();
+      expect(sessionAccount!.userDetails.name).toBe('John Doe');
+      expect(sessionAccount!.userDetails.email).toBe('john@example.com');
+    });
+
+    test('should set account error', () => {
+      const { setAccountError } = useAppStore.getState();
+
+      setAccountError(accountId, 'Account load failed');
+
+      const state = useAppStore.getState();
+      expect(state.accounts[accountId].error).toBe('Account load failed');
+      expect(state.accounts[accountId].status).toBe('error');
+      expect(state.accounts[accountId].currentOperation).toBeNull();
+    });
+
+    test('should update account data', () => {
+      const { setAccountData, updateAccountData } = useAppStore.getState();
+
+      // First set initial data
+      setAccountData(accountId, mockAccount);
+
+      // Update specific fields
+      updateAccountData(accountId, {
+        userDetails: {
+          ...mockAccount.userDetails,
+          name: 'Jane Doe',
+          firstName: 'Jane',
+        },
+      });
+
+      const state = useAppStore.getState();
+      expect(state.accounts[accountId].data!.userDetails.name).toBe('Jane Doe');
+      expect(state.accounts[accountId].data!.userDetails.firstName).toBe('Jane');
+      expect(state.accounts[accountId].data!.userDetails.lastName).toBe('Doe'); // unchanged
+    });
+
+    test('should remove account', () => {
+      const { setAccountData, setSessionData, setSessionAccountsData, removeAccount } = useAppStore.getState();
+
+      // Set up data
+      setAccountData(accountId, mockAccount);
+      setSessionData({
+        hasSession: true,
+        accountIds: [accountId, 'other-account'],
+        currentAccountId: accountId,
+        isValid: true,
+      });
+      setSessionAccountsData([
+        {
+          id: accountId,
+          accountType: AccountType.Local,
+          status: AccountStatus.Active,
+          userDetails: { name: 'John Doe' },
+        },
+        {
+          id: 'other-account',
+          accountType: AccountType.Local,
+          status: AccountStatus.Active,
+          userDetails: { name: 'Other User' },
+        },
+      ]);
+
+      // Remove account
+      removeAccount(accountId);
+
+      const state = useAppStore.getState();
+      expect(state.accounts[accountId]).toBeUndefined();
+      expect(state.sessionAccounts.data).toHaveLength(1);
+      expect(state.sessionAccounts.data.find((acc) => acc.id === accountId)).toBeUndefined();
+      expect(state.session.data!.accountIds).toEqual(['other-account']);
+      expect(state.session.data!.currentAccountId).toBe('other-account');
+    });
+
+    test('should set multiple accounts data', () => {
+      const { setAccountsData } = useAppStore.getState();
+      const account2: Account = { ...mockAccount, id: 'account2' };
+
+      setAccountsData([mockAccount, account2]);
+
+      const state = useAppStore.getState();
+      expect(state.accounts[accountId].data).toEqual(mockAccount);
+      expect(state.accounts['account2'].data).toEqual(account2);
+      expect(state.accounts[accountId].status).toBe('success');
+      expect(state.accounts['account2'].status).toBe('success');
+    });
+  });
+
+  describe('Session Accounts Actions', () => {
+    const sessionAccount: SessionAccount = {
+      id: '507f1f77bcf86cd799439011',
+      accountType: AccountType.Local,
+      status: AccountStatus.Active,
+      userDetails: {
+        name: 'John Doe',
+        email: 'john@example.com',
+      },
+    };
+
+    test('should set session accounts status', () => {
+      const { setSessionAccountsStatus } = useAppStore.getState();
+
+      setSessionAccountsStatus('loading', 'loadSessionAccounts');
+
+      const state = useAppStore.getState();
+      expect(state.sessionAccounts.status).toBe('loading');
+      expect(state.sessionAccounts.currentOperation).toBe('loadSessionAccounts');
+      expect(state.sessionAccounts.error).toBeNull();
+    });
+
+    test('should set session accounts data', () => {
+      const { setSessionAccountsData } = useAppStore.getState();
+
+      setSessionAccountsData([sessionAccount]);
+
+      const state = useAppStore.getState();
+      expect(state.sessionAccounts.data).toEqual([sessionAccount]);
+      expect(state.sessionAccounts.status).toBe('success');
+      expect(state.sessionAccounts.currentOperation).toBeNull();
+      expect(state.sessionAccounts.error).toBeNull();
+      expect(state.sessionAccounts.lastLoaded).toBe(1640995200000);
+    });
+
+    test('should set session accounts error', () => {
+      const { setSessionAccountsError } = useAppStore.getState();
+
+      setSessionAccountsError('Failed to load session accounts');
+
+      const state = useAppStore.getState();
+      expect(state.sessionAccounts.error).toBe('Failed to load session accounts');
+      expect(state.sessionAccounts.status).toBe('error');
+      expect(state.sessionAccounts.currentOperation).toBeNull();
+    });
+
+    test('should update session account data', () => {
+      const { setSessionAccountsData, updateSessionAccountData } = useAppStore.getState();
+
+      // Set initial data
+      setSessionAccountsData([sessionAccount]);
+
+      // Update specific account
+      updateSessionAccountData(sessionAccount.id, {
+        userDetails: {
+          ...sessionAccount.userDetails,
+          name: 'Jane Doe',
+        },
+      });
+
+      const state = useAppStore.getState();
+      expect(state.sessionAccounts.data[0].userDetails.name).toBe('Jane Doe');
+      expect(state.sessionAccounts.data[0].userDetails.email).toBe('john@example.com'); // unchanged
+    });
+
+    test('should remove session account', () => {
+      const { setSessionAccountsData, removeSessionAccount } = useAppStore.getState();
+      const account2 = { ...sessionAccount, id: 'account2' };
+
+      // Set initial data
+      setSessionAccountsData([sessionAccount, account2]);
+
+      // Remove one account
+      removeSessionAccount(sessionAccount.id);
+
+      const state = useAppStore.getState();
+      expect(state.sessionAccounts.data).toHaveLength(1);
+      expect(state.sessionAccounts.data[0].id).toBe('account2');
+    });
+
+    test('should clear session accounts', () => {
+      const { setSessionAccountsData, clearSessionAccounts } = useAppStore.getState();
+
+      // Set initial data
+      setSessionAccountsData([sessionAccount]);
+
+      // Clear accounts
+      clearSessionAccounts();
+
+      const state = useAppStore.getState();
+      expect(state.sessionAccounts).toEqual({ ...DEFAULT_SESSION_ACCOUNTS_STATE, data: [] });
+    });
+  });
+
+  describe('Getters', () => {
+    test('should get session state', () => {
+      const { getSessionState, setSessionData } = useAppStore.getState();
+
+      const sessionData: AccountSessionInfo = {
+        hasSession: true,
+        accountIds: ['507f1f77bcf86cd799439011'],
+        currentAccountId: '507f1f77bcf86cd799439011',
+        isValid: true,
+      };
+
+      setSessionData(sessionData);
+
+      const sessionState = getSessionState();
+      expect(sessionState.data).toEqual(sessionData);
+      expect(sessionState.status).toBe('success');
+    });
+
+    test('should get account state', () => {
+      const { getAccountState, setAccountData } = useAppStore.getState();
+      const accountId = '507f1f77bcf86cd799439011';
+      const mockAccount = {
+        id: accountId,
+        accountType: AccountType.Local,
+        status: AccountStatus.Active,
+      } as Account;
 
       setAccountData(accountId, mockAccount);
 
       const accountState = getAccountState(accountId);
       expect(accountState.data).toEqual(mockAccount);
       expect(accountState.status).toBe('success');
-      expect(accountState.currentOperation).toBeNull();
-      expect(accountState.error).toBeNull();
-      expect(accountState.lastLoaded).toBeTruthy();
     });
 
-    it('should set account error', () => {
-      const { setAccountError, getAccountState } = useAppStore.getState();
-
-      setAccountError(accountId, 'Account load failed');
-
-      const accountState = getAccountState(accountId);
-      expect(accountState.error).toBe('Account load failed');
-      expect(accountState.status).toBe('error');
-      expect(accountState.currentOperation).toBeNull();
-    });
-
-    it('should update account data', () => {
-      const { setAccountData, updateAccountData, getAccountState } = useAppStore.getState();
-      const mockAccount = createMockAccount({ id: accountId });
-
-      setAccountData(accountId, mockAccount);
-
-      const updates = {
-        userDetails: {
-          ...mockAccount.userDetails,
-          name: 'Updated Name',
-        },
+    test('should get session account', () => {
+      const { getSessionAccount, setSessionAccountsData } = useAppStore.getState();
+      const sessionAccount: SessionAccount = {
+        id: '507f1f77bcf86cd799439011',
+        accountType: AccountType.Local,
+        status: AccountStatus.Active,
+        userDetails: { name: 'John Doe' },
       };
 
-      updateAccountData(accountId, updates);
+      setSessionAccountsData([sessionAccount]);
 
-      const accountState = getAccountState(accountId);
-      expect(accountState.data?.userDetails.name).toBe('Updated Name');
+      const result = getSessionAccount(sessionAccount.id);
+      expect(result).toEqual(sessionAccount);
     });
 
-    it('should set multiple accounts data', () => {
-      const { setAccountsData, getAccountState } = useAppStore.getState();
-      const account1 = createMockAccount({ id: accountId });
-      const account2 = createMockAccount({ id: '507f1f77bcf86cd799439012' });
+    test('should get all session accounts', () => {
+      const { getAllSessionAccounts, setSessionAccountsData } = useAppStore.getState();
+      const sessionAccounts: SessionAccount[] = [
+        {
+          id: '507f1f77bcf86cd799439011',
+          accountType: AccountType.Local,
+          status: AccountStatus.Active,
+          userDetails: { name: 'John Doe' },
+        },
+        {
+          id: '507f1f77bcf86cd799439012',
+          accountType: AccountType.OAuth,
+          status: AccountStatus.Active,
+          userDetails: { name: 'Jane Doe' },
+        },
+      ];
 
-      setAccountsData([account1, account2]);
+      setSessionAccountsData(sessionAccounts);
 
-      const accountState1 = getAccountState(accountId);
-      const accountState2 = getAccountState('507f1f77bcf86cd799439012');
-
-      expect(accountState1.data).toEqual(account1);
-      expect(accountState2.data).toEqual(account2);
-      expect(accountState1.status).toBe('success');
-      expect(accountState2.status).toBe('success');
-    });
-
-    it('should remove account', () => {
-      const { setAccountData, removeAccount, getAccountState } = useAppStore.getState();
-      const mockAccount = createMockAccount({ id: accountId });
-
-      setAccountData(accountId, mockAccount);
-      removeAccount(accountId);
-
-      const accountState = getAccountState(accountId);
-      expect(accountState).toBeUndefined();
-    });
-
-    it('should clear account operation', () => {
-      const { setAccountStatus, clearAccountOperation, getAccountState } = useAppStore.getState();
-
-      setAccountStatus(accountId, 'updating', 'updateAccount');
-      clearAccountOperation(accountId);
-
-      const accountState = getAccountState(accountId);
-      expect(accountState.currentOperation).toBeNull();
-      expect(accountState.status).toBe('idle');
+      const result = getAllSessionAccounts();
+      expect(result).toEqual(sessionAccounts);
     });
   });
 
-  describe('session accounts management', () => {
-    it('should set session accounts status', () => {
-      const { setSessionAccountsStatus, getSessionAccountsState } = useAppStore.getState();
-
-      setSessionAccountsStatus('loading', 'loadSessionAccounts');
-
-      const sessionAccountsState = getSessionAccountsState();
-      expect(sessionAccountsState.status).toBe('loading');
-      expect(sessionAccountsState.currentOperation).toBe('loadSessionAccounts');
-      expect(sessionAccountsState.error).toBeNull();
+  describe('Computed Values', () => {
+    beforeEach(() => {
+      // Set a baseline time
+      mockDateNow.mockReturnValue(1640995200000); // 2022-01-01T00:00:00.000Z
     });
 
-    it('should set session accounts data', () => {
-      const { setSessionAccountsData, getSessionAccountsState } = useAppStore.getState();
-      const mockSessionAccounts = [
-        createMockSessionAccount({ id: '507f1f77bcf86cd799439011' }),
-        createMockSessionAccount({ id: '507f1f77bcf86cd799439012' }),
-      ];
+    test('should determine if account should load - no data', () => {
+      const { shouldLoadAccount } = useAppStore.getState();
 
-      setSessionAccountsData(mockSessionAccounts);
-
-      const sessionAccountsState = getSessionAccountsState();
-      expect(sessionAccountsState.data).toEqual(mockSessionAccounts);
-      expect(sessionAccountsState.status).toBe('success');
-      expect(sessionAccountsState.currentOperation).toBeNull();
-      expect(sessionAccountsState.error).toBeNull();
-      expect(sessionAccountsState.lastLoaded).toBeTruthy();
+      const result = shouldLoadAccount('507f1f77bcf86cd799439011');
+      expect(result).toBe(true);
     });
 
-    it('should set session accounts error', () => {
-      const { setSessionAccountsError, getSessionAccountsState } = useAppStore.getState();
-
-      setSessionAccountsError('Session accounts load failed');
-
-      const sessionAccountsState = getSessionAccountsState();
-      expect(sessionAccountsState.error).toBe('Session accounts load failed');
-      expect(sessionAccountsState.status).toBe('error');
-      expect(sessionAccountsState.currentOperation).toBeNull();
-    });
-
-    it('should set individual session account data', () => {
-      const { setSessionAccountData, getSessionAccount } = useAppStore.getState();
+    test('should determine if account should load - currently loading', () => {
+      const { shouldLoadAccount, setAccountStatus } = useAppStore.getState();
       const accountId = '507f1f77bcf86cd799439011';
-      const mockSessionAccount = createMockSessionAccount({ id: accountId });
 
-      setSessionAccountData(accountId, mockSessionAccount);
+      setAccountStatus(accountId, 'loading');
 
-      const sessionAccount = getSessionAccount(accountId);
-      expect(sessionAccount).toEqual(mockSessionAccount);
+      const result = shouldLoadAccount(accountId);
+      expect(result).toBe(false);
     });
 
-    it('should update session account data', () => {
-      const { setSessionAccountData, updateSessionAccountData, getSessionAccount } = useAppStore.getState();
+    test('should determine if account should load - stale data', () => {
+      const { shouldLoadAccount, setAccountData } = useAppStore.getState();
       const accountId = '507f1f77bcf86cd799439011';
-      const mockSessionAccount = createMockSessionAccount({ id: accountId });
 
-      setSessionAccountData(accountId, mockSessionAccount);
+      // Set data with old timestamp
+      const oldTime = 1640995200000 - 6 * 60 * 1000; // 6 minutes ago
+      mockDateNow.mockReturnValue(oldTime);
 
-      const updates = {
-        userDetails: {
-          ...mockSessionAccount.userDetails,
-          name: 'Updated Session Name',
-        },
-      };
+      setAccountData(accountId, { id: accountId } as Account);
 
-      updateSessionAccountData(accountId, updates);
+      // Reset to current time
+      mockDateNow.mockReturnValue(1640995200000);
 
-      const sessionAccount = getSessionAccount(accountId);
-      expect(sessionAccount?.userDetails.name).toBe('Updated Session Name');
+      const result = shouldLoadAccount(accountId, 5 * 60 * 1000); // 5 minute max age
+      expect(result).toBe(true);
     });
 
-    it('should remove session account', () => {
-      const { setSessionAccountData, removeSessionAccount, getSessionAccount } = useAppStore.getState();
+    test('should determine if account should load - fresh data', () => {
+      const { shouldLoadAccount, setAccountData } = useAppStore.getState();
       const accountId = '507f1f77bcf86cd799439011';
-      const mockSessionAccount = createMockSessionAccount({ id: accountId });
 
-      setSessionAccountData(accountId, mockSessionAccount);
-      removeSessionAccount(accountId);
+      setAccountData(accountId, { id: accountId } as Account);
 
-      const sessionAccount = getSessionAccount(accountId);
-      expect(sessionAccount).toBeUndefined();
+      const result = shouldLoadAccount(accountId, 5 * 60 * 1000);
+      expect(result).toBe(false);
     });
 
-    it('should clear session accounts', () => {
-      const { setSessionAccountsData, clearSessionAccounts, getSessionAccountsState } = useAppStore.getState();
-      const mockSessionAccounts = [createMockSessionAccount()];
-
-      setSessionAccountsData(mockSessionAccounts);
-      clearSessionAccounts();
-
-      const sessionAccountsState = getSessionAccountsState();
-      expect(sessionAccountsState.data).toEqual([]);
-      expect(sessionAccountsState.status).toBe('idle');
-    });
-
-    it('should get all session accounts', () => {
-      const { setSessionAccountsData, getAllSessionAccounts } = useAppStore.getState();
-      const mockSessionAccounts = [
-        createMockSessionAccount({ id: '507f1f77bcf86cd799439011' }),
-        createMockSessionAccount({ id: '507f1f77bcf86cd799439012' }),
-      ];
-
-      setSessionAccountsData(mockSessionAccounts);
-
-      const allAccounts = getAllSessionAccounts();
-      expect(allAccounts).toEqual(mockSessionAccounts);
-    });
-  });
-
-  describe('data synchronization', () => {
-    it('should update session account when setting account data', () => {
-      const { setSessionAccountData, setAccountData, getSessionAccount } = useAppStore.getState();
-      const accountId = '507f1f77bcf86cd799439011';
-      const mockSessionAccount = createMockSessionAccount({ id: accountId });
-      const mockAccount = createMockAccount({
-        id: accountId,
-        userDetails: {
-          ...createMockAccount().userDetails,
-          name: 'Updated Full Account Name',
-        },
-      });
-
-      // First set session account
-      setSessionAccountData(accountId, mockSessionAccount);
-
-      // Then set full account data
-      setAccountData(accountId, mockAccount);
-
-      // Session account should be updated
-      const updatedSessionAccount = getSessionAccount(accountId);
-      expect(updatedSessionAccount?.userDetails.name).toBe('Updated Full Account Name');
-    });
-
-    it('should update session accounts when setting multiple accounts data', () => {
-      const { setSessionAccountsData, setAccountsData, getSessionAccount } = useAppStore.getState();
-      const accountId1 = '507f1f77bcf86cd799439011';
-      const accountId2 = '507f1f77bcf86cd799439012';
-
-      const mockSessionAccounts = [
-        createMockSessionAccount({ id: accountId1 }),
-        createMockSessionAccount({ id: accountId2 }),
-      ];
-
-      const mockAccounts = [
-        createMockAccount({
-          id: accountId1,
-          userDetails: { ...createMockAccount().userDetails, name: 'Updated Name 1' },
-        }),
-        createMockAccount({
-          id: accountId2,
-          userDetails: { ...createMockAccount().userDetails, name: 'Updated Name 2' },
-        }),
-      ];
-
-      setSessionAccountsData(mockSessionAccounts);
-      setAccountsData(mockAccounts);
-
-      const sessionAccount1 = getSessionAccount(accountId1);
-      const sessionAccount2 = getSessionAccount(accountId2);
-
-      expect(sessionAccount1?.userDetails.name).toBe('Updated Name 1');
-      expect(sessionAccount2?.userDetails.name).toBe('Updated Name 2');
-    });
-
-    it('should update session account when updating account data', () => {
-      const { setSessionAccountData, setAccountData, updateAccountData, getSessionAccount } = useAppStore.getState();
-      const accountId = '507f1f77bcf86cd799439011';
-      const mockSessionAccount = createMockSessionAccount({ id: accountId });
-      const mockAccount = createMockAccount({ id: accountId });
-
-      setSessionAccountData(accountId, mockSessionAccount);
-      setAccountData(accountId, mockAccount);
-
-      const updates = {
-        userDetails: {
-          ...mockAccount.userDetails,
-          name: 'Updated Through Account Update',
-        },
-      };
-
-      updateAccountData(accountId, updates);
-
-      const updatedSessionAccount = getSessionAccount(accountId);
-      expect(updatedSessionAccount?.userDetails.name).toBe('Updated Through Account Update');
-    });
-
-    it('should remove session account when removing account', () => {
-      const { setSessionAccountData, setAccountData, removeAccount, getSessionAccount, getSessionState } =
-        useAppStore.getState();
-      const accountId = '507f1f77bcf86cd799439011';
-      const mockSessionAccount = createMockSessionAccount({ id: accountId });
-      const mockAccount = createMockAccount({ id: accountId });
-      const mockSessionData = createMockSessionInfo({
-        accountIds: [accountId],
-        currentAccountId: accountId,
-      });
-
-      // Set up initial state
-      useAppStore.setState({
-        session: {
-          data: mockSessionData,
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now(),
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-      });
-
-      setSessionAccountData(accountId, mockSessionAccount);
-      setAccountData(accountId, mockAccount);
-
-      removeAccount(accountId);
-
-      const sessionAccount = getSessionAccount(accountId);
-      const sessionState = getSessionState();
-
-      expect(sessionAccount).toBeUndefined();
-      expect(sessionState.data?.accountIds).toEqual([]);
-      expect(sessionState.data?.currentAccountId).toBeNull();
-    });
-  });
-
-  describe('should load helpers', () => {
-    it('should indicate when session should be loaded', () => {
+    test('should determine if session should load', () => {
       const { shouldLoadSession } = useAppStore.getState();
 
-      // Should load when no data
+      // No data - should load
       expect(shouldLoadSession()).toBe(true);
 
-      // Should not load when loading
-      useAppStore.setState({
-        session: {
-          data: null,
-          status: 'loading',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-      });
-
+      // Currently loading - should not load
+      const { setSessionStatus } = useAppStore.getState();
+      setSessionStatus('loading');
       expect(shouldLoadSession()).toBe(false);
 
-      // Should load when data is stale
-      useAppStore.setState({
-        session: {
-          data: createMockSessionInfo(),
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now() - 10 * 60 * 1000, // 10 minutes ago (stale)
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
+      // Fresh data - should not load
+      const { setSessionData } = useAppStore.getState();
+      setSessionData({
+        hasSession: true,
+        accountIds: ['507f1f77bcf86cd799439011'],
+        currentAccountId: '507f1f77bcf86cd799439011',
+        isValid: true,
       });
-
-      expect(shouldLoadSession(5 * 60 * 1000)).toBe(true); // 5 minute max age
-
-      // Should not load when data is fresh
-      useAppStore.setState({
-        session: {
-          data: createMockSessionInfo(),
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now() - 2 * 60 * 1000, // 2 minutes ago (fresh)
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-      });
-
-      expect(shouldLoadSession(5 * 60 * 1000)).toBe(false); // 5 minute max age
+      expect(shouldLoadSession()).toBe(false);
     });
 
-    it('should indicate when account should be loaded', () => {
-      const { shouldLoadAccount } = useAppStore.getState();
-      const accountId = '507f1f77bcf86cd799439011';
+    test('should determine if session accounts should load', () => {
+      const { shouldLoadSessionAccounts, setSessionData, setSessionAccountsData } = useAppStore.getState();
 
-      // Should load when no account state
-      expect(shouldLoadAccount(accountId)).toBe(true);
-
-      // Should not load when loading
-      useAppStore.setState({
-        session: {
-          data: null,
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-        accounts: {
-          [accountId]: {
-            data: null,
-            status: 'loading',
-            currentOperation: null,
-            error: null,
-            lastLoaded: null,
-          },
-        },
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-      });
-
-      expect(shouldLoadAccount(accountId)).toBe(false);
-
-      // Should not load when updating
-      useAppStore.setState({
-        session: {
-          data: null,
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-        accounts: {
-          [accountId]: {
-            data: createMockAccount({ id: accountId }),
-            status: 'updating',
-            currentOperation: null,
-            error: null,
-            lastLoaded: Date.now(),
-          },
-        },
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-      });
-
-      expect(shouldLoadAccount(accountId)).toBe(false);
-
-      // Should load when no data
-      useAppStore.setState({
-        session: {
-          data: null,
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-        accounts: {
-          [accountId]: {
-            data: null,
-            status: 'idle',
-            currentOperation: null,
-            error: null,
-            lastLoaded: null,
-          },
-        },
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-      });
-
-      expect(shouldLoadAccount(accountId)).toBe(true);
-
-      // Should load when data is stale
-      useAppStore.setState({
-        session: {
-          data: null,
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-        accounts: {
-          [accountId]: {
-            data: createMockAccount({ id: accountId }),
-            status: 'success',
-            currentOperation: null,
-            error: null,
-            lastLoaded: Date.now() - 10 * 60 * 1000, // 10 minutes ago
-          },
-        },
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-      });
-
-      expect(shouldLoadAccount(accountId, 5 * 60 * 1000)).toBe(true); // 5 minute max age
-
-      // Should not load when data is fresh
-      useAppStore.setState({
-        session: {
-          data: null,
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-        accounts: {
-          [accountId]: {
-            data: createMockAccount({ id: accountId }),
-            status: 'success',
-            currentOperation: null,
-            error: null,
-            lastLoaded: Date.now() - 2 * 60 * 1000, // 2 minutes ago
-          },
-        },
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-      });
-
-      expect(shouldLoadAccount(accountId, 5 * 60 * 1000)).toBe(false); // 5 minute max age
-    });
-
-    it('should indicate when session accounts should be loaded', () => {
-      const { shouldLoadSessionAccounts } = useAppStore.getState();
-
-      // Should not load when session is loading
-      useAppStore.setState({
-        session: {
-          data: null,
-          status: 'loading',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-      });
-
+      // No session data - should not load
       expect(shouldLoadSessionAccounts()).toBe(false);
 
-      // Should not load when session has no account IDs
-      useAppStore.setState({
-        session: {
-          data: createMockSessionInfo({ accountIds: [] }),
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now(),
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
+      // Session with no accounts - should not load
+      setSessionData({
+        hasSession: true,
+        accountIds: [],
+        currentAccountId: null,
+        isValid: true,
       });
-
       expect(shouldLoadSessionAccounts()).toBe(false);
 
-      // Should not load when session accounts are loading
-      useAppStore.setState({
-        session: {
-          data: createMockSessionInfo(),
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now(),
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [],
-          status: 'loading',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
+      // Session with accounts but no session accounts data - should load
+      setSessionData({
+        hasSession: true,
+        accountIds: ['507f1f77bcf86cd799439011'],
+        currentAccountId: '507f1f77bcf86cd799439011',
+        isValid: true,
       });
-
-      expect(shouldLoadSessionAccounts()).toBe(false);
-
-      // Should load when no session accounts data
-      useAppStore.setState({
-        session: {
-          data: createMockSessionInfo(),
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now(),
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-      });
-
       expect(shouldLoadSessionAccounts()).toBe(true);
 
-      // Should load when session accounts data is stale
-      useAppStore.setState({
-        session: {
-          data: createMockSessionInfo(),
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now(),
+      // Fresh session accounts data - should not load
+      setSessionAccountsData([
+        {
+          id: '507f1f77bcf86cd799439011',
+          accountType: AccountType.Local,
+          status: AccountStatus.Active,
+          userDetails: { name: 'John Doe' },
         },
-        accounts: {},
-        sessionAccounts: {
-          data: [createMockSessionAccount()],
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now() - 10 * 60 * 1000, // 10 minutes ago
-        },
-      });
-
-      expect(shouldLoadSessionAccounts(5 * 60 * 1000)).toBe(true); // 5 minute max age
-
-      // Should not load when session accounts data is fresh
-      useAppStore.setState({
-        session: {
-          data: createMockSessionInfo(),
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now(),
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [createMockSessionAccount()],
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now() - 2 * 60 * 1000, // 2 minutes ago
-        },
-      });
-
-      expect(shouldLoadSessionAccounts(5 * 60 * 1000)).toBe(false); // 5 minute max age
-    });
-  });
-
-  describe('state immutability', () => {
-    it('should maintain immutable state updates', () => {
-      const { setSessionData, getSessionState } = useAppStore.getState();
-      const mockSessionData = createMockSessionInfo();
-
-      const initialState = getSessionState();
-      setSessionData(mockSessionData);
-      const updatedState = getSessionState();
-
-      // States should be different objects
-      expect(initialState).not.toBe(updatedState);
-      expect(initialState.data).not.toBe(updatedState.data);
+      ]);
+      expect(shouldLoadSessionAccounts()).toBe(false);
     });
 
-    it('should maintain immutable account state updates', () => {
-      const { setAccountData, getAccountState } = useAppStore.getState();
+    test('should handle data staleness correctly', () => {
+      const { shouldLoadAccount, setAccountData } = useAppStore.getState();
       const accountId = '507f1f77bcf86cd799439011';
-      const mockAccount = createMockAccount({ id: accountId });
 
-      const initialState = getAccountState(accountId);
-      setAccountData(accountId, mockAccount);
-      const updatedState = getAccountState(accountId);
+      // Set data at specific time
+      const dataTime = 1640995200000;
+      mockDateNow.mockReturnValue(dataTime);
+      setAccountData(accountId, { id: accountId } as Account);
 
-      // States should be different objects
-      expect(initialState).not.toBe(updatedState);
-    });
-  });
+      // Test different staleness scenarios
 
-  describe('error handling', () => {
-    it('should not throw when getting non-existent account state', () => {
-      const { getAccountState } = useAppStore.getState();
+      // Data is 2 minutes old, max age 5 minutes - should not load
+      mockDateNow.mockReturnValue(dataTime + 2 * 60 * 1000);
+      expect(shouldLoadAccount(accountId, 5 * 60 * 1000)).toBe(false);
 
-      expect(() => getAccountState('non-existent-id')).not.toThrow();
-      expect(getAccountState('non-existent-id')).toBeUndefined();
-    });
+      // Data is 6 minutes old, max age 5 minutes - should load
+      mockDateNow.mockReturnValue(dataTime + 6 * 60 * 1000);
+      expect(shouldLoadAccount(accountId, 5 * 60 * 1000)).toBe(true);
 
-    it('should not throw when getting non-existent session account', () => {
-      const { getSessionAccount } = useAppStore.getState();
-
-      expect(() => getSessionAccount('non-existent-id')).not.toThrow();
-      expect(getSessionAccount('non-existent-id')).toBeUndefined();
-    });
-
-    it('should handle clearing operations on non-existent accounts', () => {
-      const { clearAccountOperation } = useAppStore.getState();
-
-      expect(() => clearAccountOperation('non-existent-id')).not.toThrow();
-    });
-
-    it('should handle updating non-existent account data', () => {
-      const { updateAccountData } = useAppStore.getState();
-
-      expect(() => updateAccountData('non-existent-id', { userDetails: { name: 'Test' } })).not.toThrow();
+      // Custom max age - 10 minutes
+      expect(shouldLoadAccount(accountId, 10 * 60 * 1000)).toBe(false);
     });
   });
 });
