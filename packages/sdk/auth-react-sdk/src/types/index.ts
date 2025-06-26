@@ -385,6 +385,7 @@ export interface SDKConfig {
   frontendProxyUrl?: string;
   timeout?: number;
   withCredentials?: boolean;
+  enableLogging?: boolean;
 }
 
 export interface ApiResponse<T = unknown> {

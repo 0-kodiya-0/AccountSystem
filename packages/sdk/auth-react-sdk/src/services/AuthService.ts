@@ -303,7 +303,7 @@ export class AuthService {
     validateRequired(data, 'cancel data', 'signup cancellation');
     validateEmail(data.email, 'signup cancellation');
 
-    return this.httpClient.delete('/auth/signup/cancel', data);
+    return this.httpClient.delete('/auth/signup/cancel', { params: { ...data } });
   }
 
   async localLogin(data: LocalLoginRequest): Promise<LocalLoginResponse> {
