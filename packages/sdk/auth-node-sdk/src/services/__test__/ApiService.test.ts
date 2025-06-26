@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ApiService } from '../../services/ApiService';
-import { HttpClient } from '../../client/HttpClient';
 
 // Mock HttpClient - we only test our service logic
 const mockHttpClient = {

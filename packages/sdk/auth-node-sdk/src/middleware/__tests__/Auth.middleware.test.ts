@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Request, Response, NextFunction } from 'express';
 import { ApiSdk, ApiSdkConfig } from '../../middleware/Auth.middleware';
-import { HttpClient } from '../../client/HttpClient';
-import { SocketClient } from '../../client/SocketClient';
 import { ApiService } from '../../services/ApiService';
 import { SocketService } from '../../services/SocketService';
 import { AccountType, ApiError, ApiErrorCode, TokenVerificationResponse } from '../../types';

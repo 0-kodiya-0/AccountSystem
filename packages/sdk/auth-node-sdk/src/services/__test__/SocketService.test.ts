@@ -1,7 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SocketService } from '../../services/SocketService';
-import { SocketClient } from '../../client/SocketClient';
-import { SocketResponse } from '../../types';
 
 // Mock SocketClient - we only test our service logic
 const mockSocketClient = {
