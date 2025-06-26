@@ -1,18 +1,5 @@
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
-import {
-  HttpClientConfig,
-  ApiError,
-  ApiErrorCode,
-  HealthCheckResponse,
-  TokenVerificationResponse,
-  TokenInfoResponse,
-  UserResponse,
-  UserEmailResponse,
-  UserExistsResponse,
-  SessionInfoResponse,
-  SessionAccountsResponse,
-  SessionValidationResponse,
-} from '../types';
+import { HttpClientConfig, ApiError, ApiErrorCode } from '../types';
 
 export class HttpClient {
   private client: AxiosInstance;
@@ -76,10 +63,52 @@ export class HttpClient {
   }
 
   // ========================================================================
-  // Private Request Method
+  // Core Request Methods
   // ========================================================================
 
-  private async request<T>(
+  async get<T>(endpoint: string, config?: AxiosRequestConfig): Promise<T> {
+    const response = await this.client.request({
+      method: 'GET',
+      url: endpoint,
+      ...config,
+    });
+
+    return response.data as T;
+  }
+
+  async post<T>(endpoint: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
+    const response = await this.client.request({
+      method: 'POST',
+      url: endpoint,
+      data,
+      ...config,
+    });
+
+    return response.data as T;
+  }
+
+  async put<T>(endpoint: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
+    const response = await this.client.request({
+      method: 'PUT',
+      url: endpoint,
+      data,
+      ...config,
+    });
+
+    return response.data as T;
+  }
+
+  async delete<T>(endpoint: string, config?: AxiosRequestConfig): Promise<T> {
+    const response = await this.client.request({
+      method: 'DELETE',
+      url: endpoint,
+      ...config,
+    });
+
+    return response.data as T;
+  }
+
+  async request<T>(
     method: 'GET' | 'POST' | 'PUT' | 'DELETE',
     endpoint: string,
     data?: unknown,
@@ -93,50 +122,6 @@ export class HttpClient {
     });
 
     return response.data as T;
-  }
-
-  // ========================================================================
-  // Public API Methods
-  // ========================================================================
-
-  async healthCheck(): Promise<HealthCheckResponse> {
-    return this.request('GET', '/health');
-  }
-
-  async verifyToken(token: string, tokenType: 'access' | 'refresh' = 'access'): Promise<TokenVerificationResponse> {
-    return this.request('POST', '/auth/verify-token', { token, tokenType });
-  }
-
-  async getTokenInfo(token: string, tokenType: 'access' | 'refresh' = 'access'): Promise<TokenInfoResponse> {
-    return this.request('POST', '/auth/token-info', { token, tokenType });
-  }
-
-  async getUserById(accountId: string): Promise<UserResponse> {
-    return this.request('GET', `/users/${accountId}`);
-  }
-
-  async getUserByEmail(email: string): Promise<UserEmailResponse> {
-    return this.request('GET', `/users/search/email/${encodeURIComponent(email)}`);
-  }
-
-  async searchUserByEmail(email: string): Promise<UserEmailResponse> {
-    return this.request('GET', `/users/search?email=${encodeURIComponent(email)}`);
-  }
-
-  async checkUserExists(accountId: string): Promise<UserExistsResponse> {
-    return this.request('GET', `/users/${accountId}/exists`);
-  }
-
-  async getSessionInfo(sessionCookie?: string): Promise<SessionInfoResponse> {
-    return this.request('POST', '/session/info', { sessionCookie });
-  }
-
-  async getSessionAccounts(accountIds?: string[], sessionCookie?: string): Promise<SessionAccountsResponse> {
-    return this.request('POST', '/session/accounts', { accountIds, sessionCookie });
-  }
-
-  async validateSession(accountId?: string, sessionCookie?: string): Promise<SessionValidationResponse> {
-    return this.request('POST', '/session/validate', { accountId, sessionCookie });
   }
 
   // ========================================================================
@@ -175,5 +160,21 @@ export class HttpClient {
       return error.message;
     }
     return 'An unknown error occurred';
+  }
+
+  // ========================================================================
+  // Configuration Access
+  // ========================================================================
+
+  getBaseUrl(): string {
+    return this.client.defaults.baseURL || '';
+  }
+
+  getTimeout(): number {
+    return this.client.defaults.timeout || 30000;
+  }
+
+  isLoggingEnabled(): boolean {
+    return this.config.enableLogging || false;
   }
 }

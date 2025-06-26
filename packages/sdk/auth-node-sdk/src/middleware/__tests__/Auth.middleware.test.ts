@@ -12,13 +12,21 @@ import {
   AccountStatus,
   OAuthProviders,
 } from '../../types';
+import { ApiService } from '../../services/ApiService';
 
 // ============================================================================
 // Mock Setup
 // ============================================================================
 
-// Mock HTTP Client
+// Mock Http Client
 const mockHttpClient = {
+  isNetworkError: vi.fn(),
+  isAuthError: vi.fn(),
+  getErrorMessage: vi.fn(),
+} as unknown as HttpClient;
+
+// Mock HTTP Service
+const mockApiService = {
   verifyToken: vi.fn(),
   checkUserExists: vi.fn(),
   getUserById: vi.fn(),
@@ -26,7 +34,7 @@ const mockHttpClient = {
   isNetworkError: vi.fn(),
   isAuthError: vi.fn(),
   getErrorMessage: vi.fn(),
-} as unknown as HttpClient;
+} as unknown as ApiService;
 
 // Mock Socket Client
 const mockSocketClient = {
@@ -130,9 +138,9 @@ describe('ApiSdk', () => {
     res = createMockResponse();
 
     // Setup default mock responses
-    (mockHttpClient.verifyToken as Mock).mockResolvedValue(mockTokenVerificationResponse);
-    (mockHttpClient.checkUserExists as Mock).mockResolvedValue(mockUserExistsResponse);
-    (mockHttpClient.getUserById as Mock).mockResolvedValue(mockUserResponse);
+    (mockApiService.verifyToken as Mock).mockResolvedValue(mockTokenVerificationResponse);
+    (mockApiService.checkUserExists as Mock).mockResolvedValue(mockUserExistsResponse);
+    (mockApiService.getUserById as Mock).mockResolvedValue(mockUserResponse);
     (mockSocketClient.isConnected as Mock).mockReturnValue(false);
   });
 
@@ -150,7 +158,7 @@ describe('ApiSdk', () => {
       middleware(req, res, mockNext);
 
       expect(req.apiClients).toBeDefined();
-      expect(req.apiClients?.http).toBe(mockHttpClient);
+      expect(req.apiClients?.http).toBe(mockApiService);
       expect(req.apiClients?.socket).toBe(mockSocketClient);
       expect(mockNext).toHaveBeenCalled();
     });
@@ -224,15 +232,15 @@ describe('ApiSdk', () => {
       const middleware = sdk.validateAccountAccess();
       await middleware(req, res, mockNext);
 
-      expect(mockHttpClient.checkUserExists).toHaveBeenCalledWith(mockAccountId);
-      expect(mockHttpClient.getUserById).toHaveBeenCalledWith(mockAccountId);
+      expect(mockApiService.checkUserExists).toHaveBeenCalledWith(mockAccountId);
+      expect(mockApiService.getUserById).toHaveBeenCalledWith(mockAccountId);
       expect(req.account).toEqual(mockAccount);
       expect(req.oauthAccount).toEqual(mockAccount); // OAuth account
       expect(mockNext).toHaveBeenCalled();
     });
 
     it('should fail when account does not exist', async () => {
-      (mockHttpClient.checkUserExists as Mock).mockResolvedValue({ exists: false, accountId: mockAccountId });
+      (mockApiService.checkUserExists as Mock).mockResolvedValue({ exists: false, accountId: mockAccountId });
 
       const middleware = sdk.validateAccountAccess();
       await middleware(req, res, mockNext);
@@ -249,7 +257,7 @@ describe('ApiSdk', () => {
     });
 
     it('should handle API errors gracefully', async () => {
-      (mockHttpClient.checkUserExists as Mock).mockRejectedValue(new Error('API Error'));
+      (mockApiService.checkUserExists as Mock).mockRejectedValue(new Error('API Error'));
 
       const middleware = sdk.validateAccountAccess();
       await middleware(req, res, mockNext);
@@ -267,7 +275,7 @@ describe('ApiSdk', () => {
 
     it('should set localAccount for local account type', async () => {
       const localAccount = { ...mockAccount, accountType: 'local' };
-      (mockHttpClient.getUserById as Mock).mockResolvedValue({
+      (mockApiService.getUserById as Mock).mockResolvedValue({
         user: localAccount,
         accountId: mockAccountId,
       });
@@ -296,7 +304,7 @@ describe('ApiSdk', () => {
       const middleware = sdk.validateTokenAccess();
       await middleware(req, res, mockNext);
 
-      expect(mockHttpClient.verifyToken).toHaveBeenCalledWith('mock-access-token', 'access');
+      expect(mockApiService.verifyToken).toHaveBeenCalledWith('mock-access-token', 'access');
       expect(req.accessToken).toBe('mock-access-token');
       expect(req.oauthAccessToken).toBe('mock-oauth-token');
       expect(req.tokenData).toBeUndefined(); // No longer set
@@ -313,15 +321,15 @@ describe('ApiSdk', () => {
         isRefreshToken: true,
         oauthRefreshToken: 'mock-oauth-refresh-token',
       };
-      (mockHttpClient.verifyToken as Mock)
+      (mockApiService.verifyToken as Mock)
         .mockResolvedValueOnce(mockTokenVerificationResponse) // access token
         .mockResolvedValueOnce(refreshTokenResponse); // refresh token
 
       const middleware = sdk.validateTokenAccess();
       await middleware(req, res, mockNext);
 
-      expect(mockHttpClient.verifyToken).toHaveBeenCalledWith('mock-access-token', 'access');
-      expect(mockHttpClient.verifyToken).toHaveBeenCalledWith('mock-refresh-token', 'refresh');
+      expect(mockApiService.verifyToken).toHaveBeenCalledWith('mock-access-token', 'access');
+      expect(mockApiService.verifyToken).toHaveBeenCalledWith('mock-refresh-token', 'refresh');
       expect(req.accessToken).toBe('mock-access-token');
       expect(req.refreshToken).toBe('mock-refresh-token');
       expect(req.oauthRefreshToken).toBe('mock-oauth-refresh-token');
@@ -335,12 +343,12 @@ describe('ApiSdk', () => {
         isRefreshToken: true,
         oauthRefreshToken: 'mock-oauth-refresh-token',
       };
-      (mockHttpClient.verifyToken as Mock).mockResolvedValue(refreshTokenResponse);
+      (mockApiService.verifyToken as Mock).mockResolvedValue(refreshTokenResponse);
 
       const middleware = sdk.validateTokenAccess();
       await middleware(req, res, mockNext);
 
-      expect(mockHttpClient.verifyToken).toHaveBeenCalledWith('mock-refresh-token', 'refresh');
+      expect(mockApiService.verifyToken).toHaveBeenCalledWith('mock-refresh-token', 'refresh');
       expect(req.refreshToken).toBe('mock-refresh-token');
       expect(req.oauthRefreshToken).toBe('mock-oauth-refresh-token');
       expect(req.accessToken).toBeUndefined();
@@ -354,7 +362,7 @@ describe('ApiSdk', () => {
       const middleware = sdk.validateTokenAccess();
       await middleware(req, res, mockNext);
 
-      expect(mockHttpClient.verifyToken).toHaveBeenCalledWith('header-token', 'access');
+      expect(mockApiService.verifyToken).toHaveBeenCalledWith('header-token', 'access');
       expect(req.accessToken).toBe('header-token');
       expect(req.tokenData).toBeDefined(); // verifyToken still sets tokenData
       expect(req.tokenData).toBeUndefined(); // No longer set
@@ -390,7 +398,7 @@ describe('ApiSdk', () => {
 
     it('should redirect to refresh for token errors', async () => {
       req.cookies = { [`refresh_token_${mockAccountId}`]: 'mock-refresh-token' };
-      (mockHttpClient.verifyToken as Mock).mockRejectedValue(new Error('Token expired'));
+      (mockApiService.verifyToken as Mock).mockRejectedValue(new Error('Token expired'));
 
       const middleware = sdk.validateTokenAccess();
       await middleware(req, res, mockNext);
@@ -403,7 +411,7 @@ describe('ApiSdk', () => {
         ...mockTokenVerificationResponse,
         accountId: '507f1f77bcf86cd799439012', // Different account
       };
-      (mockHttpClient.verifyToken as Mock).mockResolvedValue(differentAccountResponse);
+      (mockApiService.verifyToken as Mock).mockResolvedValue(differentAccountResponse);
 
       const middleware = sdk.validateTokenAccess();
       await middleware(req, res, mockNext);
@@ -417,7 +425,7 @@ describe('ApiSdk', () => {
         ...mockTokenVerificationResponse,
         accountType: AccountType.Local, // Different from account type
       };
-      (mockHttpClient.verifyToken as Mock).mockResolvedValue(mismatchResponse);
+      (mockApiService.verifyToken as Mock).mockResolvedValue(mismatchResponse);
 
       const middleware = sdk.validateTokenAccess();
       await middleware(req, res, mockNext);
@@ -479,11 +487,11 @@ describe('ApiSdk', () => {
       const middleware = sdk.verifyToken();
       await middleware(req, res, mockNext);
 
-      expect(mockHttpClient.verifyToken).toHaveBeenCalledWith('mock-token', 'access');
+      expect(mockApiService.verifyToken).toHaveBeenCalledWith('mock-token', 'access');
       expect(req.accessToken).toBe('mock-token');
       expect(req.tokenData).toBeDefined();
       expect(req.account).toBeUndefined(); // No account loaded
-      expect(mockHttpClient.getUserById).not.toHaveBeenCalled(); // No account loading
+      expect(mockApiService.getUserById).not.toHaveBeenCalled(); // No account loading
       expect(mockNext).toHaveBeenCalled();
     });
 
@@ -494,7 +502,7 @@ describe('ApiSdk', () => {
       const middleware = sdk.verifyToken({ fromHeader: true, fromCookie: false });
       await middleware(req, res, mockNext);
 
-      expect(mockHttpClient.verifyToken).toHaveBeenCalledWith('header-token', 'access');
+      expect(mockApiService.verifyToken).toHaveBeenCalledWith('header-token', 'access');
       expect(req.accessToken).toBe('header-token');
     });
 
@@ -505,7 +513,7 @@ describe('ApiSdk', () => {
       const middleware = sdk.verifyToken({ required: false });
       await middleware(req, res, mockNext);
 
-      expect(mockHttpClient.verifyToken).not.toHaveBeenCalled();
+      expect(mockApiService.verifyToken).not.toHaveBeenCalled();
       expect(mockNext).toHaveBeenCalled();
     });
 
@@ -559,12 +567,12 @@ describe('ApiSdk', () => {
 
     it('should successfully load session', async () => {
       req.cookies = { account_session: 'session-cookie' };
-      (mockHttpClient.getSessionInfo as Mock).mockResolvedValue(mockSessionResponse);
+      (mockApiService.getSessionInfo as Mock).mockResolvedValue(mockSessionResponse);
 
       const middleware = sdk.loadSession();
       await middleware(req, res, mockNext);
 
-      expect(mockHttpClient.getSessionInfo).toHaveBeenCalledWith('session-cookie');
+      expect(mockApiService.getSessionInfo).toHaveBeenCalledWith('session-cookie');
       expect(req.sessionInfo).toEqual(mockSessionResponse.session);
       expect(mockNext).toHaveBeenCalled();
     });
@@ -575,7 +583,7 @@ describe('ApiSdk', () => {
       const middleware = sdk.loadSession({ required: false });
       await middleware(req, res, mockNext);
 
-      expect(mockHttpClient.getSessionInfo).not.toHaveBeenCalled();
+      expect(mockApiService.getSessionInfo).not.toHaveBeenCalled();
       expect(mockNext).toHaveBeenCalled();
     });
 
@@ -716,7 +724,7 @@ describe('ApiSdk', () => {
       const middleware = sdkWithSocketPreference.validateTokenAccess();
       await middleware(req, res, mockNext);
 
-      expect(mockHttpClient.verifyToken).toHaveBeenCalled();
+      expect(mockApiService.verifyToken).toHaveBeenCalled();
       expect(mockSocketClient.verifyToken).not.toHaveBeenCalled();
     });
 
@@ -736,7 +744,7 @@ describe('ApiSdk', () => {
       await middleware(req, res, mockNext);
 
       expect(mockSocketClient.verifyToken).toHaveBeenCalled();
-      expect(mockHttpClient.verifyToken).not.toHaveBeenCalled();
+      expect(mockApiService.verifyToken).not.toHaveBeenCalled();
     });
   });
 
@@ -752,7 +760,7 @@ describe('ApiSdk', () => {
     });
 
     it('should handle token verification errors with redirect', async () => {
-      (mockHttpClient.verifyToken as Mock).mockRejectedValue(new Error('Token expired'));
+      (mockApiService.verifyToken as Mock).mockRejectedValue(new Error('Token expired'));
 
       const middleware = sdk.validateTokenAccess();
       await middleware(req, res, mockNext);
@@ -763,7 +771,7 @@ describe('ApiSdk', () => {
 
     it('should handle network errors appropriately', async () => {
       const networkError = new Error('Network error');
-      (mockHttpClient.verifyToken as Mock).mockRejectedValue(networkError);
+      (mockApiService.verifyToken as Mock).mockRejectedValue(networkError);
 
       const middleware = sdk.verifyToken();
       await middleware(req, res, mockNext);
@@ -775,7 +783,7 @@ describe('ApiSdk', () => {
 
     it('should handle service unavailable errors', async () => {
       const serviceError = new Error('Service unavailable');
-      (mockHttpClient.checkUserExists as Mock).mockRejectedValue(serviceError);
+      (mockApiService.checkUserExists as Mock).mockRejectedValue(serviceError);
 
       const middleware = sdk.validateAccountAccess();
       await middleware(req, res, mockNext);

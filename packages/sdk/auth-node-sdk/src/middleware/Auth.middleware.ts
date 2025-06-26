@@ -3,6 +3,7 @@ import { ApiErrorCode, ApiError, TokenVerificationResponse, ApiResponse } from '
 import { HttpClient } from '../client/HttpClient';
 import { SocketClient } from '../client/SocketClient';
 import { ValidationUtils, ErrorUtils, PathUtils } from '../utils';
+import { ApiService } from '../services/ApiService';
 
 // ============================================================================
 // SDK Configuration
@@ -40,6 +41,7 @@ function sendErrorResponse(res: Response, code: ApiErrorCode, message: string, s
 
 export class ApiSdk {
   public httpClient: HttpClient;
+  public apiService: ApiService;
   public socketClient?: SocketClient;
   private enableLogging: boolean;
   private preferSocket: boolean;
@@ -47,6 +49,7 @@ export class ApiSdk {
 
   constructor(config: ApiSdkConfig) {
     this.httpClient = config.httpClient;
+    this.apiService = new ApiService(config.httpClient);
     this.socketClient = config.socketClient;
     this.enableLogging = config.enableLogging || false;
     this.preferSocket = config.preferSocket || false;
@@ -130,7 +133,7 @@ export class ApiSdk {
         });
       });
     } else {
-      return this.httpClient.verifyToken(token, tokenType);
+      return this.apiService.verifyToken(token, tokenType);
     }
   }
 
@@ -146,7 +149,7 @@ export class ApiSdk {
         });
       });
     } else {
-      return this.httpClient.checkUserExists(accountId);
+      return this.apiService.checkUserExists(accountId);
     }
   }
 
@@ -162,7 +165,7 @@ export class ApiSdk {
         });
       });
     } else {
-      return this.httpClient.getUserById(accountId);
+      return this.apiService.getUserById(accountId);
     }
   }
 
@@ -589,7 +592,7 @@ export class ApiSdk {
         }
 
         // Call session info via internal API
-        const sessionResult = await this.httpClient.getSessionInfo(sessionCookie);
+        const sessionResult = await this.apiService.getSessionInfo(sessionCookie);
         req.sessionInfo = sessionResult.session;
 
         this.log('Session loaded', {

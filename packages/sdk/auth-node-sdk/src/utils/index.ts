@@ -1,6 +1,7 @@
 import { HttpClient } from '../client/HttpClient';
 import { SocketClient } from '../client/SocketClient';
 import { ApiSdk, ApiSdkConfig } from '../middleware/Auth.middleware';
+import { ApiService } from '../services/ApiService';
 import { HttpClientConfig, SocketClientConfig } from '../types';
 
 /**
@@ -8,6 +9,13 @@ import { HttpClientConfig, SocketClientConfig } from '../types';
  */
 export function createHttpClient(config: HttpClientConfig): HttpClient {
   return new HttpClient(config);
+}
+
+/**
+ * Create API service layer that uses HttpClient
+ */
+export function createApiService(httpClient: HttpClient): ApiService {
+  return new ApiService(httpClient);
 }
 
 /**
