@@ -28,7 +28,7 @@ vi.mock('../hooks/useSession', () => ({
   useSession: () => mockUseSession,
 }));
 
-vi.mock('../context/ServicesProvider', () => ({
+vi.mock('../../context/ServicesProvider', () => ({
   useAuthService: () => mockAuthService,
   useAccountService: () => mockAccountService,
 }));
@@ -43,7 +43,7 @@ const mockStoreActions = {
   shouldLoadAccount: mockShouldLoadAccount,
 };
 
-vi.mock('../store/useAppStore', () => ({
+vi.mock('../../store/useAppStore', () => ({
   useAppStore: vi.fn(),
 }));
 

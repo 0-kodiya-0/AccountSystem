@@ -9,7 +9,7 @@ const mockAuthService = {
 };
 
 // Mock the useAuthService hook
-vi.mock('../context/ServicesProvider', () => ({
+vi.mock('../../context/ServicesProvider', () => ({
   useAuthService: () => mockAuthService,
 }));
 

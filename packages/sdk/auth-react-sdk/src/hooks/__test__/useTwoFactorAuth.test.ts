@@ -13,7 +13,7 @@ const mockAuthService = {
 };
 
 // Mock useAuthService hook
-vi.mock('../context/ServicesProvider', () => ({
+vi.mock('../../context/ServicesProvider', () => ({
   useAuthService: () => mockAuthService,
 }));
 
@@ -21,7 +21,7 @@ vi.mock('../context/ServicesProvider', () => ({
 const mockUpdateAccountData = vi.fn();
 const mockGetAccountState = vi.fn();
 
-vi.mock('../store/useAppStore', () => ({
+vi.mock('../../store/useAppStore', () => ({
   useAppStore: vi.fn(),
 }));
 

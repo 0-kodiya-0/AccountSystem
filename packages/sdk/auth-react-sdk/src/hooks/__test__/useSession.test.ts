@@ -13,7 +13,7 @@ const mockAuthService = {
 };
 
 // Mock the useAuthService hook
-vi.mock('../context/ServicesProvider', () => ({
+vi.mock('../../context/ServicesProvider', () => ({
   useAuthService: () => mockAuthService,
 }));
 
@@ -21,8 +21,8 @@ vi.mock('../context/ServicesProvider', () => ({
 const mockShouldLoadSession = vi.fn();
 const mockShouldLoadSessionAccounts = vi.fn();
 
-vi.mock('../store/useAppStore', async () => {
-  const actual = await vi.importActual('../store/useAppStore');
+vi.mock('../../store/useAppStore', async () => {
+  const actual = await vi.importActual('../../store/useAppStore');
   return {
     ...actual,
     useAppStore: vi.fn(),
