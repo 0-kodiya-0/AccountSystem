@@ -1,18 +1,9 @@
 import { describe, test, expect, beforeEach, vi, afterEach } from 'vitest';
-import {
-  useAppStore,
-  DEFAULT_SESSION_STATE,
-  DEFAULT_ACCOUNT_STATE,
-  DEFAULT_SESSION_ACCOUNTS_STATE,
-} from '../useAppStore';
+import { useAppStore, DEFAULT_SESSION_STATE, DEFAULT_SESSION_ACCOUNTS_STATE } from '../useAppStore';
 import { Account, AccountSessionInfo, SessionAccount, AccountType, AccountStatus } from '../../types';
 
 // Mock Date.now for consistent testing
 const mockDateNow = vi.fn();
-vi.stubGlobal('Date', {
-  ...Date,
-  now: mockDateNow,
-});
 
 describe('useAppStore', () => {
   beforeEach(() => {
@@ -25,10 +16,11 @@ describe('useAppStore', () => {
 
     // Mock current time
     mockDateNow.mockReturnValue(1640995200000); // 2022-01-01T00:00:00.000Z
+    vi.spyOn(Date, 'now').mockImplementation(mockDateNow);
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
   });
 
   describe('Initial State', () => {
@@ -138,8 +130,22 @@ describe('useAppStore', () => {
 
       setAccountData('507f1f77bcf86cd799439011', {
         id: '507f1f77bcf86cd799439011',
+        created: '2024-01-01T00:00:00.000Z',
+        updated: '2024-01-01T00:00:00.000Z',
         accountType: AccountType.Local,
         status: AccountStatus.Active,
+        userDetails: {
+          firstName: 'John',
+          lastName: 'Doe',
+          name: 'John Doe',
+          email: 'john@example.com',
+          emailVerified: true,
+        },
+        security: {
+          twoFactorEnabled: false,
+          sessionTimeout: 3600,
+          autoLock: false,
+        },
       } as Account);
 
       setSessionAccountsData([
@@ -147,7 +153,7 @@ describe('useAppStore', () => {
           id: '507f1f77bcf86cd799439011',
           accountType: AccountType.Local,
           status: AccountStatus.Active,
-          userDetails: { name: 'John Doe' },
+          userDetails: { name: 'John Doe', email: 'john@example.com' },
         },
       ]);
 
@@ -226,7 +232,7 @@ describe('useAppStore', () => {
           id: accountId,
           accountType: AccountType.Local,
           status: AccountStatus.Active,
-          userDetails: { name: 'Old Name' },
+          userDetails: { name: 'Old Name', email: 'old@example.com' },
         },
       ]);
 
@@ -288,13 +294,13 @@ describe('useAppStore', () => {
           id: accountId,
           accountType: AccountType.Local,
           status: AccountStatus.Active,
-          userDetails: { name: 'John Doe' },
+          userDetails: { name: 'John Doe', email: 'john@example.com' },
         },
         {
           id: 'other-account',
           accountType: AccountType.Local,
           status: AccountStatus.Active,
-          userDetails: { name: 'Other User' },
+          userDetails: { name: 'Other User', email: 'other@example.com' },
         },
       ]);
 
@@ -440,8 +446,22 @@ describe('useAppStore', () => {
       const accountId = '507f1f77bcf86cd799439011';
       const mockAccount = {
         id: accountId,
+        created: '2024-01-01T00:00:00.000Z',
+        updated: '2024-01-01T00:00:00.000Z',
         accountType: AccountType.Local,
         status: AccountStatus.Active,
+        userDetails: {
+          firstName: 'John',
+          lastName: 'Doe',
+          name: 'John Doe',
+          email: 'john@example.com',
+          emailVerified: true,
+        },
+        security: {
+          twoFactorEnabled: false,
+          sessionTimeout: 3600,
+          autoLock: false,
+        },
       } as Account;
 
       setAccountData(accountId, mockAccount);
@@ -457,7 +477,7 @@ describe('useAppStore', () => {
         id: '507f1f77bcf86cd799439011',
         accountType: AccountType.Local,
         status: AccountStatus.Active,
-        userDetails: { name: 'John Doe' },
+        userDetails: { name: 'John Doe', email: 'john@example.com' },
       };
 
       setSessionAccountsData([sessionAccount]);
@@ -473,13 +493,13 @@ describe('useAppStore', () => {
           id: '507f1f77bcf86cd799439011',
           accountType: AccountType.Local,
           status: AccountStatus.Active,
-          userDetails: { name: 'John Doe' },
+          userDetails: { name: 'John Doe', email: 'john@example.com' },
         },
         {
           id: '507f1f77bcf86cd799439012',
           accountType: AccountType.OAuth,
           status: AccountStatus.Active,
-          userDetails: { name: 'Jane Doe' },
+          userDetails: { name: 'Jane Doe', email: 'jane@example.com' },
         },
       ];
 
@@ -541,18 +561,16 @@ describe('useAppStore', () => {
     });
 
     test('should determine if session should load', () => {
-      const { shouldLoadSession } = useAppStore.getState();
+      const { shouldLoadSession, setSessionStatus, setSessionData } = useAppStore.getState();
 
       // No data - should load
       expect(shouldLoadSession()).toBe(true);
 
       // Currently loading - should not load
-      const { setSessionStatus } = useAppStore.getState();
       setSessionStatus('loading');
       expect(shouldLoadSession()).toBe(false);
 
       // Fresh data - should not load
-      const { setSessionData } = useAppStore.getState();
       setSessionData({
         hasSession: true,
         accountIds: ['507f1f77bcf86cd799439011'],
@@ -592,7 +610,7 @@ describe('useAppStore', () => {
           id: '507f1f77bcf86cd799439011',
           accountType: AccountType.Local,
           status: AccountStatus.Active,
-          userDetails: { name: 'John Doe' },
+          userDetails: { name: 'John Doe', email: 'john@example.com' },
         },
       ]);
       expect(shouldLoadSessionAccounts()).toBe(false);
