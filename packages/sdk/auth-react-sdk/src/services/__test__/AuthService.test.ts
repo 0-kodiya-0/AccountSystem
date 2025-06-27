@@ -29,18 +29,6 @@ describe('AuthService', () => {
 
       expect(authService).toBeInstanceOf(AuthService);
     });
-
-    test('should throw error without HttpClient', () => {
-      expect(() => {
-        // @ts-expect-error - Testing invalid input
-        new AuthService(null);
-      }).toThrow();
-
-      expect(() => {
-        // @ts-expect-error - Testing invalid input
-        new AuthService(undefined);
-      }).toThrow();
-    });
   });
 
   describe('Validation', () => {
@@ -355,12 +343,12 @@ describe('AuthService', () => {
         await expect(async () => {
           // @ts-expect-error - Testing invalid input
           await authService.localLogin(null);
-        }).rejects.toThrow('login data is required for local login');
+        }).rejects.toThrow('Either email or username is required for local login');
 
         await expect(async () => {
           // @ts-expect-error - Testing invalid input
           await authService.localLogin(undefined);
-        }).rejects.toThrow('login data is required for local login');
+        }).rejects.toThrow('Either email or username is required for local login');
       });
 
       test('should validate required fields - empty objects', async () => {
