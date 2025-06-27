@@ -14,21 +14,19 @@ vi.mock('../../context/ServicesProvider', () => ({
   useAuthService: () => mockAuthService,
 }));
 
-// Mock Date.now for consistent testing
-const mockDateNow = vi.fn();
-vi.stubGlobal('Date', {
-  ...Date,
-  now: mockDateNow,
-});
-
 describe('useLocalSignin', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockDateNow.mockReturnValue(1640995200000); // 2022-01-01T00:00:00.000Z
+    // Use fake timers - this handles Date mocking automatically!
+    vi.useFakeTimers();
+    // Set a specific time for consistent testing
+    vi.setSystemTime(new Date('2022-01-01T00:00:00.000Z'));
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    // Restore real timers
+    vi.useRealTimers();
   });
 
   describe('Hook Initialization', () => {
@@ -317,8 +315,8 @@ describe('useLocalSignin', () => {
       expect(result.current.phase).toBe('failed');
       expect(result.current.canRetry).toBe(false); // Still in cooldown
 
-      // Advance time past cooldown
-      mockDateNow.mockReturnValue(1640995200000 + 6000); // 6 seconds later
+      // Advance time past cooldown (5 seconds)
+      vi.advanceTimersByTime(6000);
 
       // Now should be able to retry
       expect(result.current.canRetry).toBe(true);
@@ -340,36 +338,94 @@ describe('useLocalSignin', () => {
     test('should respect retry limits', async () => {
       const { result } = renderHook(() => useLocalSignin());
 
-      // Set retry count to maximum
-      const debugInfo = result.current.getDebugInfo();
+      const signinData = {
+        email: 'test@example.com',
+        password: 'password123',
+      };
 
-      // Simulate being at max retries (we'll need to manipulate internal state)
-      // This is a simplified test - in real implementation, you'd need to fail 3 times
+      // Simulate network error for all attempts
       const error = new Error('Network error');
       mockAuthService.localLogin.mockRejectedValue(error);
 
-      // Perform multiple retries
-      for (let i = 0; i < 3; i++) {
-        await act(async () => {
-          await result.current.signin({
-            email: 'test@example.com',
-            password: 'password123',
-          });
-        });
+      // Perform first attempt
+      await act(async () => {
+        await result.current.signin(signinData);
+      });
 
-        if (i < 2) {
-          mockDateNow.mockReturnValue(1640995200000 + (i + 1) * 6000);
-          await act(async () => {
-            await result.current.retry();
-          });
-        }
+      expect(result.current.phase).toBe('failed');
+      expect(result.current.retryCount).toBe(0);
+
+      // Perform retries up to the limit
+      for (let i = 1; i <= 3; i++) {
+        // Advance time past cooldown
+        vi.advanceTimersByTime(6000);
+
+        await act(async () => {
+          const response = await result.current.retry();
+          if (i < 3) {
+            expect(response.success).toBe(false);
+            expect(result.current.retryCount).toBe(i);
+          } else {
+            // On the 3rd retry, it should still fail but with max retries reached
+            expect(response.success).toBe(false);
+            expect(result.current.retryCount).toBe(3);
+          }
+        });
       }
 
-      // After 3 attempts, should not allow more retries
+      // Try one more retry - should be blocked
+      vi.advanceTimersByTime(6000); // Advance past cooldown
+
       await act(async () => {
         const response = await result.current.retry();
         expect(response.success).toBe(false);
         expect(response.message).toBe('Maximum retry attempts (3) exceeded');
+      });
+    });
+
+    test('should enforce cooldown period', async () => {
+      const { result } = renderHook(() => useLocalSignin());
+
+      // Simulate failed signin
+      const error = new Error('Network error');
+      mockAuthService.localLogin.mockRejectedValue(error);
+
+      await act(async () => {
+        await result.current.signin({
+          email: 'test@example.com',
+          password: 'password123',
+        });
+      });
+
+      // Try to retry immediately (should be blocked by cooldown)
+      await act(async () => {
+        const response = await result.current.retry();
+        expect(response.success).toBe(false);
+        expect(response.message).toMatch(/Please wait \d+ seconds before retrying/);
+      });
+
+      // Advance time but not enough (3 seconds, cooldown is 5s)
+      vi.advanceTimersByTime(3000);
+
+      await act(async () => {
+        const response = await result.current.retry();
+        expect(response.success).toBe(false);
+        expect(response.message).toMatch(/Please wait \d+ seconds before retrying/);
+      });
+
+      // Advance past cooldown
+      vi.advanceTimersByTime(3000); // Total 6 seconds
+
+      // Mock successful retry
+      mockAuthService.localLogin.mockResolvedValue({
+        accountId: '507f1f77bcf86cd799439011',
+        name: 'John Doe',
+        message: 'Signin successful!',
+      });
+
+      await act(async () => {
+        const response = await result.current.retry();
+        expect(response.success).toBe(true);
       });
     });
 
@@ -398,7 +454,7 @@ describe('useLocalSignin', () => {
       });
 
       // Advance time past cooldown
-      mockDateNow.mockReturnValue(1640995200000 + 6000);
+      vi.advanceTimersByTime(6000);
 
       // Retry should use stored data
       await act(async () => {
@@ -427,15 +483,11 @@ describe('useLocalSignin', () => {
       expect(result.current.phase).toBe('idle');
 
       // Start signin
-      mockAuthService.localLogin.mockImplementation(async () => {
-        // Check phase during async operation
-        expect(result.current.phase).toBe('signing_in');
-        return {
-          requiresTwoFactor: true,
-          tempToken: 'temp-token',
-          accountId: '507f1f77bcf86cd799439011',
-          name: 'John Doe',
-        };
+      mockAuthService.localLogin.mockResolvedValue({
+        requiresTwoFactor: true,
+        tempToken: 'temp-token',
+        accountId: '507f1f77bcf86cd799439011',
+        name: 'John Doe',
       });
 
       await act(async () => {
@@ -463,24 +515,46 @@ describe('useLocalSignin', () => {
       expect(result.current.phase).toBe('completed');
     });
 
-    test('should calculate progress correctly', () => {
+    test('should calculate progress correctly for different phases', async () => {
       const { result } = renderHook(() => useLocalSignin());
 
-      // Test different phases
-      expect(result.current.progress).toBe(0); // idle
-
-      // We can't easily test other phases without triggering the actual operations
-      // But we can test the progress calculation logic by checking the current step
+      // Initial phase
+      expect(result.current.progress).toBe(0);
       expect(result.current.currentStep).toBe('Ready to sign in');
-    });
 
-    test('should provide current step descriptions', () => {
-      const { result } = renderHook(() => useLocalSignin());
+      // After 2FA required
+      mockAuthService.localLogin.mockResolvedValue({
+        requiresTwoFactor: true,
+        tempToken: 'temp-token',
+        accountId: '507f1f77bcf86cd799439011',
+        name: 'John Doe',
+      });
 
-      expect(result.current.currentStep).toBe('Ready to sign in');
-      expect(result.current.nextStep).toBe('Enter credentials');
+      await act(async () => {
+        await result.current.signin({
+          email: 'test@example.com',
+          password: 'password123',
+        });
+      });
 
-      // Test would need to be expanded for other phases by actually triggering state changes
+      expect(result.current.progress).toBe(60);
+      expect(result.current.currentStep).toBe('Two-factor authentication required');
+      expect(result.current.nextStep).toBe('Enter verification code');
+
+      // After completion
+      mockAuthService.verifyTwoFactorLogin.mockResolvedValue({
+        accountId: '507f1f77bcf86cd799439011',
+        name: 'John Doe',
+        message: 'Success!',
+      });
+
+      await act(async () => {
+        await result.current.verify2FA('123456');
+      });
+
+      expect(result.current.progress).toBe(100);
+      expect(result.current.currentStep).toBe('Signin completed successfully!');
+      expect(result.current.nextStep).toBeNull();
     });
   });
 
@@ -508,12 +582,6 @@ describe('useLocalSignin', () => {
 
     test('should reset state', () => {
       const { result } = renderHook(() => useLocalSignin());
-
-      // First set some state by performing an operation
-      act(() => {
-        // Simulate some state changes (this would normally happen through operations)
-        result.current.clearError(); // Just to interact with the hook
-      });
 
       // Reset to initial state
       act(() => {

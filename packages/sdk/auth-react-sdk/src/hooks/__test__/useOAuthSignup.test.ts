@@ -13,24 +13,22 @@ vi.mock('../../context/ServicesProvider', () => ({
   useAuthService: () => mockAuthService,
 }));
 
-// Mock Date.now for consistent testing
-const mockDateNow = vi.fn();
-vi.stubGlobal('Date', {
-  ...Date,
-  now: mockDateNow,
-});
-
 describe('useOAuthSignup', () => {
   const testProvider = OAuthProviders.Google;
   const testCallbackUrl = 'http://localhost:3000/oauth/callback';
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockDateNow.mockReturnValue(1640995200000); // 2022-01-01T00:00:00.000Z
+    // Use fake timers - this handles Date mocking automatically!
+    vi.useFakeTimers();
+    // Set a specific time for consistent testing
+    vi.setSystemTime(new Date('2022-01-01T00:00:00.000Z'));
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    // Restore real timers
+    vi.useRealTimers();
   });
 
   describe('Hook Initialization', () => {
@@ -282,8 +280,8 @@ describe('useOAuthSignup', () => {
       expect(result.current.phase).toBe('failed');
       expect(result.current.canRetry).toBe(false); // Still in cooldown
 
-      // Advance time past cooldown
-      mockDateNow.mockReturnValue(1640995200000 + 6000); // 6 seconds later
+      // Advance time past cooldown (5 seconds)
+      vi.advanceTimersByTime(6000);
 
       expect(result.current.canRetry).toBe(true);
 
@@ -317,7 +315,7 @@ describe('useOAuthSignup', () => {
         });
 
         if (i < 2) {
-          mockDateNow.mockReturnValue(1640995200000 + (i + 1) * 6000);
+          vi.advanceTimersByTime(6000); // Advance past cooldown
           await act(async () => {
             await result.current.retry();
           });
@@ -364,7 +362,7 @@ describe('useOAuthSignup', () => {
       });
 
       // Advance time past cooldown
-      mockDateNow.mockReturnValue(1640995200000 + 6000);
+      vi.advanceTimersByTime(6000);
 
       // Retry should use stored data
       await act(async () => {
