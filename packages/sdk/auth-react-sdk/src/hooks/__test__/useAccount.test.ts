@@ -17,37 +17,11 @@ const mockAccountService = {
   updateAccount: vi.fn(),
 };
 
-const mockUseSession = {
-  currentAccountId: null as string | null,
-  setCurrentAccount: vi.fn(),
-  load: vi.fn(),
-};
-
-// Mock the hooks and services
-vi.mock('../hooks/useSession', () => ({
-  useSession: () => mockUseSession,
-}));
-
+// Mock the services
 vi.mock('../../context/ServicesProvider', () => ({
   useAuthService: () => mockAuthService,
   useAccountService: () => mockAccountService,
 }));
-
-// Mock the store
-const mockShouldLoadAccount = vi.fn();
-const mockStoreActions = {
-  setAccountStatus: vi.fn(),
-  setAccountData: vi.fn(),
-  setAccountError: vi.fn(),
-  getAccountState: vi.fn(),
-  shouldLoadAccount: mockShouldLoadAccount,
-};
-
-vi.mock('../../store/useAppStore', () => ({
-  useAppStore: vi.fn(),
-}));
-
-const mockUseAppStore = vi.mocked(useAppStore);
 
 describe('useAccount', () => {
   const accountId = '507f1f77bcf86cd799439011';
@@ -74,29 +48,31 @@ describe('useAccount', () => {
     },
   };
 
-  const defaultAccountState = {
-    data: null,
-    status: 'idle' as const,
-    currentOperation: null,
-    error: null,
-    lastLoaded: null,
-  };
-
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Setup default mocks
-    mockUseSession.currentAccountId = currentAccountId;
-    mockShouldLoadAccount.mockReturnValue(false);
-
-    mockUseAppStore.mockImplementation((selector) => {
-      if (typeof selector === 'function') {
-        return selector({
-          ...mockStoreActions,
-          getAccountState: (id: string) => (id === accountId ? defaultAccountState : undefined),
-        } as any);
-      }
-      return mockStoreActions;
+    // Reset store to clean state using direct access
+    useAppStore.setState({
+      session: {
+        data: {
+          hasSession: true,
+          accountIds: [currentAccountId, differentAccountId],
+          currentAccountId: currentAccountId,
+          isValid: true,
+        },
+        status: 'success',
+        currentOperation: null,
+        error: null,
+        lastLoaded: Date.now(),
+      },
+      accounts: {},
+      sessionAccounts: {
+        data: [],
+        status: 'idle',
+        currentOperation: null,
+        error: null,
+        lastLoaded: null,
+      },
     });
   });
 
@@ -134,7 +110,29 @@ describe('useAccount', () => {
     });
 
     test('should handle null current account ID', () => {
-      mockUseSession.currentAccountId = null;
+      // Set current account to null in store
+      useAppStore.setState({
+        session: {
+          data: {
+            hasSession: true,
+            accountIds: [accountId, differentAccountId],
+            currentAccountId: null,
+            isValid: true,
+          },
+          status: 'success',
+          currentOperation: null,
+          error: null,
+          lastLoaded: Date.now(),
+        },
+        accounts: {},
+        sessionAccounts: {
+          data: [],
+          status: 'idle',
+          currentOperation: null,
+          error: null,
+          lastLoaded: null,
+        },
+      });
 
       const { result } = renderHook(() => useAccount());
 
@@ -146,198 +144,284 @@ describe('useAccount', () => {
 
   describe('Account Loading', () => {
     test('should load account automatically when autoLoad is true', async () => {
-      mockShouldLoadAccount.mockReturnValue(true);
+      // Mock shouldLoadAccount to return true
+      const originalShouldLoadAccount = useAppStore.getState().shouldLoadAccount;
+      useAppStore.getState().shouldLoadAccount = vi.fn().mockReturnValue(true);
+
       mockAccountService.getAccount.mockResolvedValue(mockAccount);
 
-      const setAccountStatus = vi.fn();
-      const setAccountData = vi.fn();
-
-      mockUseAppStore.mockImplementation((selector) => {
-        if (typeof selector === 'function') {
-          return selector({
-            ...mockStoreActions,
-            setAccountStatus,
-            setAccountData,
-            getAccountState: () => defaultAccountState,
-            shouldLoadAccount: mockShouldLoadAccount,
-          } as any);
-        }
-        return mockStoreActions;
-      });
-
-      renderHook(() => useAccount(accountId, { autoLoad: true }));
+      const { unmount } = renderHook(() => useAccount(accountId, { autoLoad: true }));
 
       // Wait for useEffect to run
       await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await new Promise((resolve) => setTimeout(resolve, 10));
       });
 
       expect(mockAccountService.getAccount).toHaveBeenCalledWith(accountId);
-      expect(setAccountStatus).toHaveBeenCalledWith(accountId, 'loading', 'load');
-      expect(setAccountData).toHaveBeenCalledWith(accountId, mockAccount);
+
+      // Check that store was updated
+      const currentState = useAppStore.getState();
+      expect(currentState.accounts[accountId]?.data).toEqual(mockAccount);
+      expect(currentState.accounts[accountId]?.status).toBe('success');
+
+      // Restore original function
+      useAppStore.getState().shouldLoadAccount = originalShouldLoadAccount;
+      unmount();
     });
 
     test('should not load account when autoLoad is false', () => {
-      mockShouldLoadAccount.mockReturnValue(true);
+      const originalShouldLoadAccount = useAppStore.getState().shouldLoadAccount;
+      useAppStore.getState().shouldLoadAccount = vi.fn().mockReturnValue(true);
 
-      renderHook(() => useAccount(accountId, { autoLoad: false }));
+      const { unmount } = renderHook(() => useAccount(accountId, { autoLoad: false }));
 
       expect(mockAccountService.getAccount).not.toHaveBeenCalled();
+
+      // Restore original function
+      useAppStore.getState().shouldLoadAccount = originalShouldLoadAccount;
+      unmount();
     });
 
     test('should not load account when shouldLoadAccount returns false', () => {
-      mockShouldLoadAccount.mockReturnValue(false);
+      const originalShouldLoadAccount = useAppStore.getState().shouldLoadAccount;
+      useAppStore.getState().shouldLoadAccount = vi.fn().mockReturnValue(false);
 
-      renderHook(() => useAccount(accountId, { autoLoad: true }));
+      const { unmount } = renderHook(() => useAccount(accountId, { autoLoad: true }));
 
       expect(mockAccountService.getAccount).not.toHaveBeenCalled();
+
+      // Restore original function
+      useAppStore.getState().shouldLoadAccount = originalShouldLoadAccount;
+      unmount();
     });
 
     test('should handle loading errors', async () => {
-      mockShouldLoadAccount.mockReturnValue(true);
+      const originalShouldLoadAccount = useAppStore.getState().shouldLoadAccount;
+      useAppStore.getState().shouldLoadAccount = vi.fn().mockReturnValue(true);
+
       const error = new AuthSDKError('Account not found', ApiErrorCode.ACCOUNT_NOT_FOUND);
       mockAccountService.getAccount.mockRejectedValue(error);
 
-      const setAccountStatus = vi.fn();
-      const setAccountError = vi.fn();
-
-      mockUseAppStore.mockImplementation((selector) => {
-        if (typeof selector === 'function') {
-          return selector({
-            ...mockStoreActions,
-            setAccountStatus,
-            setAccountError,
-            getAccountState: () => defaultAccountState,
-            shouldLoadAccount: mockShouldLoadAccount,
-          } as any);
-        }
-        return mockStoreActions;
-      });
-
-      renderHook(() => useAccount(accountId, { autoLoad: true }));
+      const { unmount } = renderHook(() => useAccount(accountId, { autoLoad: true }));
 
       await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await new Promise((resolve) => setTimeout(resolve, 10));
       });
 
-      expect(setAccountError).toHaveBeenCalledWith(accountId, 'Account not found');
+      // Check that error was set in store
+      const currentState = useAppStore.getState();
+      expect(currentState.accounts[accountId]?.error).toBe('Account not found');
+      expect(currentState.accounts[accountId]?.status).toBe('error');
+
+      // Restore original function
+      useAppStore.getState().shouldLoadAccount = originalShouldLoadAccount;
+      unmount();
     });
 
     test('should update store on successful load', async () => {
-      mockShouldLoadAccount.mockReturnValue(true);
+      const originalShouldLoadAccount = useAppStore.getState().shouldLoadAccount;
+      useAppStore.getState().shouldLoadAccount = vi.fn().mockReturnValue(true);
+
       mockAccountService.getAccount.mockResolvedValue(mockAccount);
 
-      const setAccountData = vi.fn();
-
-      mockUseAppStore.mockImplementation((selector) => {
-        if (typeof selector === 'function') {
-          return selector({
-            ...mockStoreActions,
-            setAccountData,
-            setAccountStatus: vi.fn(),
-            getAccountState: () => defaultAccountState,
-            shouldLoadAccount: mockShouldLoadAccount,
-          } as any);
-        }
-        return mockStoreActions;
-      });
-
-      renderHook(() => useAccount(accountId, { autoLoad: true }));
+      const { unmount } = renderHook(() => useAccount(accountId, { autoLoad: true }));
 
       await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await new Promise((resolve) => setTimeout(resolve, 10));
       });
 
-      expect(setAccountData).toHaveBeenCalledWith(accountId, mockAccount);
+      // Check that account was set in store
+      const currentState = useAppStore.getState();
+      expect(currentState.accounts[accountId]?.data).toEqual(mockAccount);
+
+      // Restore original function
+      useAppStore.getState().shouldLoadAccount = originalShouldLoadAccount;
+      unmount();
     });
 
     test('should not load when no account ID available', () => {
-      mockUseSession.currentAccountId = null;
-      mockShouldLoadAccount.mockReturnValue(true);
+      // Set current account to null
+      useAppStore.setState({
+        session: {
+          data: {
+            hasSession: true,
+            accountIds: [],
+            currentAccountId: null,
+            isValid: true,
+          },
+          status: 'success',
+          currentOperation: null,
+          error: null,
+          lastLoaded: Date.now(),
+        },
+        accounts: {},
+        sessionAccounts: {
+          data: [],
+          status: 'idle',
+          currentOperation: null,
+          error: null,
+          lastLoaded: null,
+        },
+      });
 
-      renderHook(() => useAccount({ autoLoad: true }));
+      const originalShouldLoadAccount = useAppStore.getState().shouldLoadAccount;
+      useAppStore.getState().shouldLoadAccount = vi.fn().mockReturnValue(true);
+
+      const { unmount } = renderHook(() => useAccount({ autoLoad: true }));
 
       expect(mockAccountService.getAccount).not.toHaveBeenCalled();
+
+      // Restore original function
+      useAppStore.getState().shouldLoadAccount = originalShouldLoadAccount;
+      unmount();
     });
   });
 
   describe('Derived State', () => {
     test('should determine if account exists', () => {
       // Test with account data
-      const storeWithAccount = {
-        ...mockStoreActions,
-        getAccountState: () => ({
-          ...defaultAccountState,
-          data: mockAccount,
-        }),
-      };
-
-      mockUseAppStore.mockImplementation((selector) => {
-        if (typeof selector === 'function') {
-          return selector(storeWithAccount as any);
-        }
-        return storeWithAccount;
+      useAppStore.setState({
+        session: {
+          data: {
+            hasSession: true,
+            accountIds: [accountId],
+            currentAccountId: accountId,
+            isValid: true,
+          },
+          status: 'success',
+          currentOperation: null,
+          error: null,
+          lastLoaded: Date.now(),
+        },
+        accounts: {
+          [accountId]: {
+            data: mockAccount,
+            status: 'success',
+            currentOperation: null,
+            error: null,
+            lastLoaded: Date.now(),
+          },
+        },
+        sessionAccounts: {
+          data: [],
+          status: 'idle',
+          currentOperation: null,
+          error: null,
+          lastLoaded: null,
+        },
       });
 
-      const { result } = renderHook(() => useAccount(accountId));
+      const { result, unmount } = renderHook(() => useAccount(accountId));
 
       expect(result.current.exists).toBe(true);
       expect(result.current.data).toEqual(mockAccount);
+      unmount();
 
-      // Test without account data
-      const storeWithoutAccount = {
-        ...mockStoreActions,
-        getAccountState: () => defaultAccountState,
-      };
-
-      mockUseAppStore.mockImplementation((selector) => {
-        if (typeof selector === 'function') {
-          return selector(storeWithoutAccount as any);
-        }
-        return storeWithoutAccount;
+      // Test without account data - reset to clean state
+      useAppStore.setState({
+        session: {
+          data: {
+            hasSession: true,
+            accountIds: [accountId],
+            currentAccountId: accountId,
+            isValid: true,
+          },
+          status: 'success',
+          currentOperation: null,
+          error: null,
+          lastLoaded: Date.now(),
+        },
+        accounts: {},
+        sessionAccounts: {
+          data: [],
+          status: 'idle',
+          currentOperation: null,
+          error: null,
+          lastLoaded: null,
+        },
       });
 
-      const { result: result2 } = renderHook(() => useAccount(accountId));
+      const { result: result2, unmount: unmount2 } = renderHook(() => useAccount(accountId));
 
       expect(result2.current.exists).toBe(false);
       expect(result2.current.data).toBeNull();
+      unmount2();
     });
 
     test('should determine if account is current', () => {
-      mockUseSession.currentAccountId = currentAccountId;
-
       // Test with current account
-      const { result: result1 } = renderHook(() => useAccount(currentAccountId));
+      const { result: result1, unmount: unmount1 } = renderHook(() => useAccount(currentAccountId));
       expect(result1.current.isCurrent).toBe(true);
+      unmount1();
 
       // Test with different account
-      const { result: result2 } = renderHook(() => useAccount(differentAccountId));
+      const { result: result2, unmount: unmount2 } = renderHook(() => useAccount(differentAccountId));
       expect(result2.current.isCurrent).toBe(false);
+      unmount2();
 
       // Test with no current account
-      mockUseSession.currentAccountId = null;
-      const { result: result3 } = renderHook(() => useAccount(currentAccountId));
+      useAppStore.setState({
+        session: {
+          data: {
+            hasSession: true,
+            accountIds: [currentAccountId, differentAccountId],
+            currentAccountId: null,
+            isValid: true,
+          },
+          status: 'success',
+          currentOperation: null,
+          error: null,
+          lastLoaded: Date.now(),
+        },
+        accounts: {},
+        sessionAccounts: {
+          data: [],
+          status: 'idle',
+          currentOperation: null,
+          error: null,
+          lastLoaded: null,
+        },
+      });
+
+      const { result: result3, unmount: unmount3 } = renderHook(() => useAccount(currentAccountId));
       expect(result3.current.isCurrent).toBe(false);
+      unmount3();
     });
 
     test('should provide status helpers', () => {
       // Test loading state
-      const storeWithLoading = {
-        ...mockStoreActions,
-        getAccountState: () => ({
-          ...defaultAccountState,
-          status: 'loading' as const,
-        }),
-      };
-
-      mockUseAppStore.mockImplementation((selector) => {
-        if (typeof selector === 'function') {
-          return selector(storeWithLoading as any);
-        }
-        return storeWithLoading;
+      useAppStore.setState({
+        session: {
+          data: {
+            hasSession: true,
+            accountIds: [accountId],
+            currentAccountId: accountId,
+            isValid: true,
+          },
+          status: 'success',
+          currentOperation: null,
+          error: null,
+          lastLoaded: Date.now(),
+        },
+        accounts: {
+          [accountId]: {
+            data: null,
+            status: 'loading',
+            currentOperation: 'load',
+            error: null,
+            lastLoaded: null,
+          },
+        },
+        sessionAccounts: {
+          data: [],
+          status: 'idle',
+          currentOperation: null,
+          error: null,
+          lastLoaded: null,
+        },
       });
 
-      const { result: result1 } = renderHook(() => useAccount(accountId));
+      const { result: result1, unmount: unmount1 } = renderHook(() => useAccount(accountId));
 
       expect(result1.current.isLoading).toBe(true);
       expect(result1.current.isUpdating).toBe(false);
@@ -346,52 +430,85 @@ describe('useAccount', () => {
       expect(result1.current.isIdle).toBe(false);
       expect(result1.current.hasError).toBe(false);
       expect(result1.current.isSuccess).toBe(false);
+      unmount1();
 
       // Test error state
-      const storeWithError = {
-        ...mockStoreActions,
-        getAccountState: () => ({
-          ...defaultAccountState,
-          status: 'error' as const,
-          error: 'Something went wrong',
-        }),
-      };
-
-      mockUseAppStore.mockImplementation((selector) => {
-        if (typeof selector === 'function') {
-          return selector(storeWithError as any);
-        }
-        return storeWithError;
+      useAppStore.setState({
+        session: {
+          data: {
+            hasSession: true,
+            accountIds: [accountId],
+            currentAccountId: accountId,
+            isValid: true,
+          },
+          status: 'success',
+          currentOperation: null,
+          error: null,
+          lastLoaded: Date.now(),
+        },
+        accounts: {
+          [accountId]: {
+            data: null,
+            status: 'error',
+            currentOperation: null,
+            error: 'Something went wrong',
+            lastLoaded: null,
+          },
+        },
+        sessionAccounts: {
+          data: [],
+          status: 'idle',
+          currentOperation: null,
+          error: null,
+          lastLoaded: null,
+        },
       });
 
-      const { result: result2 } = renderHook(() => useAccount(accountId));
+      const { result: result2, unmount: unmount2 } = renderHook(() => useAccount(accountId));
 
       expect(result2.current.hasError).toBe(true);
       expect(result2.current.error).toBe('Something went wrong');
       expect(result2.current.isLoading).toBe(false);
+      unmount2();
 
       // Test success state
-      const storeWithSuccess = {
-        ...mockStoreActions,
-        getAccountState: () => ({
-          ...defaultAccountState,
-          status: 'success' as const,
-          data: mockAccount,
-        }),
-      };
-
-      mockUseAppStore.mockImplementation((selector) => {
-        if (typeof selector === 'function') {
-          return selector(storeWithSuccess as any);
-        }
-        return storeWithSuccess;
+      useAppStore.setState({
+        session: {
+          data: {
+            hasSession: true,
+            accountIds: [accountId],
+            currentAccountId: accountId,
+            isValid: true,
+          },
+          status: 'success',
+          currentOperation: null,
+          error: null,
+          lastLoaded: Date.now(),
+        },
+        accounts: {
+          [accountId]: {
+            data: mockAccount,
+            status: 'success',
+            currentOperation: null,
+            error: null,
+            lastLoaded: Date.now(),
+          },
+        },
+        sessionAccounts: {
+          data: [],
+          status: 'idle',
+          currentOperation: null,
+          error: null,
+          lastLoaded: null,
+        },
       });
 
-      const { result: result3 } = renderHook(() => useAccount(accountId));
+      const { result: result3, unmount: unmount3 } = renderHook(() => useAccount(accountId));
 
       expect(result3.current.isSuccess).toBe(true);
       expect(result3.current.hasError).toBe(false);
       expect(result3.current.isLoading).toBe(false);
+      unmount3();
     });
   });
 
@@ -400,88 +517,80 @@ describe('useAccount', () => {
       const error = new Error('Network error');
       mockAccountService.getAccount.mockRejectedValue(error);
 
-      const setAccountError = vi.fn();
-
-      mockUseAppStore.mockImplementation((selector) => {
-        if (typeof selector === 'function') {
-          return selector({
-            ...mockStoreActions,
-            setAccountError,
-            setAccountStatus: vi.fn(),
-            getAccountState: () => defaultAccountState,
-          } as any);
-        }
-        return mockStoreActions;
-      });
-
-      const { result } = renderHook(() => useAccount(accountId));
+      const { result, unmount } = renderHook(() => useAccount(accountId));
 
       await act(async () => {
         const loadResult = await result.current.load();
         expect(loadResult).toBeNull();
       });
 
-      expect(setAccountError).toHaveBeenCalledWith(accountId, 'Failed to load account: Network error');
+      // Check that error was set in store
+      const currentState = useAppStore.getState();
+      expect(currentState.accounts[accountId]?.error).toBe('Failed to load account: Network error');
+
+      unmount();
     });
 
     test('should parse API errors correctly', async () => {
       const authSDKError = new AuthSDKError('Invalid account ID', ApiErrorCode.ACCOUNT_NOT_FOUND, 404);
       mockAccountService.getAccount.mockRejectedValue(authSDKError);
 
-      const setAccountError = vi.fn();
-
-      mockUseAppStore.mockImplementation((selector) => {
-        if (typeof selector === 'function') {
-          return selector({
-            ...mockStoreActions,
-            setAccountError,
-            setAccountStatus: vi.fn(),
-            getAccountState: () => defaultAccountState,
-          } as any);
-        }
-        return mockStoreActions;
-      });
-
-      const { result } = renderHook(() => useAccount(accountId));
+      const { result, unmount } = renderHook(() => useAccount(accountId));
 
       await act(async () => {
         await result.current.load();
       });
 
-      expect(setAccountError).toHaveBeenCalledWith(accountId, 'Invalid account ID');
+      // Check that error was set in store
+      const currentState = useAppStore.getState();
+      expect(currentState.accounts[accountId]?.error).toBe('Invalid account ID');
+
+      unmount();
     });
 
     test('should handle generic errors', async () => {
       const genericError = { message: 'Unknown error' };
       mockAccountService.getAccount.mockRejectedValue(genericError);
 
-      const setAccountError = vi.fn();
-
-      mockUseAppStore.mockImplementation((selector) => {
-        if (typeof selector === 'function') {
-          return selector({
-            ...mockStoreActions,
-            setAccountError,
-            setAccountStatus: vi.fn(),
-            getAccountState: () => defaultAccountState,
-          } as any);
-        }
-        return mockStoreActions;
-      });
-
-      const { result } = renderHook(() => useAccount(accountId));
+      const { result, unmount } = renderHook(() => useAccount(accountId));
 
       await act(async () => {
         await result.current.load();
       });
 
-      expect(setAccountError).toHaveBeenCalledWith(accountId, 'Failed to load account: Unknown error');
+      // Check that error was set in store
+      const currentState = useAppStore.getState();
+      expect(currentState.accounts[accountId]?.error).toBe('Failed to load account: Unknown error');
+
+      unmount();
     });
 
     test('should handle operations when no account ID available', async () => {
-      mockUseSession.currentAccountId = null;
+      // Set current account to null
+      useAppStore.setState({
+        session: {
+          data: {
+            hasSession: true,
+            accountIds: [],
+            currentAccountId: null,
+            isValid: true,
+          },
+          status: 'success',
+          currentOperation: null,
+          error: null,
+          lastLoaded: Date.now(),
+        },
+        accounts: {},
+        sessionAccounts: {
+          data: [],
+          status: 'idle',
+          currentOperation: null,
+          error: null,
+          lastLoaded: null,
+        },
+      });
 
-      const { result } = renderHook(() => useAccount());
+      const { result, unmount } = renderHook(() => useAccount());
 
       // All operations should return null/void gracefully
       await act(async () => {
@@ -503,27 +612,44 @@ describe('useAccount', () => {
       expect(mockAccountService.getAccount).not.toHaveBeenCalled();
       expect(mockAuthService.logout).not.toHaveBeenCalled();
       expect(mockAuthService.changePassword).not.toHaveBeenCalled();
+
+      unmount();
     });
 
     test('should handle store access with missing account state', () => {
-      // Mock store to return undefined for account state
-      mockUseAppStore.mockImplementation((selector) => {
-        if (typeof selector === 'function') {
-          return selector({
-            ...mockStoreActions,
-            getAccountState: () => undefined,
-          } as any);
-        }
-        return mockStoreActions;
+      // Clean state with no accounts
+      useAppStore.setState({
+        session: {
+          data: {
+            hasSession: true,
+            accountIds: [accountId],
+            currentAccountId: accountId,
+            isValid: true,
+          },
+          status: 'success',
+          currentOperation: null,
+          error: null,
+          lastLoaded: Date.now(),
+        },
+        accounts: {}, // No account data
+        sessionAccounts: {
+          data: [],
+          status: 'idle',
+          currentOperation: null,
+          error: null,
+          lastLoaded: null,
+        },
       });
 
-      const { result } = renderHook(() => useAccount(accountId));
+      const { result, unmount } = renderHook(() => useAccount(accountId));
 
       // Should use INITIAL_ACCOUNT_STATE when store returns undefined
       expect(result.current.data).toBeNull();
       expect(result.current.status).toBe('idle');
       expect(result.current.error).toBeNull();
       expect(result.current.exists).toBe(false);
+
+      unmount();
     });
   });
 
@@ -531,31 +657,116 @@ describe('useAccount', () => {
     test('should perform manual load with proper state management', async () => {
       mockAccountService.getAccount.mockResolvedValue(mockAccount);
 
-      const setAccountStatus = vi.fn();
-      const setAccountData = vi.fn();
-
-      mockUseAppStore.mockImplementation((selector) => {
-        if (typeof selector === 'function') {
-          return selector({
-            ...mockStoreActions,
-            setAccountStatus,
-            setAccountData,
-            getAccountState: () => defaultAccountState,
-          } as any);
-        }
-        return mockStoreActions;
-      });
-
-      const { result } = renderHook(() => useAccount(accountId, { autoLoad: false }));
+      const { result, unmount } = renderHook(() => useAccount(accountId, { autoLoad: false }));
 
       await act(async () => {
         const loadResult = await result.current.load();
         expect(loadResult).toEqual(mockAccount);
       });
 
-      expect(setAccountStatus).toHaveBeenCalledWith(accountId, 'loading', 'load');
       expect(mockAccountService.getAccount).toHaveBeenCalledWith(accountId);
-      expect(setAccountData).toHaveBeenCalledWith(accountId, mockAccount);
+
+      // Check that store was updated
+      const currentState = useAppStore.getState();
+      expect(currentState.accounts[accountId]?.data).toEqual(mockAccount);
+      expect(currentState.accounts[accountId]?.status).toBe('success');
+
+      unmount();
+    });
+  });
+
+  describe('Account Operations', () => {
+    test('should handle logout operation', async () => {
+      mockAuthService.logout.mockResolvedValue({ message: 'Logged out successfully' });
+
+      const { result, unmount } = renderHook(() => useAccount(accountId));
+
+      await act(async () => {
+        await result.current.logout();
+      });
+
+      expect(mockAuthService.logout).toHaveBeenCalledWith(accountId);
+
+      // Check that status was updated
+      const currentState = useAppStore.getState();
+      expect(currentState.accounts[accountId]?.status).toBe('success');
+
+      unmount();
+    });
+
+    test('should handle change password operation', async () => {
+      const passwordData = {
+        oldPassword: 'oldpass',
+        newPassword: 'newpass',
+        confirmPassword: 'newpass',
+      };
+
+      mockAuthService.changePassword.mockResolvedValue({ message: 'Password changed' });
+
+      const { result, unmount } = renderHook(() => useAccount(accountId));
+
+      await act(async () => {
+        const changeResult = await result.current.changePassword(passwordData);
+        expect(changeResult).toEqual({ message: 'Password changed' });
+      });
+
+      expect(mockAuthService.changePassword).toHaveBeenCalledWith(accountId, passwordData);
+
+      unmount();
+    });
+
+    test('should handle update account operation', async () => {
+      const updates = {
+        firstName: 'Jane',
+        lastName: 'Smith',
+      };
+
+      const updatedAccount = {
+        ...mockAccount,
+        userDetails: { ...mockAccount.userDetails, firstName: 'Jane', lastName: 'Smith' },
+      };
+      mockAccountService.updateAccount.mockResolvedValue(updatedAccount);
+
+      const { result, unmount } = renderHook(() => useAccount(accountId));
+
+      await act(async () => {
+        const updateResult = await result.current.updateAccount(updates);
+        expect(updateResult).toEqual(updatedAccount);
+      });
+
+      expect(mockAccountService.updateAccount).toHaveBeenCalledWith(accountId, updates);
+
+      // Check that store was updated with new account data
+      const currentState = useAppStore.getState();
+      expect(currentState.accounts[accountId]?.data).toEqual(updatedAccount);
+
+      unmount();
+    });
+
+    test('should handle token operations', async () => {
+      const tokenInfo = { isValid: true, expiresAt: Date.now() + 3600000 };
+      mockAuthService.getAccessTokenInfo.mockResolvedValue(tokenInfo);
+      mockAuthService.revokeTokens.mockResolvedValue({ message: 'Tokens revoked' });
+
+      const { result, unmount } = renderHook(() => useAccount(accountId));
+
+      // Test get token information
+      await act(async () => {
+        const tokenResult = await result.current.getTokenInformation();
+        expect(tokenResult).toEqual(tokenInfo);
+      });
+
+      expect(mockAuthService.getAccessTokenInfo).toHaveBeenCalledWith(accountId);
+
+      // Test revoke tokens
+      await act(async () => {
+        const revokeResult = await result.current.revokeTokens();
+        expect(revokeResult).toEqual({ message: 'Tokens revoked' });
+      });
+
+      expect(mockAuthService.revokeTokens).toHaveBeenCalledWith(accountId);
+
+      unmount();
     });
   });
 });
