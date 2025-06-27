@@ -1,9 +1,9 @@
-import { describe, test, expect, vi, beforeEach } from 'vitest';
-import axios from 'axios';
+import { describe, test, expect, vi, beforeEach, MockedFunction } from 'vitest';
+import axios, { CreateAxiosDefaults, AxiosInstance } from 'axios';
 import { HttpClient } from '../HttpClient';
 import { AuthSDKError, ApiErrorCode, SDKConfig } from '../../types';
 
-// Mock axios
+// Mock axios with proper typing
 vi.mock('axios');
 const mockedAxios = vi.mocked(axios);
 
@@ -34,7 +34,10 @@ describe('HttpClient', () => {
       put: vi.fn(),
     };
 
-    mockedAxios.create.mockReturnValue(mockAxiosInstance);
+    // Fix: Mock axios.create to return the mocked instance
+    (
+      mockedAxios.create as unknown as MockedFunction<(config?: CreateAxiosDefaults<any>) => AxiosInstance>
+    ).mockReturnValue(mockAxiosInstance as AxiosInstance);
   });
 
   describe('Configuration and Setup', () => {
@@ -186,10 +189,10 @@ describe('HttpClient', () => {
 
       try {
         successHandler(mockResponse);
-      } catch (error) {
+      } catch (error: unknown) {
         expect(error).toBeInstanceOf(AuthSDKError);
-        expect(error.message).toBe('Invalid input data');
-        expect(error.code).toBe(ApiErrorCode.VALIDATION_ERROR);
+        expect((error as AuthSDKError).message).toBe('Invalid input data');
+        expect((error as AuthSDKError).code).toBe(ApiErrorCode.VALIDATION_ERROR);
       }
     });
 
@@ -209,10 +212,10 @@ describe('HttpClient', () => {
 
       try {
         errorHandler(networkError);
-      } catch (error) {
+      } catch (error: unknown) {
         expect(error).toBeInstanceOf(AuthSDKError);
-        expect(error.message).toBe('Network Error');
-        expect(error.code).toBe(ApiErrorCode.NETWORK_ERROR);
+        expect((error as AuthSDKError).message).toBe('Network Error');
+        expect((error as AuthSDKError).code).toBe(ApiErrorCode.NETWORK_ERROR);
       }
     });
 
@@ -232,10 +235,10 @@ describe('HttpClient', () => {
 
       try {
         errorHandler(timeoutError);
-      } catch (error) {
+      } catch (error: unknown) {
         expect(error).toBeInstanceOf(AuthSDKError);
-        expect(error.message).toBe('timeout of 30000ms exceeded');
-        expect(error.code).toBe(ApiErrorCode.NETWORK_ERROR);
+        expect((error as AuthSDKError).message).toBe('timeout of 30000ms exceeded');
+        expect((error as AuthSDKError).code).toBe(ApiErrorCode.NETWORK_ERROR);
       }
     });
 
@@ -262,11 +265,11 @@ describe('HttpClient', () => {
 
       try {
         errorHandler(errorWithResponse);
-      } catch (error) {
+      } catch (error: unknown) {
         expect(error).toBeInstanceOf(AuthSDKError);
-        expect(error.message).toBe('Authentication failed');
-        expect(error.code).toBe(ApiErrorCode.AUTH_FAILED);
-        expect(error.statusCode).toBe(401);
+        expect((error as AuthSDKError).message).toBe('Authentication failed');
+        expect((error as AuthSDKError).code).toBe(ApiErrorCode.AUTH_FAILED);
+        expect((error as AuthSDKError).statusCode).toBe(401);
       }
     });
 
@@ -288,11 +291,11 @@ describe('HttpClient', () => {
 
       try {
         errorHandler(genericError);
-      } catch (error) {
+      } catch (error: unknown) {
         expect(error).toBeInstanceOf(AuthSDKError);
-        expect(error.message).toBe('Something went wrong');
-        expect(error.code).toBe(ApiErrorCode.NETWORK_ERROR);
-        expect(error.statusCode).toBe(500);
+        expect((error as AuthSDKError).message).toBe('Something went wrong');
+        expect((error as AuthSDKError).code).toBe(ApiErrorCode.NETWORK_ERROR);
+        expect((error as AuthSDKError).statusCode).toBe(500);
       }
     });
 

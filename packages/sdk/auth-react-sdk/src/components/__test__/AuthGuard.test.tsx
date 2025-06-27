@@ -6,8 +6,8 @@ import { useSession } from '../../hooks/useSession';
 import { useConfig } from '../../context/ServicesProvider';
 
 // Mock dependencies
-vi.mock('../hooks/useSession');
-vi.mock('../context/ServicesProvider');
+vi.mock('../../hooks/useSession');
+vi.mock('../../context/ServicesProvider');
 
 const mockUseSession = vi.mocked(useSession);
 const mockUseConfig = vi.mocked(useConfig);
@@ -38,7 +38,7 @@ const CustomRedirectComponent = ({ destination }: { destination: string }) => (
 describe('AuthGuard', () => {
   const defaultConfig = {
     sdkConfig: {
-      backendUrl: undefined,
+      backendUrl: 'https://api.example.com',
       frontendProxyUrl: undefined,
     },
   };
@@ -502,6 +502,7 @@ describe('AuthGuard', () => {
     test('should apply proxy URLs to redirect URLs', () => {
       mockUseConfig.mockReturnValue({
         sdkConfig: {
+          backendUrl: 'https://api.example.com',
           frontendProxyUrl: '/app',
         },
       });
@@ -714,7 +715,7 @@ describe('AuthGuard', () => {
     test('should handle browser environment check', () => {
       // Mock typeof window === 'undefined'
       const originalWindow = global.window;
-      // @ts-ignore
+      // @ts-expect-error - Testing server-side rendering
       delete global.window;
 
       mockUseSession.mockReturnValue({
