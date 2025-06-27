@@ -1,28 +1,30 @@
-import { describe, test, expect, vi, beforeEach } from 'vitest';
+import { describe, test, expect, vi, beforeEach, Mock } from 'vitest';
 import { AuthService } from '../AuthService';
 import { HttpClient } from '../../client/HttpClient';
 import { OAuthProviders } from '../../types';
 
 // Mock HttpClient
-const mockHttpClient = {
-  get: vi.fn(),
-  post: vi.fn(),
-  patch: vi.fn(),
-  delete: vi.fn(),
-  put: vi.fn(),
-} as unknown as HttpClient;
+const createMockHttpClient = () => ({
+  get: vi.fn() as Mock,
+  post: vi.fn() as Mock,
+  patch: vi.fn() as Mock,
+  delete: vi.fn() as Mock,
+  put: vi.fn() as Mock,
+});
 
 describe('AuthService', () => {
   let authService: AuthService;
+  let mockHttpClient: ReturnType<typeof createMockHttpClient>;
 
   beforeEach(() => {
+    mockHttpClient = createMockHttpClient();
     vi.clearAllMocks();
   });
 
   describe('Service Initialization', () => {
     test('should initialize with HttpClient', () => {
       expect(() => {
-        authService = new AuthService(mockHttpClient);
+        authService = new AuthService(mockHttpClient as unknown as HttpClient);
       }).not.toThrow();
 
       expect(authService).toBeInstanceOf(AuthService);
@@ -31,32 +33,33 @@ describe('AuthService', () => {
     test('should throw error without HttpClient', () => {
       expect(() => {
         // @ts-expect-error - Testing invalid input
-        authService = new AuthService(null);
+        new AuthService(null);
       }).toThrow();
 
       expect(() => {
         // @ts-expect-error - Testing invalid input
-        authService = new AuthService(undefined);
+        new AuthService(undefined);
       }).toThrow();
     });
   });
 
   describe('Validation', () => {
     beforeEach(() => {
-      authService = new AuthService(mockHttpClient);
+      authService = new AuthService(mockHttpClient as unknown as HttpClient);
     });
 
     describe('Account ID Validation', () => {
-      test('should validate account IDs - valid ObjectId', () => {
+      test('should validate account IDs - valid ObjectId', async () => {
         const validAccountId = '507f1f77bcf86cd799439011';
 
+        // Mock successful response
+        mockHttpClient.get.mockResolvedValue({ enabled: false });
+
         // Should not throw for valid ObjectId
-        expect(() => {
-          authService.getTwoFactorStatus(validAccountId);
-        }).not.toThrow();
+        await expect(authService.getTwoFactorStatus(validAccountId)).resolves.toBeDefined();
       });
 
-      test('should validate account IDs - invalid format', () => {
+      test('should validate account IDs - invalid format', async () => {
         const invalidAccountIds = [
           '', // empty
           '   ', // whitespace
@@ -66,28 +69,26 @@ describe('AuthService', () => {
           '507f1f77bcf86cd79943901G', // invalid hex character
         ];
 
-        invalidAccountIds.forEach((invalidId) => {
-          expect(() => {
-            authService.getTwoFactorStatus(invalidId);
-          }).toThrow('Invalid accountId format for 2FA status check. Must be a valid ObjectId.');
-        });
+        for (const invalidId of invalidAccountIds) {
+          await expect(async () => {
+            await authService.getTwoFactorStatus(invalidId);
+          }).rejects.toThrow('Invalid accountId format for 2FA status check. Must be a valid ObjectId.');
+        }
       });
 
-      test('should validate account IDs - null or undefined', () => {
-        expect(() => {
-          // @ts-expect-error - Testing invalid input
-          authService.getTwoFactorStatus(null);
-        }).toThrow('Valid accountId is required for 2FA status check');
+      test('should validate account IDs - null or undefined', async () => {
+        await expect(async () => {
+          await authService.getTwoFactorStatus(null as any);
+        }).rejects.toThrow('Valid accountId is required for 2FA status check');
 
-        expect(() => {
-          // @ts-expect-error - Testing invalid input
-          authService.getTwoFactorStatus(undefined);
-        }).toThrow('Valid accountId is required for 2FA status check');
+        await expect(async () => {
+          await authService.getTwoFactorStatus(undefined as any);
+        }).rejects.toThrow('Valid accountId is required for 2FA status check');
       });
     });
 
     describe('Email Validation', () => {
-      test('should validate email formats - valid emails', () => {
+      test('should validate email formats - valid emails', async () => {
         const validEmails = [
           'test@example.com',
           'user.name@domain.co.uk',
@@ -95,14 +96,20 @@ describe('AuthService', () => {
           'user123@test-domain.com',
         ];
 
-        validEmails.forEach((email) => {
-          expect(() => {
-            authService.requestPasswordReset({ email, callbackUrl: 'https://example.com' });
-          }).not.toThrow();
-        });
+        // Mock successful response
+        mockHttpClient.post.mockResolvedValue({ message: 'Reset email sent' });
+
+        for (const email of validEmails) {
+          await expect(
+            authService.requestPasswordReset({
+              email,
+              callbackUrl: 'https://example.com',
+            }),
+          ).resolves.toBeDefined();
+        }
       });
 
-      test('should validate email formats - invalid emails', () => {
+      test('should validate email formats - invalid emails', async () => {
         const invalidEmails = [
           '', // empty
           '   ', // whitespace
@@ -116,16 +123,19 @@ describe('AuthService', () => {
           'ab', // too short
         ];
 
-        invalidEmails.forEach((email) => {
-          expect(() => {
-            authService.requestPasswordReset({ email, callbackUrl: 'https://example.com' });
-          }).toThrow();
-        });
+        for (const email of invalidEmails) {
+          await expect(async () => {
+            await authService.requestPasswordReset({
+              email,
+              callbackUrl: 'https://example.com',
+            });
+          }).rejects.toThrow();
+        }
       });
     });
 
     describe('URL Validation', () => {
-      test('should validate URLs - valid URLs', () => {
+      test('should validate URLs - valid URLs', async () => {
         const validUrls = [
           'https://example.com',
           'http://localhost:3000',
@@ -133,14 +143,20 @@ describe('AuthService', () => {
           'https://example.com/path?param=value',
         ];
 
-        validUrls.forEach((url) => {
-          expect(() => {
-            authService.requestPasswordReset({ email: 'test@example.com', callbackUrl: url });
-          }).not.toThrow();
-        });
+        // Mock successful response
+        mockHttpClient.post.mockResolvedValue({ message: 'Reset email sent' });
+
+        for (const url of validUrls) {
+          await expect(
+            authService.requestPasswordReset({
+              email: 'test@example.com',
+              callbackUrl: url,
+            }),
+          ).resolves.toBeDefined();
+        }
       });
 
-      test('should validate URLs - invalid URLs', () => {
+      test('should validate URLs - invalid URLs', async () => {
         const invalidUrls = [
           '', // empty
           '   ', // whitespace
@@ -149,34 +165,40 @@ describe('AuthService', () => {
           'javascript:alert(1)', // potentially dangerous
         ];
 
-        invalidUrls.forEach((url) => {
-          expect(() => {
-            authService.requestPasswordReset({ email: 'test@example.com', callbackUrl: url });
-          }).toThrow();
-        });
+        for (const url of invalidUrls) {
+          await expect(async () => {
+            await authService.requestPasswordReset({
+              email: 'test@example.com',
+              callbackUrl: url,
+            });
+          }).rejects.toThrow();
+        }
       });
     });
 
     describe('Password Validation', () => {
-      test('should validate passwords - valid passwords', () => {
+      test('should validate passwords - valid passwords', async () => {
         const validPasswords = [
           'password123', // 8+ characters
           'verylongpasswordwithmanychars', // long password
           'P@ssw0rd!', // special characters
         ];
 
-        validPasswords.forEach((password) => {
-          expect(() => {
+        // Mock successful response
+        mockHttpClient.post.mockResolvedValue({ message: 'Password changed' });
+
+        for (const password of validPasswords) {
+          await expect(
             authService.changePassword('507f1f77bcf86cd799439011', {
               oldPassword: password,
               newPassword: 'newpassword123',
               confirmPassword: 'newpassword123',
-            });
-          }).not.toThrow();
-        });
+            }),
+          ).resolves.toBeDefined();
+        }
       });
 
-      test('should validate passwords - invalid passwords', () => {
+      test('should validate passwords - invalid passwords', async () => {
         const invalidPasswords = [
           '', // empty
           '   ', // whitespace
@@ -184,34 +206,35 @@ describe('AuthService', () => {
           'a'.repeat(129), // too long (> 128 chars)
         ];
 
-        invalidPasswords.forEach((password) => {
-          expect(() => {
-            authService.changePassword('507f1f77bcf86cd799439011', {
+        for (const password of invalidPasswords) {
+          await expect(async () => {
+            await authService.changePassword('507f1f77bcf86cd799439011', {
               oldPassword: password,
               newPassword: 'newpassword123',
               confirmPassword: 'newpassword123',
             });
-          }).toThrow();
-        });
+          }).rejects.toThrow();
+        }
       });
     });
 
     describe('Token Validation', () => {
-      test('should validate tokens - valid tokens', () => {
+      test('should validate tokens - valid tokens', async () => {
         const validTokens = [
           'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9', // JWT-like token
           'abcdef1234567890', // alphanumeric token
           'token-with-dashes_and_underscores.dots', // with allowed symbols
         ];
 
-        validTokens.forEach((token) => {
-          expect(() => {
-            authService.verifyEmailForSignup(token);
-          }).not.toThrow();
-        });
+        // Mock successful response
+        mockHttpClient.post.mockResolvedValue({ message: 'Email verified' });
+
+        for (const token of validTokens) {
+          await expect(authService.verifyEmailForSignup(token)).resolves.toBeDefined();
+        }
       });
 
-      test('should validate tokens - invalid tokens', () => {
+      test('should validate tokens - invalid tokens', async () => {
         const invalidTokens = [
           '', // empty
           '   ', // whitespace
@@ -220,26 +243,31 @@ describe('AuthService', () => {
           'token@with#special!chars', // invalid characters
         ];
 
-        invalidTokens.forEach((token) => {
-          expect(() => {
-            authService.verifyEmailForSignup(token);
-          }).toThrow();
-        });
+        for (const token of invalidTokens) {
+          await expect(async () => {
+            await authService.verifyEmailForSignup(token);
+          }).rejects.toThrow();
+        }
       });
     });
 
     describe('OAuth Provider Validation', () => {
-      test('should validate OAuth providers - valid providers', () => {
+      test('should validate OAuth providers - valid providers', async () => {
         const validProviders = [OAuthProviders.Google, OAuthProviders.Microsoft, OAuthProviders.Facebook];
 
-        validProviders.forEach((provider) => {
-          expect(() => {
-            authService.generateOAuthSignupUrl(provider, { callbackUrl: 'https://example.com' });
-          }).not.toThrow();
-        });
+        // Mock successful response
+        mockHttpClient.post.mockResolvedValue({ authorizationUrl: 'https://oauth.example.com' });
+
+        for (const provider of validProviders) {
+          await expect(
+            authService.generateOAuthSignupUrl(provider, {
+              callbackUrl: 'https://example.com',
+            }),
+          ).resolves.toBeDefined();
+        }
       });
 
-      test('should validate OAuth providers - invalid providers', () => {
+      test('should validate OAuth providers - invalid providers', async () => {
         const invalidProviders = [
           '', // empty
           'invalid-provider', // not in enum
@@ -247,47 +275,50 @@ describe('AuthService', () => {
           'github', // not supported
         ];
 
-        invalidProviders.forEach((provider) => {
-          expect(() => {
+        for (const provider of invalidProviders) {
+          await expect(async () => {
             // @ts-expect-error - Testing invalid input
-            authService.generateOAuthSignupUrl(provider, { callbackUrl: 'https://example.com' });
-          }).toThrow();
-        });
+            await authService.generateOAuthSignupUrl(provider, { callbackUrl: 'https://example.com' });
+          }).rejects.toThrow();
+        }
       });
 
-      test('should validate OAuth providers - null or undefined', () => {
-        expect(() => {
+      test('should validate OAuth providers - null or undefined', async () => {
+        await expect(async () => {
           // @ts-expect-error - Testing invalid input
-          authService.generateOAuthSignupUrl(null, { callbackUrl: 'https://example.com' });
-        }).toThrow('Valid OAuth provider is required');
+          await authService.generateOAuthSignupUrl(null, { callbackUrl: 'https://example.com' });
+        }).rejects.toThrow('Valid OAuth provider is required');
 
-        expect(() => {
+        await expect(async () => {
           // @ts-expect-error - Testing invalid input
-          authService.generateOAuthSignupUrl(undefined, { callbackUrl: 'https://example.com' });
-        }).toThrow('Valid OAuth provider is required');
+          await authService.generateOAuthSignupUrl(undefined, { callbackUrl: 'https://example.com' });
+        }).rejects.toThrow('Valid OAuth provider is required');
       });
     });
 
     describe('Array Validation', () => {
-      test('should validate arrays - valid arrays', () => {
+      test('should validate arrays - valid arrays', async () => {
         const validArrays = [
           ['scope1'], // single item
           ['scope1', 'scope2', 'scope3'], // multiple items
           ['read', 'write', 'admin'], // typical scopes
         ];
 
-        validArrays.forEach((scopes) => {
-          expect(() => {
+        // Mock successful response
+        mockHttpClient.post.mockResolvedValue({ authorizationUrl: 'https://oauth.example.com' });
+
+        for (const scopes of validArrays) {
+          await expect(
             authService.generatePermissionUrl(OAuthProviders.Google, {
               accountId: '507f1f77bcf86cd799439011',
               scopeNames: scopes,
               callbackUrl: 'https://example.com',
-            });
-          }).not.toThrow();
-        });
+            }),
+          ).resolves.toBeDefined();
+        }
       });
 
-      test('should validate arrays - invalid arrays', () => {
+      test('should validate arrays - invalid arrays', async () => {
         const invalidArrays = [
           [], // empty array
           ['scope1', null, 'scope3'], // contains null
@@ -296,91 +327,94 @@ describe('AuthService', () => {
           ['scope1', '   ', 'scope3'], // contains whitespace
         ];
 
-        invalidArrays.forEach((scopes) => {
-          expect(() => {
-            authService.generatePermissionUrl(OAuthProviders.Google, {
+        for (const scopes of invalidArrays) {
+          await expect(async () => {
+            await authService.generatePermissionUrl(OAuthProviders.Google, {
               accountId: '507f1f77bcf86cd799439011',
               scopeNames: scopes,
               callbackUrl: 'https://example.com',
-            });
-          }).toThrow();
-        });
+            } as any);
+          }).rejects.toThrow();
+        }
       });
 
-      test('should validate arrays - not an array', () => {
-        expect(() => {
-          authService.generatePermissionUrl(OAuthProviders.Google, {
+      test('should validate arrays - not an array', async () => {
+        await expect(async () => {
+          await authService.generatePermissionUrl(OAuthProviders.Google, {
             accountId: '507f1f77bcf86cd799439011',
             // @ts-expect-error - Testing invalid input
             scopeNames: 'not-an-array',
             callbackUrl: 'https://example.com',
           });
-        }).toThrow('scope names must be an array');
+        }).rejects.toThrow('scope names must be an array');
       });
     });
 
     describe('Required Field Validation', () => {
-      test('should validate required fields - missing data', () => {
-        expect(() => {
+      test('should validate required fields - missing data', async () => {
+        await expect(async () => {
           // @ts-expect-error - Testing invalid input
-          authService.localLogin(null);
-        }).toThrow('login data is required for local login');
+          await authService.localLogin(null);
+        }).rejects.toThrow('login data is required for local login');
 
-        expect(() => {
+        await expect(async () => {
           // @ts-expect-error - Testing invalid input
-          authService.localLogin(undefined);
-        }).toThrow('login data is required for local login');
+          await authService.localLogin(undefined);
+        }).rejects.toThrow('login data is required for local login');
       });
 
-      test('should validate required fields - empty objects', () => {
-        expect(() => {
-          authService.localLogin({} as any);
-        }).toThrow('Either email or username is required for local login');
+      test('should validate required fields - empty objects', async () => {
+        await expect(async () => {
+          await authService.localLogin({} as any);
+        }).rejects.toThrow('Either email or username is required for local login');
       });
 
-      test('should validate required fields - missing password', () => {
-        expect(() => {
-          authService.localLogin({
+      test('should validate required fields - missing password', async () => {
+        await expect(async () => {
+          await authService.localLogin({
             email: 'test@example.com',
             // password missing
           } as any);
-        }).toThrow('password is required for local login');
+        }).rejects.toThrow('password is required for local login');
       });
     });
 
     describe('Conditional Validation', () => {
-      test('should validate either email or username for login', () => {
+      test('should validate either email or username for login', async () => {
+        // Mock successful response
+        mockHttpClient.post.mockResolvedValue({ accountId: '123', name: 'John' });
+
         // Valid with email
-        expect(() => {
+        await expect(
           authService.localLogin({
             email: 'test@example.com',
             password: 'password123',
-          });
-        }).not.toThrow();
+          }),
+        ).resolves.toBeDefined();
 
         // Valid with username
-        expect(() => {
+        await expect(
           authService.localLogin({
             username: 'testuser',
             password: 'password123',
-          });
-        }).not.toThrow();
+          }),
+        ).resolves.toBeDefined();
 
         // Valid with both
-        expect(() => {
+        await expect(
           authService.localLogin({
             email: 'test@example.com',
             username: 'testuser',
             password: 'password123',
-          });
-        }).not.toThrow();
+          }),
+        ).resolves.toBeDefined();
 
         // Invalid with neither
-        expect(() => {
-          authService.localLogin({
+        await expect(async () => {
+          await authService.localLogin({
             password: 'password123',
           });
-        }).toThrow('Either email or username is required for local login');
+        }).rejects.toThrow('Either email or username is required for local login');
       });
     });
   });

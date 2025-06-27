@@ -1,27 +1,29 @@
-import { describe, test, expect, vi, beforeEach } from 'vitest';
+import { describe, test, expect, vi, beforeEach, Mock } from 'vitest';
 import { AccountService } from '../AccountService';
 import { HttpClient } from '../../client/HttpClient';
 
 // Mock HttpClient
-const mockHttpClient = {
-  get: vi.fn(),
-  post: vi.fn(),
-  patch: vi.fn(),
-  delete: vi.fn(),
-  put: vi.fn(),
-} as unknown as HttpClient;
+const createMockHttpClient = () => ({
+  get: vi.fn() as Mock,
+  post: vi.fn() as Mock,
+  patch: vi.fn() as Mock,
+  delete: vi.fn() as Mock,
+  put: vi.fn() as Mock,
+});
 
 describe('AccountService', () => {
   let accountService: AccountService;
+  let mockHttpClient: ReturnType<typeof createMockHttpClient>;
 
   beforeEach(() => {
+    mockHttpClient = createMockHttpClient();
     vi.clearAllMocks();
   });
 
   describe('Service Initialization', () => {
     test('should initialize with HttpClient', () => {
       expect(() => {
-        accountService = new AccountService(mockHttpClient);
+        accountService = new AccountService(mockHttpClient as unknown as HttpClient);
       }).not.toThrow();
 
       expect(accountService).toBeInstanceOf(AccountService);
@@ -30,31 +32,33 @@ describe('AccountService', () => {
     test('should throw error without HttpClient', () => {
       expect(() => {
         // @ts-expect-error - Testing invalid input
-        accountService = new AccountService(null);
+        new AccountService(null);
       }).toThrow('HttpClient is required for AccountService');
 
       expect(() => {
         // @ts-expect-error - Testing invalid input
-        accountService = new AccountService(undefined);
+        new AccountService(undefined);
       }).toThrow('HttpClient is required for AccountService');
     });
   });
 
   describe('Validation', () => {
     beforeEach(() => {
-      accountService = new AccountService(mockHttpClient);
+      accountService = new AccountService(mockHttpClient as unknown as HttpClient);
     });
 
     describe('Account ID Validation', () => {
-      test('should validate account ID format - valid ObjectId', () => {
+      test('should validate account ID format - valid ObjectId', async () => {
         const validAccountId = '507f1f77bcf86cd799439011';
 
-        expect(() => {
-          accountService.getAccount(validAccountId);
-        }).not.toThrow();
+        // For async service methods, don't expect errors to throw synchronously
+        // Instead, mock the HttpClient to prevent actual API calls
+        mockHttpClient.get.mockResolvedValue({ id: validAccountId });
+
+        await expect(accountService.getAccount(validAccountId)).resolves.toBeDefined();
       });
 
-      test('should validate account ID format - invalid formats', () => {
+      test('should validate account ID format - invalid formats', async () => {
         const invalidAccountIds = [
           '', // empty
           '   ', // whitespace
@@ -66,28 +70,27 @@ describe('AccountService', () => {
           '507f1f77bcf86cd799439011a', // too long by 1
         ];
 
-        invalidAccountIds.forEach((invalidId) => {
-          expect(() => {
-            accountService.getAccount(invalidId);
-          }).toThrow('Valid accountId is required for get account');
-        });
+        // Test each invalid ID - these should throw synchronously during validation
+        for (const invalidId of invalidAccountIds) {
+          await expect(async () => {
+            await accountService.getAccount(invalidId);
+          }).rejects.toThrow('Valid accountId is required for get account');
+        }
       });
 
-      test('should validate account ID format - null or undefined', () => {
-        expect(() => {
-          // @ts-expect-error - Testing invalid input
-          accountService.getAccount(null);
-        }).toThrow('Valid accountId is required for get account');
+      test('should validate account ID format - null or undefined', async () => {
+        await expect(async () => {
+          await accountService.getAccount(null as any);
+        }).rejects.toThrow('Valid accountId is required for get account');
 
-        expect(() => {
-          // @ts-expect-error - Testing invalid input
-          accountService.getAccount(undefined);
-        }).toThrow('Valid accountId is required for get account');
+        await expect(async () => {
+          await accountService.getAccount(undefined as any);
+        }).rejects.toThrow('Valid accountId is required for get account');
       });
     });
 
     describe('Email Format Validation', () => {
-      test('should validate email format - valid emails', () => {
+      test('should validate email format - valid emails', async () => {
         const validEmails = [
           'test@example.com',
           'user.name@domain.co.uk',
@@ -96,14 +99,15 @@ describe('AccountService', () => {
           'a@b.co',
         ];
 
-        validEmails.forEach((email) => {
-          expect(() => {
-            accountService.searchAccount(email);
-          }).not.toThrow();
-        });
+        // Mock successful search results
+        mockHttpClient.get.mockResolvedValue({ found: true });
+
+        for (const email of validEmails) {
+          await expect(accountService.searchAccount(email)).resolves.toBeDefined();
+        }
       });
 
-      test('should validate email format - invalid emails', () => {
+      test('should validate email format - invalid emails', async () => {
         const invalidEmails = [
           '', // empty
           '   ', // whitespace
@@ -117,137 +121,114 @@ describe('AccountService', () => {
           '.user@domain.com', // starting with dot
         ];
 
-        invalidEmails.forEach((email) => {
-          expect(() => {
-            accountService.searchAccount(email);
-          }).toThrow('Invalid email format for account search');
-        });
+        for (const email of invalidEmails) {
+          await expect(async () => {
+            await accountService.searchAccount(email);
+          }).rejects.toThrow('Invalid email format for account search');
+        }
       });
     });
 
     describe('String Length Validation', () => {
       const validAccountId = '507f1f77bcf86cd799439011';
 
-      test('should validate string lengths - firstName', () => {
+      test('should validate string lengths - firstName', async () => {
+        // Mock successful update
+        mockHttpClient.patch.mockResolvedValue({ success: true });
+
         // Valid firstName
-        expect(() => {
-          accountService.updateAccount(validAccountId, { firstName: 'John' });
-        }).not.toThrow();
-
-        expect(() => {
-          accountService.updateAccount(validAccountId, { firstName: 'A' }); // 1 char
-        }).not.toThrow();
-
-        expect(() => {
-          accountService.updateAccount(validAccountId, { firstName: 'A'.repeat(50) }); // 50 chars
-        }).not.toThrow();
+        await expect(accountService.updateAccount(validAccountId, { firstName: 'John' })).resolves.toBeDefined();
+        await expect(accountService.updateAccount(validAccountId, { firstName: 'A' })).resolves.toBeDefined(); // 1 char
+        await expect(
+          accountService.updateAccount(validAccountId, { firstName: 'A'.repeat(50) }),
+        ).resolves.toBeDefined(); // 50 chars
 
         // Invalid firstName
-        expect(() => {
-          accountService.updateAccount(validAccountId, { firstName: '' }); // empty
-        }).toThrow('firstName must be at least 1 characters for account update');
+        await expect(async () => {
+          await accountService.updateAccount(validAccountId, { firstName: '' });
+        }).rejects.toThrow('firstName must be at least 1 characters for account update');
 
-        expect(() => {
-          accountService.updateAccount(validAccountId, { firstName: '   ' }); // whitespace
-        }).toThrow('firstName must be at least 1 characters for account update');
+        await expect(async () => {
+          await accountService.updateAccount(validAccountId, { firstName: '   ' });
+        }).rejects.toThrow('firstName must be at least 1 characters for account update');
 
-        expect(() => {
-          accountService.updateAccount(validAccountId, { firstName: 'A'.repeat(51) }); // too long
-        }).toThrow('firstName cannot exceed 50 characters for account update');
+        await expect(async () => {
+          await accountService.updateAccount(validAccountId, { firstName: 'A'.repeat(51) });
+        }).rejects.toThrow('firstName cannot exceed 50 characters for account update');
       });
 
-      test('should validate string lengths - lastName', () => {
+      test('should validate string lengths - lastName', async () => {
+        // Mock successful update
+        mockHttpClient.patch.mockResolvedValue({ success: true });
+
         // Valid lastName
-        expect(() => {
-          accountService.updateAccount(validAccountId, { lastName: 'Doe' });
-        }).not.toThrow();
+        await expect(accountService.updateAccount(validAccountId, { lastName: 'Doe' })).resolves.toBeDefined();
 
         // Invalid lastName
-        expect(() => {
-          accountService.updateAccount(validAccountId, { lastName: '' });
-        }).toThrow('lastName must be at least 1 characters for account update');
+        await expect(async () => {
+          await accountService.updateAccount(validAccountId, { lastName: '' });
+        }).rejects.toThrow('lastName must be at least 1 characters for account update');
 
-        expect(() => {
-          accountService.updateAccount(validAccountId, { lastName: 'A'.repeat(51) });
-        }).toThrow('lastName cannot exceed 50 characters for account update');
+        await expect(async () => {
+          await accountService.updateAccount(validAccountId, { lastName: 'A'.repeat(51) });
+        }).rejects.toThrow('lastName cannot exceed 50 characters for account update');
       });
 
-      test('should validate string lengths - name', () => {
-        // Valid name
-        expect(() => {
-          accountService.updateAccount(validAccountId, { name: 'John Doe' });
-        }).not.toThrow();
+      test('should validate string lengths - name', async () => {
+        // Mock successful update
+        mockHttpClient.patch.mockResolvedValue({ success: true });
 
-        expect(() => {
-          accountService.updateAccount(validAccountId, { name: 'A'.repeat(100) });
-        }).not.toThrow();
+        // Valid name
+        await expect(accountService.updateAccount(validAccountId, { name: 'John Doe' })).resolves.toBeDefined();
+        await expect(accountService.updateAccount(validAccountId, { name: 'A'.repeat(100) })).resolves.toBeDefined();
 
         // Invalid name
-        expect(() => {
-          accountService.updateAccount(validAccountId, { name: '' });
-        }).toThrow('name must be at least 1 characters for account update');
+        await expect(async () => {
+          await accountService.updateAccount(validAccountId, { name: '' });
+        }).rejects.toThrow('name must be at least 1 characters for account update');
 
-        expect(() => {
-          accountService.updateAccount(validAccountId, { name: 'A'.repeat(101) });
-        }).toThrow('name cannot exceed 100 characters for account update');
+        await expect(async () => {
+          await accountService.updateAccount(validAccountId, { name: 'A'.repeat(101) });
+        }).rejects.toThrow('name cannot exceed 100 characters for account update');
       });
 
-      test('should validate string lengths - username', () => {
+      test('should validate string lengths - username', async () => {
+        // Mock successful update
+        mockHttpClient.patch.mockResolvedValue({ success: true });
+
         // Valid username
-        expect(() => {
-          accountService.updateAccount(validAccountId, { username: 'johndoe' });
-        }).not.toThrow();
-
-        expect(() => {
-          accountService.updateAccount(validAccountId, { username: 'abc' }); // 3 chars
-        }).not.toThrow();
-
-        expect(() => {
-          accountService.updateAccount(validAccountId, { username: 'A'.repeat(30) }); // 30 chars
-        }).not.toThrow();
+        await expect(accountService.updateAccount(validAccountId, { username: 'johndoe' })).resolves.toBeDefined();
+        await expect(accountService.updateAccount(validAccountId, { username: 'abc' })).resolves.toBeDefined(); // 3 chars
+        await expect(accountService.updateAccount(validAccountId, { username: 'A'.repeat(30) })).resolves.toBeDefined(); // 30 chars
 
         // Invalid username
-        expect(() => {
-          accountService.updateAccount(validAccountId, { username: 'ab' }); // too short
-        }).toThrow('username must be at least 3 characters for account update');
+        await expect(async () => {
+          await accountService.updateAccount(validAccountId, { username: 'ab' });
+        }).rejects.toThrow('username must be at least 3 characters for account update');
 
-        expect(() => {
-          accountService.updateAccount(validAccountId, { username: 'A'.repeat(31) }); // too long
-        }).toThrow('username cannot exceed 30 characters for account update');
+        await expect(async () => {
+          await accountService.updateAccount(validAccountId, { username: 'A'.repeat(31) });
+        }).rejects.toThrow('username cannot exceed 30 characters for account update');
       });
 
-      test('should allow null or empty string for optional fields', () => {
+      test('should allow null or empty string for optional fields', async () => {
+        // Mock successful update
+        mockHttpClient.patch.mockResolvedValue({ success: true });
+
         // These should be allowed for optional fields that can be cleared
-        expect(() => {
-          accountService.updateAccount(validAccountId, { imageUrl: '' });
-        }).not.toThrow();
-
-        expect(() => {
-          accountService.updateAccount(validAccountId, { imageUrl: null });
-        }).not.toThrow();
-
-        expect(() => {
-          accountService.updateAccount(validAccountId, { birthdate: '' });
-        }).not.toThrow();
-
-        expect(() => {
-          accountService.updateAccount(validAccountId, { birthdate: null });
-        }).not.toThrow();
-
-        expect(() => {
-          accountService.updateAccount(validAccountId, { username: '' });
-        }).not.toThrow();
-
-        expect(() => {
-          accountService.updateAccount(validAccountId, { username: null });
-        }).not.toThrow();
+        await expect(accountService.updateAccount(validAccountId, { imageUrl: '' } as any)).resolves.toBeDefined();
+        await expect(accountService.updateAccount(validAccountId, { imageUrl: null } as any)).resolves.toBeDefined();
+        await expect(accountService.updateAccount(validAccountId, { birthdate: '' } as any)).resolves.toBeDefined();
+        await expect(accountService.updateAccount(validAccountId, { birthdate: null } as any)).resolves.toBeDefined();
+        await expect(accountService.updateAccount(validAccountId, { username: '' } as any)).resolves.toBeDefined();
+        await expect(accountService.updateAccount(validAccountId, { username: null } as any)).resolves.toBeDefined();
       });
     });
 
     describe('URL Validation', () => {
       const validAccountId = '507f1f77bcf86cd799439011';
 
-      test('should validate URLs - valid URLs', () => {
+      test('should validate URLs - valid URLs', async () => {
         const validUrls = [
           'https://example.com/avatar.jpg',
           'http://localhost:3000/image.png',
@@ -256,14 +237,15 @@ describe('AccountService', () => {
           'https://sub.domain.example.com/image.png',
         ];
 
-        validUrls.forEach((url) => {
-          expect(() => {
-            accountService.updateAccount(validAccountId, { imageUrl: url });
-          }).not.toThrow();
-        });
+        // Mock successful update
+        mockHttpClient.patch.mockResolvedValue({ success: true });
+
+        for (const url of validUrls) {
+          await expect(accountService.updateAccount(validAccountId, { imageUrl: url })).resolves.toBeDefined();
+        }
       });
 
-      test('should validate URLs - invalid URLs', () => {
+      test('should validate URLs - invalid URLs', async () => {
         const invalidUrls = [
           'not-a-url',
           'ftp://example.com/file.txt', // Valid URL but different protocol
@@ -274,28 +256,26 @@ describe('AccountService', () => {
           '//example.com/image.jpg', // Protocol-relative URL
         ];
 
-        invalidUrls.forEach((url) => {
-          expect(() => {
-            accountService.updateAccount(validAccountId, { imageUrl: url });
-          }).toThrow('Invalid URL format for account update');
-        });
+        for (const url of invalidUrls) {
+          await expect(async () => {
+            await accountService.updateAccount(validAccountId, { imageUrl: url });
+          }).rejects.toThrow('Invalid URL format for account update');
+        }
       });
 
-      test('should allow empty or null imageUrl for clearing', () => {
-        expect(() => {
-          accountService.updateAccount(validAccountId, { imageUrl: '' });
-        }).not.toThrow();
+      test('should allow empty or null imageUrl for clearing', async () => {
+        // Mock successful update
+        mockHttpClient.patch.mockResolvedValue({ success: true });
 
-        expect(() => {
-          accountService.updateAccount(validAccountId, { imageUrl: null });
-        }).not.toThrow();
+        await expect(accountService.updateAccount(validAccountId, { imageUrl: '' })).resolves.toBeDefined();
+        await expect(accountService.updateAccount(validAccountId, { imageUrl: null } as any)).resolves.toBeDefined();
       });
     });
 
     describe('Birthdate Format Validation', () => {
       const validAccountId = '507f1f77bcf86cd799439011';
 
-      test('should validate birthdate format - valid dates', () => {
+      test('should validate birthdate format - valid dates', async () => {
         const validDates = [
           '1990-01-01',
           '2000-12-31',
@@ -304,14 +284,15 @@ describe('AccountService', () => {
           '2020-02-29', // Leap year
         ];
 
-        validDates.forEach((date) => {
-          expect(() => {
-            accountService.updateAccount(validAccountId, { birthdate: date });
-          }).not.toThrow();
-        });
+        // Mock successful update
+        mockHttpClient.patch.mockResolvedValue({ success: true });
+
+        for (const date of validDates) {
+          await expect(accountService.updateAccount(validAccountId, { birthdate: date })).resolves.toBeDefined();
+        }
       });
 
-      test('should validate birthdate format - invalid formats', () => {
+      test('should validate birthdate format - invalid formats', async () => {
         const invalidFormats = [
           '01/01/1990', // MM/DD/YYYY
           '1990/01/01', // YYYY/MM/DD with slashes
@@ -325,24 +306,24 @@ describe('AccountService', () => {
           '01-01', // Missing year
         ];
 
-        invalidFormats.forEach((date) => {
-          expect(() => {
-            accountService.updateAccount(validAccountId, { birthdate: date });
-          }).toThrow('Invalid birthdate format for account update. Use YYYY-MM-DD format');
-        });
+        for (const date of invalidFormats) {
+          await expect(async () => {
+            await accountService.updateAccount(validAccountId, { birthdate: date });
+          }).rejects.toThrow('Invalid birthdate format for account update. Use YYYY-MM-DD format');
+        }
       });
 
-      test('should validate birthdate - future dates', () => {
+      test('should validate birthdate - future dates', async () => {
         const futureDate = new Date();
         futureDate.setFullYear(futureDate.getFullYear() + 1);
         const futureDateString = futureDate.toISOString().split('T')[0];
 
-        expect(() => {
-          accountService.updateAccount(validAccountId, { birthdate: futureDateString });
-        }).toThrow('Birthdate cannot be in the future for account update');
+        await expect(async () => {
+          await accountService.updateAccount(validAccountId, { birthdate: futureDateString });
+        }).rejects.toThrow('Birthdate cannot be in the future for account update');
       });
 
-      test('should validate birthdate - invalid dates', () => {
+      test('should validate birthdate - invalid dates', async () => {
         const invalidDates = [
           '2021-02-29', // Not a leap year
           '2021-04-31', // April has 30 days
@@ -351,28 +332,26 @@ describe('AccountService', () => {
           '2021-01-00', // Invalid day
         ];
 
-        invalidDates.forEach((date) => {
-          expect(() => {
-            accountService.updateAccount(validAccountId, { birthdate: date });
-          }).toThrow('Invalid birthdate for account update');
-        });
+        for (const date of invalidDates) {
+          await expect(async () => {
+            await accountService.updateAccount(validAccountId, { birthdate: date });
+          }).rejects.toThrow('Invalid birthdate for account update');
+        }
       });
 
-      test('should allow empty or null birthdate for clearing', () => {
-        expect(() => {
-          accountService.updateAccount(validAccountId, { birthdate: '' });
-        }).not.toThrow();
+      test('should allow empty or null birthdate for clearing', async () => {
+        // Mock successful update
+        mockHttpClient.patch.mockResolvedValue({ success: true });
 
-        expect(() => {
-          accountService.updateAccount(validAccountId, { birthdate: null });
-        }).not.toThrow();
+        await expect(accountService.updateAccount(validAccountId, { birthdate: '' })).resolves.toBeDefined();
+        await expect(accountService.updateAccount(validAccountId, { birthdate: null } as any)).resolves.toBeDefined();
       });
     });
 
     describe('Update Request Field Validation', () => {
       const validAccountId = '507f1f77bcf86cd799439011';
 
-      test('should reject invalid update fields', () => {
+      test('should reject invalid update fields', async () => {
         const invalidUpdates = [
           { invalidField: 'value' },
           { password: 'secret' }, // Not allowed in account update
@@ -382,42 +361,40 @@ describe('AccountService', () => {
           { accountType: 'oauth' }, // Not allowed
         ];
 
-        invalidUpdates.forEach((update) => {
-          expect(() => {
-            accountService.updateAccount(validAccountId, update as any);
-          }).toThrow(/Invalid fields provided|Only these fields can be updated/);
-        });
+        for (const update of invalidUpdates) {
+          await expect(async () => {
+            await accountService.updateAccount(validAccountId, update as any);
+          }).rejects.toThrow(/Invalid fields provided|Only these fields can be updated/);
+        }
       });
 
-      test('should require at least one valid field for update', () => {
+      test('should require at least one valid field for update', async () => {
         // Empty object
-        expect(() => {
-          accountService.updateAccount(validAccountId, {});
-        }).toThrow('At least one valid field must be provided for account update');
+        await expect(async () => {
+          await accountService.updateAccount(validAccountId, {});
+        }).rejects.toThrow('At least one valid field must be provided for account update');
 
         // Object with only invalid fields
-        expect(() => {
-          accountService.updateAccount(validAccountId, {
+        await expect(async () => {
+          await accountService.updateAccount(validAccountId, {
             // @ts-expect-error - Testing invalid fields
             invalidField: 'value',
             anotherInvalid: 'value2',
           });
-        }).toThrow('At least one valid field must be provided for account update');
+        }).rejects.toThrow('At least one valid field must be provided for account update');
 
         // Null update object
-        expect(() => {
-          // @ts-expect-error - Testing invalid input
-          accountService.updateAccount(validAccountId, null);
-        }).toThrow('account updates is required for account update');
+        await expect(async () => {
+          await accountService.updateAccount(validAccountId, null as any);
+        }).rejects.toThrow('account updates is required for account update');
 
         // Undefined update object
-        expect(() => {
-          // @ts-expect-error - Testing invalid input
-          accountService.updateAccount(validAccountId, undefined);
-        }).toThrow('account updates is required for account update');
+        await expect(async () => {
+          await accountService.updateAccount(validAccountId, undefined as any);
+        }).rejects.toThrow('account updates is required for account update');
       });
 
-      test('should accept valid update fields', () => {
+      test('should accept valid update fields', async () => {
         const validUpdates = [
           { firstName: 'John' },
           { lastName: 'Doe' },
@@ -430,59 +407,60 @@ describe('AccountService', () => {
           { name: 'John Doe', imageUrl: 'https://example.com/avatar.jpg' },
         ];
 
-        validUpdates.forEach((update) => {
-          expect(() => {
-            accountService.updateAccount(validAccountId, update);
-          }).not.toThrow();
-        });
+        // Mock successful update
+        mockHttpClient.patch.mockResolvedValue({ success: true });
+
+        for (const update of validUpdates) {
+          await expect(accountService.updateAccount(validAccountId, update)).resolves.toBeDefined();
+        }
       });
 
-      test('should validate mixed valid and invalid fields', () => {
-        expect(() => {
-          accountService.updateAccount(validAccountId, {
+      test('should validate mixed valid and invalid fields', async () => {
+        await expect(async () => {
+          await accountService.updateAccount(validAccountId, {
             firstName: 'John', // valid
             // @ts-expect-error - Testing mixed valid/invalid
             password: 'secret', // invalid
           });
-        }).toThrow('Invalid fields provided: password');
+        }).rejects.toThrow('Invalid fields provided: password');
 
-        expect(() => {
-          accountService.updateAccount(validAccountId, {
+        await expect(async () => {
+          await accountService.updateAccount(validAccountId, {
             firstName: 'John', // valid
             lastName: 'Doe', // valid
             // @ts-expect-error - Testing mixed valid/invalid
             email: 'new@example.com', // invalid
             invalidField: 'value', // invalid
           });
-        }).toThrow('Invalid fields provided: email, invalidField');
+        }).rejects.toThrow('Invalid fields provided: email, invalidField');
       });
     });
 
     describe('Type Validation', () => {
       const validAccountId = '507f1f77bcf86cd799439011';
 
-      test('should validate field types', () => {
+      test('should validate field types', async () => {
         // Non-string values for string fields
-        expect(() => {
-          accountService.updateAccount(validAccountId, {
+        await expect(async () => {
+          await accountService.updateAccount(validAccountId, {
             // @ts-expect-error - Testing invalid type
             firstName: 123,
           });
-        }).toThrow('firstName must be a string for account update');
+        }).rejects.toThrow('firstName must be a string for account update');
 
-        expect(() => {
-          accountService.updateAccount(validAccountId, {
+        await expect(async () => {
+          await accountService.updateAccount(validAccountId, {
             // @ts-expect-error - Testing invalid type
             imageUrl: true,
           });
-        }).toThrow('imageUrl must be a string for account update');
+        }).rejects.toThrow('imageUrl must be a string for account update');
 
-        expect(() => {
-          accountService.updateAccount(validAccountId, {
+        await expect(async () => {
+          await accountService.updateAccount(validAccountId, {
             // @ts-expect-error - Testing invalid type
             birthdate: new Date(),
           });
-        }).toThrow('Birthdate must be a string for account update');
+        }).rejects.toThrow('Birthdate must be a string for account update');
       });
     });
   });
