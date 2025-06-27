@@ -422,10 +422,14 @@ export const useAppStore = create<AppState & AppActions>()(
       shouldLoadSessionAccounts: (maxAge: number = 5 * 60 * 1000) => {
         const sessionState = get().session;
 
-        if (sessionState.status === 'loading' || (sessionState.data && sessionState.data.accountIds.length <= 0))
-          return false;
+        // If no session data exists, don't load session accounts
+        if (!sessionState.data) return false;
+
+        // Don't load if session is currently loading or has no accounts
+        if (sessionState.status === 'loading' || sessionState.data.accountIds.length <= 0) return false;
 
         const sessionAccountsState = get().sessionAccounts;
+
         // Don't load if currently loading
         if (sessionAccountsState.status === 'loading') return false;
 
