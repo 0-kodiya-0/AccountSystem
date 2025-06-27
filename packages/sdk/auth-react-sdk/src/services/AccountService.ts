@@ -6,6 +6,12 @@ const validateAccountId = (accountId: string | null | undefined, context: string
   if (!accountId || typeof accountId !== 'string' || accountId.trim() === '') {
     throw new Error(`Valid accountId is required for ${context}`);
   }
+
+  // Check if it's a valid MongoDB ObjectId format (24 hex characters)
+  const objectIdRegex = /^[0-9a-fA-F]{24}$/;
+  if (!objectIdRegex.test(accountId.trim())) {
+    throw new Error(`Valid accountId is required for ${context}`);
+  }
 };
 
 const validateEmail = (email: string | null | undefined, context: string): void => {
@@ -20,18 +26,22 @@ const validateEmail = (email: string | null | undefined, context: string): void 
 };
 
 const validateRequired = (value: any, fieldName: string, context: string): void => {
-  if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) {
+  if (value === null || value === undefined) {
     throw new Error(`${fieldName} is required for ${context}`);
   }
 };
 
 const validateUrl = (url: string | null | undefined, context: string): void => {
   if (!url || typeof url !== 'string' || url.trim() === '') {
-    throw new Error(`Valid URL is required for ${context}`);
+    return; // Allow empty URLs for optional fields
   }
 
   try {
-    new URL(url);
+    const urlObj = new URL(url);
+    // Only allow http/https protocols
+    if (!['http:', 'https:'].includes(urlObj.protocol)) {
+      throw new Error(`Invalid URL format for ${context}`);
+    }
   } catch {
     throw new Error(`Invalid URL format for ${context}`);
   }
@@ -44,7 +54,12 @@ const validateStringLength = (
   minLength: number = 1,
   maxLength: number = 255,
 ): void => {
-  if (!value || typeof value !== 'string') {
+  // Allow empty strings for optional fields
+  if (value === '' || value === null || value === undefined) {
+    return;
+  }
+
+  if (typeof value !== 'string') {
     throw new Error(`${fieldName} must be a string for ${context}`);
   }
 
@@ -59,7 +74,12 @@ const validateStringLength = (
 };
 
 const validateBirthdate = (birthdate: string | null | undefined, context: string): void => {
-  if (!birthdate || typeof birthdate !== 'string') {
+  // Allow empty strings for optional fields
+  if (birthdate === '' || birthdate === null || birthdate === undefined) {
+    return;
+  }
+
+  if (typeof birthdate !== 'string') {
     throw new Error(`Birthdate must be a string for ${context}`);
   }
 
@@ -72,6 +92,12 @@ const validateBirthdate = (birthdate: string | null | undefined, context: string
   // Additional date validation
   const date = new Date(birthdate);
   if (isNaN(date.getTime())) {
+    throw new Error(`Invalid birthdate for ${context}`);
+  }
+
+  // Check if the date string actually represents the same date (handles invalid dates like Feb 30)
+  const [year, month, day] = birthdate.split('-').map(Number);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
     throw new Error(`Invalid birthdate for ${context}`);
   }
 
@@ -108,9 +134,13 @@ export class AccountService {
     const validFields = providedFields.filter((field) => allowedFields.includes(field));
 
     if (validFields.length === 0) {
-      throw new Error(
-        `At least one valid field must be provided for account update. Allowed fields: ${allowedFields.join(', ')}`,
-      );
+      throw new Error(`At least one valid field must be provided for account update`);
+    }
+
+    // Check for invalid fields first
+    const invalidFields = providedFields.filter((field) => !allowedFields.includes(field));
+    if (invalidFields.length > 0) {
+      throw new Error(`Invalid fields provided: ${invalidFields.join(', ')}`);
     }
 
     // Validate each field if provided
@@ -127,29 +157,15 @@ export class AccountService {
     }
 
     if (updates.imageUrl !== undefined) {
-      if (updates.imageUrl !== '' && updates.imageUrl !== null) {
-        validateUrl(updates.imageUrl, 'account update');
-      }
+      validateUrl(updates.imageUrl, 'account update');
     }
 
     if (updates.birthdate !== undefined) {
-      if (updates.birthdate !== '' && updates.birthdate !== null) {
-        validateBirthdate(updates.birthdate, 'account update');
-      }
+      validateBirthdate(updates.birthdate, 'account update');
     }
 
     if (updates.username !== undefined) {
-      if (updates.username !== '' && updates.username !== null) {
-        validateStringLength(updates.username, 'username', 'account update', 3, 30);
-      }
-    }
-
-    // Check for invalid fields
-    const invalidFields = providedFields.filter((field) => !allowedFields.includes(field));
-    if (invalidFields.length > 0) {
-      throw new Error(
-        `Invalid fields provided: ${invalidFields.join(', ')}. Only these fields can be updated: ${allowedFields.join(', ')}`,
-      );
+      validateStringLength(updates.username, 'username', 'account update', 3, 30);
     }
 
     return this.httpClient.patch(`/${accountId}/account`, updates);

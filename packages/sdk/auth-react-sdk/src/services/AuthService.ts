@@ -104,7 +104,11 @@ const validateUrl = (url: string | null | undefined, context: string): void => {
   }
 
   try {
-    new URL(url.trim());
+    const urlObj = new URL(url.trim());
+    // Only allow http/https protocols
+    if (!['http:', 'https:'].includes(urlObj.protocol)) {
+      throw new Error(`Invalid URL format for ${context}`);
+    }
   } catch {
     throw new Error(`Invalid URL format for ${context}`);
   }
