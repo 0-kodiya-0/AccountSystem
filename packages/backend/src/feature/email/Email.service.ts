@@ -2,7 +2,12 @@ import nodemailer from 'nodemailer';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { ServerError, ValidationError } from '../../types/response.types';
-import { getTemplateMetadata, getTemplateFilePath } from './Email.utils';
+import {
+  getTemplateFilePath,
+  generatePlainText,
+  replaceTemplateVariables,
+  validateTemplateVariables,
+} from './Email.utils';
 import { EmailTemplate } from './Email.types';
 import { getAppName, getNodeEnv, getSenderEmail, getSenderName } from '../../config/env.config';
 import { getTransporter, resetTransporter } from './Email.transporter';
@@ -15,7 +20,7 @@ const templateCache = new Map<EmailTemplate, string>();
 /**
  * Load and cache HTML email templates
  */
-async function loadTemplate(template: EmailTemplate): Promise<string> {
+export async function loadTemplate(template: EmailTemplate): Promise<string> {
   if (templateCache.has(template)) {
     return templateCache.get(template)!;
   }
@@ -30,54 +35,6 @@ async function loadTemplate(template: EmailTemplate): Promise<string> {
     logger.error(`Failed to load email template: ${template}`, error);
     throw new ServerError(`Email template not found: ${template}`);
   }
-}
-
-/**
- * Validate template variables
- */
-function validateTemplateVariables(template: EmailTemplate, variables: Record<string, string>): void {
-  const metadata = getTemplateMetadata(template);
-  const missingVariables = metadata.requiredVariables.filter((varName) => !variables[varName]);
-
-  if (missingVariables.length > 0) {
-    throw new ValidationError(`Missing required variables for template ${template}: ${missingVariables.join(', ')}`);
-  }
-}
-
-/**
- * Replace template variables with actual values
- */
-function replaceTemplateVariables(template: string, variables: Record<string, string>): string {
-  let result = template;
-
-  // Replace all {{VARIABLE}} patterns with actual values
-  Object.entries(variables).forEach(([key, value]) => {
-    const regex = new RegExp(`{{${key}}}`, 'g');
-    result = result.replace(regex, value || '');
-  });
-
-  return result;
-}
-
-/**
- * Generate plain text version from HTML
- */
-function generatePlainText(html: string, variables: Record<string, string>): string {
-  // Simple HTML to text conversion
-  let text = html
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<[^>]*>/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  // Replace template variables in plain text
-  Object.entries(variables).forEach(([key, value]) => {
-    const regex = new RegExp(`{{${key}}}`, 'g');
-    text = text.replace(regex, value || '');
-  });
-
-  return text;
 }
 
 /**

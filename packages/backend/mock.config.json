@@ -1,0 +1,9 @@
+{
+  "logEmails": true,
+  "simulateDelay": false,
+  "delayMs": 150,
+  "simulateFailures": false,
+  "failureRate": 0.1,
+  "failOnEmails": ["fail@example.com", "error@test.com", "bounce@invalid.com"],
+  "blockEmails": ["blocked@example.com", "spam@test.com"]
+}

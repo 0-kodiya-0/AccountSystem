@@ -1,6 +1,54 @@
-import { ApiErrorCode, ServerError } from '../../types/response.types';
+import { ApiErrorCode, ServerError, ValidationError } from '../../types/response.types';
 import { logger } from '../../utils/logger';
 import { EmailTemplate, EmailTemplateMetadata, EMAIL_TEMPLATE_METADATA, RetryOptions } from './Email.types';
+
+/**
+ * Validate template variables
+ */
+export function validateTemplateVariables(template: EmailTemplate, variables: Record<string, string>): void {
+  const metadata = getTemplateMetadata(template);
+  const missingVariables = metadata.requiredVariables.filter((varName) => !variables[varName]);
+
+  if (missingVariables.length > 0) {
+    throw new ValidationError(`Missing required variables for template ${template}: ${missingVariables.join(', ')}`);
+  }
+}
+
+/**
+ * Replace template variables with actual values
+ */
+export function replaceTemplateVariables(template: string, variables: Record<string, string>): string {
+  let result = template;
+
+  // Replace all {{VARIABLE}} patterns with actual values
+  Object.entries(variables).forEach(([key, value]) => {
+    const regex = new RegExp(`{{${key}}}`, 'g');
+    result = result.replace(regex, value || '');
+  });
+
+  return result;
+}
+
+/**
+ * Generate plain text version from HTML
+ */
+export function generatePlainText(html: string, variables: Record<string, string>): string {
+  // Simple HTML to text conversion
+  let text = html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Replace template variables in plain text
+  Object.entries(variables).forEach(([key, value]) => {
+    const regex = new RegExp(`{{${key}}}`, 'g');
+    text = text.replace(regex, value || '');
+  });
+
+  return text;
+}
 
 /**
  * Get template metadata by template enum

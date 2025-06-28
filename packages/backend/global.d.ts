@@ -53,6 +53,8 @@ declare global {
       DISABLE_LOCAL_AUTH?: string;
       DISABLE_NOTIFICATIONS?: string;
 
+      MOCK_ENABLED?: string;
+
       DEBUG_MODE?: string;
       LOG_LEVEL?: string;
       QUIET_MODE?: string;

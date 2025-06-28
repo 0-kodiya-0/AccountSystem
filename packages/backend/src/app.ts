@@ -14,6 +14,7 @@ import * as sessionRouter from './feature/session/session.routes'; // NEW: Sessi
 import * as localAuthRouter from './feature/local_auth';
 import * as twoFARouter from './feature/twofa';
 import * as tokenRouter from './feature/tokens';
+import { emailMockRouter } from './feature/email/__mocks__/Email.mock.routes';
 import notificationRouter, { NotificationSocketHandler } from './feature/notifications';
 import { authenticateSession, validateAccountAccess, validateTokenAccess } from './middleware';
 import { ApiErrorCode, NotFoundError } from './types/response.types';
@@ -43,6 +44,10 @@ function createMainApp(): express.Application {
       });
       next();
     });
+  }
+
+  if (process.env.NODE_ENV !== 'production' && process.env.MOCK_ENABLED === 'true') {
+    app.use('/email-mock', emailMockRouter);
   }
 
   // Routes - Using API paths that match the proxy configuration
