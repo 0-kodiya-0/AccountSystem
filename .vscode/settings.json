@@ -70,6 +70,10 @@
         "additionalProperties": false,
         "description": "Email mock configuration for development and testing"
       }
+    },
+    {
+      "fileMatch": ["nodemon.json", "**/nodemon.json"],
+      "url": "https://json.schemastore.org/nodemon.json"
     }
   ]
 }
