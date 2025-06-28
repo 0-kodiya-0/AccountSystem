@@ -1,5 +1,6 @@
 {
   "email": {
+    "enabled": true,
     "logEmails": true,
     "simulateDelay": false,
     "delayMs": 150,

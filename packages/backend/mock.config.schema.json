@@ -19,6 +19,11 @@
       "type": "object",
       "description": "Email mock service configuration",
       "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable or disable email mocking",
+          "default": true
+        },
         "logEmails": {
           "type": "boolean",
           "description": "Enable logging of email activities",
@@ -56,9 +61,7 @@
           },
           "description": "Email addresses that should always fail",
           "default": [],
-          "examples": [
-            ["fail@example.com", "error@test.com"]
-          ]
+          "examples": [["fail@example.com", "error@test.com"]]
         },
         "blockEmails": {
           "type": "array",
@@ -68,9 +71,7 @@
           },
           "description": "Email addresses that should be blocked",
           "default": [],
-          "examples": [
-            ["blocked@example.com", "spam@test.com"]
-          ]
+          "examples": [["blocked@example.com", "spam@test.com"]]
         }
       },
       "required": [
@@ -134,9 +135,7 @@
           },
           "description": "Email addresses that should always fail OAuth authentication",
           "default": [],
-          "examples": [
-            ["fail@example.com", "oauth-error@test.com"]
-          ]
+          "examples": [["fail@example.com", "oauth-error@test.com"]]
         },
         "blockEmails": {
           "type": "array",
@@ -146,9 +145,7 @@
           },
           "description": "Email addresses that should be blocked from OAuth",
           "default": [],
-          "examples": [
-            ["blocked@example.com", "oauth-blocked@test.com"]
-          ]
+          "examples": [["blocked@example.com", "oauth-blocked@test.com"]]
         },
         "autoApprove": {
           "type": "boolean",
@@ -234,10 +231,7 @@
           "type": "string",
           "format": "uri",
           "description": "Profile image URL for the account (optional)",
-          "examples": [
-            "https://via.placeholder.com/150?text=Test+User",
-            "https://example.com/avatar.jpg"
-          ]
+          "examples": ["https://via.placeholder.com/150?text=Test+User", "https://example.com/avatar.jpg"]
         },
         "emailVerified": {
           "type": "boolean",
@@ -284,16 +278,7 @@
           "default": "active"
         }
       },
-      "required": [
-        "id",
-        "email",
-        "name",
-        "emailVerified",
-        "provider",
-        "accessToken",
-        "refreshToken",
-        "expiresIn"
-      ],
+      "required": ["id", "email", "name", "emailVerified", "provider", "accessToken", "refreshToken", "expiresIn"],
       "additionalProperties": false,
       "examples": [
         {

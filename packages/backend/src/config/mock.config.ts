@@ -11,6 +11,7 @@ const __dirname = path.dirname(__filename);
 
 // Email Mock Configuration Schema (existing)
 const EmailMockConfigSchema = z.object({
+  enabled: z.boolean(),
   logEmails: z.boolean(),
   simulateDelay: z.boolean(),
   delayMs: z.number().int().min(0).max(10000),
@@ -69,6 +70,7 @@ export type MockConfig = z.infer<typeof MockConfigSchema>;
 // Default configuration
 const DEFAULT_MOCK_CONFIG: MockConfig = {
   email: {
+    enabled: true,
     logEmails: true,
     simulateDelay: false,
     delayMs: 100,
@@ -320,6 +322,10 @@ export const updateOAuthMockConfig = (updates: Partial<OAuthMockConfig>): void =
 // General convenience functions
 export const resetMockConfig = (): void => mockConfig.resetToDefaults();
 export const saveMockConfig = (filePath?: string): void => mockConfig.saveConfigToFile(filePath);
+
+export const isMockingEnabled = (): boolean => {
+  return process.env.MOCK_ENABLED === 'true' && process.env.NODE_ENV !== 'production';
+};
 
 // Initialize configuration on module load
 mockConfig.getConfig();
