@@ -2,16 +2,42 @@ import { google } from 'googleapis';
 import { ApiErrorCode, ProviderValidationError } from '../../../../types/response.types';
 import { OAuthProviders } from '../../../account/Account.types';
 import db from '../../../../config/db';
-import { getGoogleClientId, getGoogleClientSecret } from '../../../../config/env.config';
+import { getGoogleClientId, getGoogleClientSecret, getNodeEnv } from '../../../../config/env.config';
+import { getOAuthMockConfig } from '../../../../config/mock.config';
 import { logger } from '../../../../utils/logger';
 import { ValidationUtils } from '../../../../utils/validation';
+import { oauthMockService } from '../../../../mocks/oauth/OAuthMockService';
 
 /**
- * Get detailed token information from Google
- * @param accessToken The access token to check
+ * Check if we should use mock services
+ */
+function shouldUseMock(): boolean {
+  const mockConfig = getOAuthMockConfig();
+  const isProduction = getNodeEnv() === 'production';
+  return !isProduction && mockConfig.enabled;
+}
+
+/**
+ * Get detailed token information from Google (with mock support)
  */
 export async function getGoogleTokenInfo(accessToken: string) {
   ValidationUtils.validateAccessToken(accessToken, 'getTokenInfo');
+
+  if (shouldUseMock()) {
+    // Use mock service
+    const tokenInfo = oauthMockService.getTokenInfo(accessToken.trim(), OAuthProviders.Google);
+
+    if (!tokenInfo) {
+      throw new ProviderValidationError(
+        OAuthProviders.Google,
+        'Failed to validate access token (mock)',
+        401,
+        ApiErrorCode.TOKEN_INVALID,
+      );
+    }
+
+    return tokenInfo;
+  }
 
   try {
     const tokenInfoResult = await google.oauth2('v2').tokeninfo({
@@ -31,12 +57,26 @@ export async function getGoogleTokenInfo(accessToken: string) {
 }
 
 /**
- * Get token scopes from Google
- * @param accessToken The access token to check
- * @returns Array of granted scope URLs
+ * Get token scopes from Google (with mock support)
  */
 export async function getGoogleTokenScopes(accessToken: string): Promise<string[]> {
   ValidationUtils.validateAccessToken(accessToken, 'getTokenScopes');
+
+  if (shouldUseMock()) {
+    // Use mock service
+    const tokenInfo = oauthMockService.getTokenInfo(accessToken.trim(), OAuthProviders.Google);
+
+    if (!tokenInfo) {
+      throw new ProviderValidationError(
+        OAuthProviders.Google,
+        'Failed to get token scopes (mock)',
+        401,
+        ApiErrorCode.TOKEN_INVALID,
+      );
+    }
+
+    return tokenInfo.scope ? tokenInfo.scope.split(' ') : [];
+  }
 
   try {
     const tokenInfoResult = await google.oauth2('v2').tokeninfo({
@@ -56,9 +96,7 @@ export async function getGoogleTokenScopes(accessToken: string): Promise<string[
 }
 
 /**
- * Update Google permissions for an account
- * @param accountId The account ID to update
- * @param accessToken The access token containing scopes
+ * Update Google permissions for an account (with mock support)
  */
 export async function updateAccountScopes(accountId: string, accessToken: string): Promise<string[]> {
   ValidationUtils.validateObjectIdWithContext(accountId, 'Account ID', 'updateAccountScopes');
@@ -113,14 +151,11 @@ export async function updateAccountScopes(accountId: string, accessToken: string
 
 /**
  * Get all previously granted scopes for an account from GooglePermissions
- * @param accountId The account ID to check
  */
 export async function getGoogleAccountScopes(accountId: string): Promise<string[]> {
   try {
-    // Get database models
     const models = await db.getModels();
 
-    // Retrieve the permissions
     const permissions = await models.google.GooglePermissions.findOne({
       accountId,
     });
@@ -137,11 +172,30 @@ export async function getGoogleAccountScopes(accountId: string): Promise<string[
 }
 
 /**
- * Refresh an access token using a refresh token
- * @param refreshToken The refresh token to use
+ * Refresh an access token using a refresh token (with mock support)
  */
 export async function refreshGoogleToken(refreshToken: string) {
   ValidationUtils.validateRefreshToken(refreshToken, 'refreshGoogleToken');
+
+  if (shouldUseMock()) {
+    // Use mock service
+    const tokens = oauthMockService.refreshAccessToken(refreshToken.trim(), OAuthProviders.Google);
+
+    if (!tokens) {
+      throw new ProviderValidationError(
+        OAuthProviders.Google,
+        'Failed to refresh access token (mock)',
+        401,
+        ApiErrorCode.TOKEN_INVALID,
+      );
+    }
+
+    return {
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expiry_date: Date.now() + tokens.expires_in * 1000,
+    };
+  }
 
   try {
     const refreshClient = new google.auth.OAuth2(getGoogleClientId(), getGoogleClientSecret());
@@ -166,12 +220,57 @@ export async function refreshGoogleToken(refreshToken: string) {
 }
 
 /**
- * Revoke multiple Google OAuth tokens
- * @param tokens Array of tokens to revoke (can be access or refresh tokens)
+ * Revoke multiple Google OAuth tokens (with mock support)
  */
 export async function revokeGoogleTokens(tokens: (string | undefined)[]) {
   if (!tokens || tokens.length === 0) {
     throw new Error('No tokens provided for revocation');
+  }
+
+  if (shouldUseMock()) {
+    // Use mock service
+    const results = {
+      totalTokens: tokens.length,
+      successfulRevocations: 0,
+      failedRevocations: 0,
+      errors: [] as string[],
+    };
+
+    for (const token of tokens) {
+      if (!token || !token.trim()) {
+        results.failedRevocations++;
+        results.errors.push('Empty or invalid token provided');
+        continue;
+      }
+
+      try {
+        const success = oauthMockService.revokeToken(token.trim(), OAuthProviders.Google);
+        if (success) {
+          results.successfulRevocations++;
+          logger.info(`Successfully revoked mock token: ${token.substring(0, 10)}...`);
+        } else {
+          results.failedRevocations++;
+          results.errors.push(`Failed to revoke mock token ${token.substring(0, 10)}...: Token not found`);
+        }
+      } catch (error) {
+        results.failedRevocations++;
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        results.errors.push(`Failed to revoke mock token ${token.substring(0, 10)}...: ${errorMessage}`);
+        logger.error(`Error revoking mock token ${token.substring(0, 10)}...:`, error);
+      }
+    }
+
+    logger.info(
+      `Mock token revocation completed: ${results.successfulRevocations}/${results.totalTokens} tokens successfully revoked`,
+    );
+
+    if (results.successfulRevocations === 0) {
+      throw new Error(
+        `Failed to revoke any of the ${tokens.length} provided mock tokens. Errors: ${results.errors.join(', ')}`,
+      );
+    }
+
+    return results;
   }
 
   try {
@@ -204,12 +303,10 @@ export async function revokeGoogleTokens(tokens: (string | undefined)[]) {
       }
     }
 
-    // Log summary
     logger.info(
       `Token revocation completed: ${results.successfulRevocations}/${results.totalTokens} tokens successfully revoked`,
     );
 
-    // Throw error if no tokens were successfully revoked
     if (results.successfulRevocations === 0) {
       throw new Error(
         `Failed to revoke any of the ${tokens.length} provided tokens. Errors: ${results.errors.join(', ')}`,
@@ -256,40 +353,50 @@ export async function checkForAdditionalGoogleScopes(
 }
 
 /**
- * Verifies that the token belongs to the correct user account
- *
- * @param accessToken The access token to verify
- * @param accountId The account ID that should own this token
- * @returns Object indicating if the token is valid and reason if not
+ * Verifies that the token belongs to the correct user account (with mock support)
  */
 export async function verifyGoogleTokenOwnership(
   accessToken: string,
   accountId: string,
 ): Promise<{ isValid: boolean; reason?: string }> {
   try {
-    // Get the models
     const models = await db.getModels();
 
-    // Get the account that should own this token
     const account = await models.accounts.Account.findOne({ _id: accountId });
 
     if (!account) {
       return { isValid: false, reason: 'Account not found' };
     }
 
-    // Get the email from the account
     const expectedEmail = account.userDetails.email;
 
     if (!expectedEmail) {
       return { isValid: false, reason: 'Account missing email' };
     }
 
-    // Get user information from the token
+    if (shouldUseMock()) {
+      // Use mock service
+      const userInfo = oauthMockService.getUserInfo(accessToken, OAuthProviders.Google);
+
+      if (!userInfo) {
+        return { isValid: false, reason: 'Could not get user info from mock token' };
+      }
+
+      if (userInfo.email.toLowerCase() !== expectedEmail.toLowerCase()) {
+        return {
+          isValid: false,
+          reason: `Mock token email (${userInfo.email}) does not match account email (${expectedEmail})`,
+        };
+      }
+
+      return { isValid: true };
+    }
+
+    // Use real Google API
     const googleAuth = new google.auth.OAuth2(getGoogleClientId(), getGoogleClientSecret());
 
     googleAuth.setCredentials({ access_token: accessToken });
 
-    // Get the user info using the oauth2 API
     const oauth2 = google.oauth2({
       auth: googleAuth,
       version: 'v2',
@@ -301,7 +408,6 @@ export async function verifyGoogleTokenOwnership(
       return { isValid: false, reason: 'Could not get email from token' };
     }
 
-    // Compare emails
     if (userInfo.data.email.toLowerCase() !== expectedEmail.toLowerCase()) {
       return {
         isValid: false,
@@ -317,11 +423,35 @@ export async function verifyGoogleTokenOwnership(
 }
 
 /**
- * Exchange Google authorization code for tokens
- * @param code Authorization code from Google
- * @param redirectUri The redirect URI that was used in the authorization request
+ * Exchange Google authorization code for tokens (with mock support)
  */
 export async function exchangeGoogleCode(code: string, redirectUri: string) {
+  if (shouldUseMock()) {
+    // Use mock service
+    const result = oauthMockService.exchangeAuthorizationCode(code, OAuthProviders.Google);
+
+    if (!result) {
+      throw new Error('Invalid or expired authorization code (mock)');
+    }
+
+    const { tokens, userInfo } = result;
+
+    return {
+      tokens: {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiryDate: Date.now() + tokens.expires_in * 1000,
+      },
+      userInfo: {
+        email: userInfo.email,
+        name: userInfo.name,
+        imageUrl: userInfo.picture,
+        provider: OAuthProviders.Google,
+      },
+    };
+  }
+
+  // Use real Google OAuth
   const oAuth2Client = new google.auth.OAuth2(getGoogleClientId(), getGoogleClientSecret(), redirectUri);
 
   const { tokens } = await oAuth2Client.getToken(code);

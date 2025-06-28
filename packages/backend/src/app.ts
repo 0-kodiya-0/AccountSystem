@@ -20,6 +20,7 @@ import { authenticateSession, validateAccountAccess, validateTokenAccess } from 
 import { ApiErrorCode, NotFoundError } from './types/response.types';
 import { logger } from './utils/logger';
 import { autoTrackParentUrl } from './middleware/path-track';
+import { oauthMockRouter } from './feature/oauth/__mock__/OAuth.mock.routes';
 
 let httpServer: Server | null = null;
 
@@ -46,8 +47,14 @@ function createMainApp(): express.Application {
     });
   }
 
-  if (process.env.NODE_ENV !== 'production' && process.env.MOCK_ENABLED === 'true') {
-    app.use('/email-mock', emailMockRouter);
+  if (process.env.NODE_ENV !== 'production') {
+    if (process.env.MOCK_ENABLED === 'true') {
+      app.use('/email-mock', emailMockRouter);
+      logger.info('Email mock routes enabled');
+
+      app.use('/oauth-mock', oauthMockRouter);
+      logger.info('OAuth mock routes enabled');
+    }
   }
 
   // Routes - Using API paths that match the proxy configuration

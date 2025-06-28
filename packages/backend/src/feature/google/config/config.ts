@@ -1,27 +1,12 @@
-/**
- * Google OAuth configuration without local scope validation
- *
- * This implementation removes local scope validation and lets Google OAuth API
- * handle scope validation directly. This approach is better because:
- * 1. Google is the authoritative source for valid scopes
- * 2. Scopes change over time - Google adds new scopes and deprecates old ones
- * 3. Local validation can become outdated and block valid scopes
- * 4. Google provides clear error responses for invalid scopes
- * 5. Simpler maintenance - no need to keep updating scope definitions
- */
-
-import { getBaseUrl, getGoogleClientId, getProxyUrl } from '../../../config/env.config';
+import { getBaseUrl, getGoogleClientId, getProxyUrl, getNodeEnv } from '../../../config/env.config';
+import { getOAuthMockConfig } from '../../../config/mock.config';
 
 /**
- * Google OAuth scope URL builder
- * Automatically constructs proper Google scope URLs from scope names
+ * Google OAuth configuration with mock support
  */
+
 export const GOOGLE_SCOPE_BASE_URL = 'https://www.googleapis.com/auth/';
 
-/**
- * Special scopes that don't follow the standard pattern
- * Only keeping the absolutely necessary OpenID Connect scopes
- */
 export const SPECIAL_SCOPES = {
   openid: 'openid',
   email: 'https://www.googleapis.com/auth/userinfo.email',
@@ -29,22 +14,46 @@ export const SPECIAL_SCOPES = {
 } as const;
 
 /**
- * Build Google OAuth scope URL from scope name
- * @param scopeName The scope name (e.g., 'gmail.readonly', 'calendar.events')
- * @returns Full Google OAuth scope URL
+ * Get OAuth endpoints (real or mock based on environment)
  */
+export function getGoogleOAuthEndpoints() {
+  const mockConfig = getOAuthMockConfig();
+  const isProduction = getNodeEnv() === 'production';
+  const useMock = !isProduction && mockConfig.enabled;
+
+  if (useMock) {
+    // Use mock endpoints for development/testing
+    const mockBaseUrl = `${getProxyUrl()}${getBaseUrl()}`;
+    return {
+      authorizationEndpoint: `${mockBaseUrl}/oauth-mock/authorize`,
+      tokenEndpoint: `${mockBaseUrl}/oauth-mock/token`,
+      userinfoEndpoint: `${mockBaseUrl}/oauth-mock/userinfo`,
+      tokeninfoEndpoint: `${mockBaseUrl}/oauth-mock/tokeninfo`,
+      revokeEndpoint: `${mockBaseUrl}/oauth-mock/revoke`,
+      isMock: true,
+    };
+  } else {
+    // Use real Google endpoints
+    return {
+      authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
+      tokenEndpoint: 'https://oauth2.googleapis.com/token',
+      userinfoEndpoint: 'https://www.googleapis.com/oauth2/v2/userinfo',
+      tokeninfoEndpoint: 'https://www.googleapis.com/oauth2/v2/tokeninfo',
+      revokeEndpoint: 'https://oauth2.googleapis.com/revoke',
+      isMock: false,
+    };
+  }
+}
+
 export function buildGoogleScopeUrl(scopeName: string): string {
-  // Handle special scopes that don't follow the standard pattern
   if (scopeName in SPECIAL_SCOPES) {
     return SPECIAL_SCOPES[scopeName as keyof typeof SPECIAL_SCOPES];
   }
 
-  // If it's already a full URL, return as-is
   if (scopeName.startsWith('https://') || scopeName.startsWith('http://')) {
     return scopeName;
   }
 
-  // Build standard Google scope URL
   return `${GOOGLE_SCOPE_BASE_URL}${scopeName}`;
 }
 
@@ -69,12 +78,10 @@ export function isValidScopeName(scopeName: string): boolean {
 
   const trimmed = scopeName.trim();
 
-  // Empty string is invalid
   if (trimmed.length === 0) {
     return false;
   }
 
-  // If it's already a URL, just check it's well-formed
   if (trimmed.startsWith('https://') || trimmed.startsWith('http://')) {
     try {
       new URL(trimmed);
@@ -84,7 +91,6 @@ export function isValidScopeName(scopeName: string): boolean {
     }
   }
 
-  // For scope names, allow alphanumeric, dots, and underscores
   return /^[a-zA-Z0-9._-]+$/.test(trimmed);
 }
 
@@ -125,6 +131,7 @@ export interface GoogleOAuthUrlOptions {
   prompt?: 'none' | 'consent' | 'select_account';
   includeGrantedScopes?: boolean;
   responseType?: 'code' | 'token';
+  mockAccountEmail?: string; // For testing specific mock accounts
 }
 
 export interface GoogleOAuthUrlParams {
@@ -140,13 +147,11 @@ export interface GoogleOAuthUrlParams {
 }
 
 /**
- * Build Google OAuth 2.0 authorization URL
- * @param options Configuration options for the OAuth URL
- * @returns Complete Google OAuth authorization URL
+ * Build Google OAuth 2.0 authorization URL (supports both real and mock)
  */
 export function buildGoogleOAuthUrl(options: GoogleOAuthUrlOptions): string {
   const {
-    scopes = ['profile', 'email'], // Default basic scopes
+    scopes = ['profile', 'email'],
     state,
     redirectPath,
     loginHint,
@@ -154,9 +159,11 @@ export function buildGoogleOAuthUrl(options: GoogleOAuthUrlOptions): string {
     prompt = 'consent',
     includeGrantedScopes = true,
     responseType = 'code',
+    mockAccountEmail,
   } = options;
 
-  const baseUrl = 'https://accounts.google.com/o/oauth2/v2/auth';
+  const endpoints = getGoogleOAuthEndpoints();
+  const baseUrl = endpoints.authorizationEndpoint;
 
   const params: GoogleOAuthUrlParams = {
     client_id: getGoogleClientId(),
@@ -165,7 +172,6 @@ export function buildGoogleOAuthUrl(options: GoogleOAuthUrlOptions): string {
     redirect_uri: `${getProxyUrl()}${getBaseUrl()}${redirectPath}`,
   };
 
-  // Add optional parameters only if they have values
   if (scopes.length > 0) {
     params.scope = scopes.join(' ');
   }
@@ -178,8 +184,10 @@ export function buildGoogleOAuthUrl(options: GoogleOAuthUrlOptions): string {
     params.prompt = prompt;
   }
 
-  if (loginHint) {
-    params.login_hint = loginHint;
+  // Use mockAccountEmail or loginHint for testing
+  const hintEmail = mockAccountEmail || loginHint;
+  if (hintEmail) {
+    params.login_hint = hintEmail;
   }
 
   if (includeGrantedScopes) {
@@ -188,7 +196,6 @@ export function buildGoogleOAuthUrl(options: GoogleOAuthUrlOptions): string {
 
   const searchParams = new URLSearchParams();
 
-  // Add all parameters to URLSearchParams
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null) {
       searchParams.append(key, value);
@@ -201,7 +208,7 @@ export function buildGoogleOAuthUrl(options: GoogleOAuthUrlOptions): string {
 /**
  * Build Google OAuth URL for signup flow
  */
-export function buildGoogleSignupUrl(state: string): string {
+export function buildGoogleSignupUrl(state: string, mockAccountEmail?: string): string {
   return buildGoogleOAuthUrl({
     scopes: ['profile', 'email'],
     state,
@@ -209,13 +216,14 @@ export function buildGoogleSignupUrl(state: string): string {
     accessType: 'offline',
     prompt: 'consent',
     includeGrantedScopes: true,
+    mockAccountEmail,
   });
 }
 
 /**
  * Build Google OAuth URL for signin flow
  */
-export function buildGoogleSigninUrl(state: string): string {
+export function buildGoogleSigninUrl(state: string, mockAccountEmail?: string): string {
   return buildGoogleOAuthUrl({
     scopes: ['profile', 'email'],
     state,
@@ -223,35 +231,48 @@ export function buildGoogleSigninUrl(state: string): string {
     accessType: 'offline',
     prompt: 'consent',
     includeGrantedScopes: true,
+    mockAccountEmail,
   });
 }
 
 /**
  * Build Google OAuth URL for permission request
  */
-export function buildGooglePermissionUrl(state: string, scopes: string[], userEmail?: string): string {
+export function buildGooglePermissionUrl(
+  state: string,
+  scopes: string[],
+  userEmail?: string,
+  mockAccountEmail?: string,
+): string {
   return buildGoogleOAuthUrl({
     scopes,
     state,
-    redirectPath: 'oauth/permission/callback/google',
+    redirectPath: '/oauth/permission/callback/google',
     loginHint: userEmail,
     accessType: 'offline',
     prompt: 'consent',
     includeGrantedScopes: true,
+    mockAccountEmail,
   });
 }
 
 /**
  * Build Google OAuth URL for reauthorization
  */
-export function buildGoogleReauthorizeUrl(state: string, scopes: string[], userEmail: string): string {
+export function buildGoogleReauthorizeUrl(
+  state: string,
+  scopes: string[],
+  userEmail: string,
+  mockAccountEmail?: string,
+): string {
   return buildGoogleOAuthUrl({
     scopes,
     state,
-    redirectPath: 'oauth/permission/callback/google',
+    redirectPath: '/oauth/permission/callback/google',
     loginHint: userEmail,
     accessType: 'offline',
     prompt: 'consent',
     includeGrantedScopes: true,
+    mockAccountEmail,
   });
 }

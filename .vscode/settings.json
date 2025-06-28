@@ -14,62 +14,7 @@
   "json.schemas": [
     {
       "fileMatch": ["mock.config.json"],
-      "schema": {
-        "type": "object",
-        "properties": {
-          "logEmails": {
-            "type": "boolean",
-            "description": "Enable logging of email activities"
-          },
-          "simulateDelay": {
-            "type": "boolean",
-            "description": "Simulate network delays when sending emails"
-          },
-          "delayMs": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 10000,
-            "description": "Delay in milliseconds (0-10000)"
-          },
-          "simulateFailures": {
-            "type": "boolean",
-            "description": "Enable random email failures for testing"
-          },
-          "failureRate": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 1,
-            "description": "Probability of email failure (0.0-1.0)"
-          },
-          "failOnEmails": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "email"
-            },
-            "description": "Email addresses that should always fail"
-          },
-          "blockEmails": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "email"
-            },
-            "description": "Email addresses that should be blocked"
-          }
-        },
-        "required": [
-          "logEmails",
-          "simulateDelay",
-          "delayMs",
-          "simulateFailures",
-          "failureRate",
-          "failOnEmails",
-          "blockEmails"
-        ],
-        "additionalProperties": false,
-        "description": "Email mock configuration for development and testing"
-      }
+      "url": "./packages/backend/mock.config.schema.json"
     },
     {
       "fileMatch": ["nodemon.json", "**/nodemon.json"],
