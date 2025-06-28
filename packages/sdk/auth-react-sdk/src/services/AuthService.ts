@@ -46,7 +46,7 @@ import {
 import { HttpClient } from '../client/HttpClient';
 
 const validateAccountId = (accountId: string | null | undefined, context: string): void => {
-  if (!accountId || typeof accountId !== 'string' || accountId.trim() === '') {
+  if (typeof accountId !== 'string') {
     throw new Error(`Valid accountId is required for ${context}`);
   }
 
@@ -58,7 +58,7 @@ const validateAccountId = (accountId: string | null | undefined, context: string
 };
 
 const validateToken = (token: string | null | undefined, tokenType: string, context: string): void => {
-  if (!token || typeof token !== 'string' || token.trim() === '') {
+  if (typeof token !== 'string') {
     throw new Error(`Valid ${tokenType} is required for ${context}`);
   }
 
@@ -75,7 +75,7 @@ const validateToken = (token: string | null | undefined, tokenType: string, cont
 };
 
 const validateEmail = (email: string | null | undefined, context: string): void => {
-  if (!email || typeof email !== 'string' || email.trim() === '') {
+  if (typeof email !== 'string') {
     throw new Error(`Valid email is required for ${context}`);
   }
 
@@ -99,7 +99,7 @@ const validateEmail = (email: string | null | undefined, context: string): void 
 };
 
 const validateUrl = (url: string | null | undefined, context: string): void => {
-  if (!url || typeof url !== 'string' || url.trim() === '') {
+  if (typeof url !== 'string') {
     throw new Error(`Valid URL is required for ${context}`);
   }
 
@@ -311,35 +311,31 @@ export class AuthService {
   }
 
   async localLogin(data: LocalLoginRequest): Promise<LocalLoginResponse> {
-    validateRequired(data, 'login data', 'local login');
-
     // Validate email OR username (at least one required)
-    if (!data.email && !data.username) {
+    if (!data?.email && !data?.username) {
       throw new Error('Either email or username is required for local login');
     }
 
-    if (data.email) {
-      validateEmail(data.email, 'local login');
+    if (data?.email) {
+      validateEmail(data?.email, 'local login');
     }
 
-    validateRequired(data.password, 'password', 'local login');
+    validateRequired(data?.password, 'password', 'local login');
 
     return this.httpClient.post('/auth/login', data);
   }
 
   async redirectToLocalSignin(data: LocalLoginRequest, redirectUrl: string): Promise<void> {
-    validateRequired(data, 'login data', 'local login');
-
     // Validate email OR username (at least one required)
-    if (!data.email && !data.username) {
+    if (!data?.email && !data?.username) {
       throw new Error('Either email or username is required for local login');
     }
 
-    if (data.email) {
-      validateEmail(data.email, 'local login');
+    if (data?.email) {
+      validateEmail(data?.email, 'local login');
     }
 
-    validateRequired(data.password, 'password', 'local login');
+    validateRequired(data?.password, 'password', 'local login');
 
     const result = await this.httpClient.post<LocalLoginResponse>('/auth/login', data);
 
@@ -359,33 +355,30 @@ export class AuthService {
   }
 
   async requestPasswordReset(data: PasswordResetRequest): Promise<PasswordResetRequestResponse> {
-    validateRequired(data, 'password reset request data', 'password reset request');
-    validateEmail(data.email, 'password reset request');
-    validateUrl(data.callbackUrl, 'password reset request');
+    validateEmail(data?.email, 'password reset request');
+    validateUrl(data?.callbackUrl, 'password reset request');
 
     return this.httpClient.post('/auth/reset-password-request', data);
   }
 
   async verifyPasswordReset(data: PasswordResetVerificationRequest): Promise<PasswordResetVerificationResponse> {
-    validateRequired(data.token, 'password token verify request data', 'password token verify request');
+    validateRequired(data?.token, 'password token verify request data', 'password token verify request');
 
     return this.httpClient.post('/auth/verify-password-request', data);
   }
 
   async resetPassword(token: string, data: ResetPasswordRequest): Promise<ResetPasswordResponse> {
     validateToken(token, 'reset token', 'password reset');
-    validateRequired(data, 'password reset data', 'password reset');
-    validatePassword(data.password, 'password reset');
-    validateRequired(data.confirmPassword, 'confirmPassword', 'password reset');
+    validatePassword(data?.password, 'password reset');
+    validateRequired(data?.confirmPassword, 'confirmPassword', 'password reset');
 
     return this.httpClient.post(`/auth/reset-password?token=${encodeURIComponent(token)}`, data);
   }
 
   async redirectToResetPassword(token: string, data: ResetPasswordRequest, redirectUrl: string): Promise<void> {
     validateToken(token, 'reset token', 'password reset');
-    validateRequired(data, 'password reset data', 'password reset');
-    validatePassword(data.password, 'password reset');
-    validateRequired(data.confirmPassword, 'confirmPassword', 'password reset');
+    validatePassword(data?.password, 'password reset');
+    validateRequired(data?.confirmPassword, 'confirmPassword', 'password reset');
 
     await this.httpClient.post<ResetPasswordResponse>(`/auth/reset-password?token=${encodeURIComponent(token)}`, data);
 
@@ -401,10 +394,9 @@ export class AuthService {
 
   async changePassword(accountId: string, data: PasswordChangeRequest): Promise<PasswordChangeResponse> {
     validateAccountId(accountId, 'password change');
-    validateRequired(data, 'password change data', 'password change');
-    validatePassword(data.oldPassword, 'password change');
-    validatePassword(data.newPassword, 'password change');
-    validateRequired(data.confirmPassword, 'confirmPassword', 'password change');
+    validatePassword(data?.oldPassword, 'password change');
+    validatePassword(data?.newPassword, 'password change');
+    validateRequired(data?.confirmPassword, 'confirmPassword', 'password change');
 
     return this.httpClient.post(`/${accountId}/auth/change-password`, data);
   }
@@ -421,9 +413,8 @@ export class AuthService {
     data: UnifiedTwoFactorSetupRequest,
   ): Promise<UnifiedTwoFactorSetupResponse> {
     validateAccountId(accountId, '2FA setup');
-    validateRequired(data, '2FA setup data', '2FA setup');
 
-    if (typeof data.enableTwoFactor !== 'boolean') {
+    if (typeof data?.enableTwoFactor !== 'boolean') {
       throw new Error('enableTwoFactor must be a boolean for 2FA setup');
     }
 

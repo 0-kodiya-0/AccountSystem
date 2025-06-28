@@ -111,7 +111,7 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
   const signin = useCallback(
     async (data: LocalLoginRequest): Promise<{ success: boolean; message?: string }> => {
       // Validation
-      if (!data.email && !data.username) {
+      if (typeof data?.email !== 'string' && typeof data?.username !== 'string') {
         const message = 'Email or username is required';
         safeSetState((prev) => ({ ...prev, error: message }));
         return { success: false, message };

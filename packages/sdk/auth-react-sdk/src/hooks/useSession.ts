@@ -161,7 +161,7 @@ export function useSession(options: SessionOptions = {}): SessionReturn {
 
   // Return session accounts (lightweight data) sorted by account IDs order
   const accounts: SessionAccount[] = accountIds
-    .map((id) => sessionAccountsState.data.find((acc) => acc.id === id))
+    .map((id) => sessionAccountsState.data?.find((acc) => acc.id === id))
     .filter(Boolean) as SessionAccount[];
 
   // Session accounts convenience getters

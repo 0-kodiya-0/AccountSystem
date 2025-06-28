@@ -3,7 +3,7 @@ import { HttpClient } from '../client/HttpClient';
 
 // Validation utility functions
 const validateAccountId = (accountId: string | null | undefined, context: string): void => {
-  if (!accountId || typeof accountId !== 'string' || accountId.trim() === '') {
+  if (typeof accountId !== 'string') {
     throw new Error(`Valid accountId is required for ${context}`);
   }
 
@@ -15,7 +15,7 @@ const validateAccountId = (accountId: string | null | undefined, context: string
 };
 
 const validateEmail = (email: string | null | undefined, context: string): void => {
-  if (!email || typeof email !== 'string' || email.trim() === '') {
+  if (typeof email !== 'string') {
     throw new Error(`Valid email is required for ${context}`);
   }
 
@@ -32,12 +32,12 @@ const validateRequired = (value: any, fieldName: string, context: string): void 
 };
 
 const validateUrl = (url: string | null | undefined, context: string): void => {
-  if (!url || typeof url !== 'string' || url.trim() === '') {
-    return; // Allow empty URLs for optional fields
+  if (typeof url !== 'string') {
+    throw new Error(`Valid URL is required for ${context}`);
   }
 
   try {
-    const urlObj = new URL(url);
+    const urlObj = new URL(url.trim());
     // Only allow http/https protocols
     if (!['http:', 'https:'].includes(urlObj.protocol)) {
       throw new Error(`Invalid URL format for ${context}`);
