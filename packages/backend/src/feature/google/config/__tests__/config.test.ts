@@ -14,11 +14,15 @@ import {
 } from '../config';
 
 // Mock environment config
-vi.mock('../../../../config/env.config', () => ({
-  getGoogleClientId: () => 'test-client-id',
-  getProxyUrl: () => 'http://localhost:7000',
-  getBaseUrl: () => '/api',
-}));
+vi.mock('../../../../config/env.config', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    getGoogleClientId: () => 'test-client-id',
+    getProxyUrl: () => 'http://localhost:7000',
+    getBaseUrl: () => '/api',
+    ...actual,
+  };
+});
 
 describe('Google OAuth Config', () => {
   describe('buildGoogleScopeUrl', () => {
