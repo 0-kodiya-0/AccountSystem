@@ -13,6 +13,15 @@ import { getAppName, getNodeEnv, getSenderEmail, getSenderName } from '../../con
 import { getTransporter, resetTransporter } from './Email.transporter';
 import { logger } from '../../utils/logger';
 import { ValidationUtils } from '../../utils/validation';
+import {
+  isEmailMockEnabled,
+  sendCustomEmailMock,
+  sendLoginNotificationMock,
+  sendPasswordChangedNotificationMock,
+  sendPasswordResetEmailMock,
+  sendSignupEmailVerificationMock,
+  sendTwoFactorEnabledNotificationMock,
+} from './__mocks__/Email.service.mock';
 
 // Template cache to avoid reading files repeatedly
 const templateCache = new Map<EmailTemplate, string>();
@@ -36,10 +45,9 @@ export async function loadTemplate(template: EmailTemplate): Promise<string> {
     throw new ServerError(`Email template not found: ${template}`);
   }
 }
-
 /**
  * Generic email sender for custom templates with type safety
- * Now throws errors instead of swallowing them
+ * Now supports mocking when EMAIL_MOCK_ENABLED=true
  */
 export async function sendCustomEmail(
   to: string,
@@ -47,6 +55,13 @@ export async function sendCustomEmail(
   template: EmailTemplate,
   variables: Record<string, string>,
 ): Promise<void> {
+  // Check if mocking is enabled
+  if (isEmailMockEnabled()) {
+    logger.info('Using mock email service for sendCustomEmail');
+    return sendCustomEmailMock(to, subject, template, variables);
+  }
+
+  // Original implementation continues here...
   // Input validation
   if (!to || !to.trim()) {
     throw new ValidationError('Recipient email is required');
@@ -111,7 +126,7 @@ export async function sendCustomEmail(
 }
 
 /**
- * Send password reset email with callback URL - UPDATED
+ * Send password reset email with callback URL - UPDATED with mocking support
  */
 export async function sendPasswordResetEmail(
   email: string,
@@ -119,6 +134,12 @@ export async function sendPasswordResetEmail(
   token: string,
   callbackUrl: string,
 ): Promise<void> {
+  if (isEmailMockEnabled()) {
+    logger.info('Using mock email service for sendPasswordResetEmail');
+    return sendPasswordResetEmailMock(email, firstName, token, callbackUrl);
+  }
+
+  // Original implementation continues here...
   if (!email || !firstName || !token || !callbackUrl) {
     throw new ValidationError('Email, firstName, token, and callbackUrl are required for password reset email');
   }
@@ -136,9 +157,15 @@ export async function sendPasswordResetEmail(
 }
 
 /**
- * Send password changed notification - now throws on failure
+ * Send password changed notification - now supports mocking
  */
 export async function sendPasswordChangedNotification(email: string, firstName: string): Promise<void> {
+  if (isEmailMockEnabled()) {
+    logger.info('Using mock email service for sendPasswordChangedNotification');
+    return sendPasswordChangedNotificationMock(email, firstName);
+  }
+
+  // Original implementation continues here...
   if (!email || !firstName) {
     throw new ValidationError('Email and firstName are required for password changed notification');
   }
@@ -153,7 +180,7 @@ export async function sendPasswordChangedNotification(email: string, firstName: 
 }
 
 /**
- * Send login notification - now throws on failure
+ * Send login notification - now supports mocking
  */
 export async function sendLoginNotification(
   email: string,
@@ -161,6 +188,12 @@ export async function sendLoginNotification(
   ipAddress: string,
   device: string,
 ): Promise<void> {
+  if (isEmailMockEnabled()) {
+    logger.info('Using mock email service for sendLoginNotification');
+    return sendLoginNotificationMock(email, firstName, ipAddress, device);
+  }
+
+  // Original implementation continues here...
   if (!email || !firstName || !ipAddress || !device) {
     throw new ValidationError('Email, firstName, ipAddress, and device are required for login notification');
   }
@@ -176,9 +209,15 @@ export async function sendLoginNotification(
 }
 
 /**
- * Send two-factor authentication enabled notification - now throws on failure
+ * Send two-factor authentication enabled notification - now supports mocking
  */
 export async function sendTwoFactorEnabledNotification(email: string, firstName: string): Promise<void> {
+  if (isEmailMockEnabled()) {
+    logger.info('Using mock email service for sendTwoFactorEnabledNotification');
+    return sendTwoFactorEnabledNotificationMock(email, firstName);
+  }
+
+  // Original implementation continues here...
   if (!email || !firstName) {
     throw new ValidationError('Email and firstName are required for 2FA enabled notification');
   }
@@ -197,9 +236,15 @@ export async function sendTwoFactorEnabledNotification(email: string, firstName:
 }
 
 /**
- * Send email verification for two-step signup with callback URL - UPDATED
+ * Send email verification for two-step signup with callback URL - UPDATED with mocking support
  */
 export async function sendSignupEmailVerification(email: string, token: string, callbackUrl: string): Promise<void> {
+  if (isEmailMockEnabled()) {
+    logger.info('Using mock email service for sendSignupEmailVerification');
+    return sendSignupEmailVerificationMock(email, token, callbackUrl);
+  }
+
+  // Original implementation continues here...
   if (!email || !token || !callbackUrl) {
     throw new ValidationError('Email, token, and callbackUrl are required for signup email verification');
   }
