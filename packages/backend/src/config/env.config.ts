@@ -224,6 +224,3 @@ export const getInternalCACertPath = (): string => envConfig.get('INTERNAL_CA_CE
 // NEW: Mock configuration
 export const isMockEnabled = (): boolean => envConfig.isMockEnabled();
 export const getMockEnabled = (): boolean => envConfig.get('MOCK_ENABLED') === 'true';
-
-// Initialize environment on module load
-envConfig.initialize();
