@@ -30,7 +30,7 @@ export function getTokenInfo(token: string, isRefreshToken: boolean = false): To
       return {
         isExpired: false,
         isValid: false,
-        type: getTokenTypeString(result.accountType, isRefreshToken),
+        type: getTokenTypeString(result.accountType, result.isRefreshToken),
         error: `Expected ${isRefreshToken ? 'refresh' : 'access'} token`,
       };
     }
@@ -48,11 +48,11 @@ export function getTokenInfo(token: string, isRefreshToken: boolean = false): To
     };
 
     return tokenInfo;
-  } catch (error) {
+  } catch (error: any) {
     return {
       isExpired: true,
       isValid: false,
-      error: error instanceof Error ? error.message : 'Invalid token',
+      error: error?.message ? error.message : 'Invalid or expired token',
     };
   }
 }

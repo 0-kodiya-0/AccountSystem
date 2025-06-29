@@ -61,6 +61,8 @@ export async function createRefreshToken(options: TokenCreationOptions): Promise
  * Create local access token
  */
 export function createLocalAccessToken(accountId: string, expiresIn?: number): string {
+  ValidationUtils.validateObjectId(accountId, 'Account ID');
+
   const payload: LocalTokenPayload = {
     sub: accountId,
     type: AccountType.Local,
@@ -78,6 +80,8 @@ export function createLocalAccessToken(accountId: string, expiresIn?: number): s
  * Create local refresh token
  */
 export function createLocalRefreshToken(accountId: string): string {
+  ValidationUtils.validateObjectId(accountId, 'Account ID');
+
   const payload: LocalTokenPayload = {
     sub: accountId,
     type: AccountType.Local,
@@ -96,6 +100,12 @@ export function createLocalRefreshToken(accountId: string): string {
  * Create OAuth access token (wraps OAuth provider token)
  */
 export function createOAuthAccessToken(accountId: string, oauthAccessToken: string, expiresIn?: number): string {
+  ValidationUtils.validateObjectId(accountId, 'Account ID');
+
+  if (!oauthAccessToken || !oauthAccessToken.trim()) {
+    throw new BadRequestError('OAuth access token is required', 400, ApiErrorCode.TOKEN_INVALID);
+  }
+
   const payload: OAuthTokenPayload = {
     sub: accountId,
     type: AccountType.OAuth,
@@ -114,6 +124,12 @@ export function createOAuthAccessToken(accountId: string, oauthAccessToken: stri
  * Create OAuth refresh token (wraps OAuth provider refresh token)
  */
 export function createOAuthRefreshToken(accountId: string, oauthRefreshToken: string): string {
+  ValidationUtils.validateObjectId(accountId, 'Account ID');
+
+  if (!oauthRefreshToken || !oauthRefreshToken.trim()) {
+    throw new BadRequestError('OAuth refresh token is required', 400, ApiErrorCode.TOKEN_INVALID);
+  }
+
   const payload: OAuthTokenPayload = {
     sub: accountId,
     type: AccountType.OAuth,
@@ -140,6 +156,20 @@ export function verifyToken(token: string): TokenVerificationResult {
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as TokenPayload;
 
+    // Validate required fields are present
+    if (!decoded.sub) {
+      throw new AuthError('Token missing required field: sub', 401, ApiErrorCode.TOKEN_INVALID);
+    }
+
+    if (!decoded.type) {
+      throw new AuthError('Token missing required field: type', 401, ApiErrorCode.TOKEN_INVALID);
+    }
+
+    // Validate account type is valid
+    if (!Object.values(AccountType).includes(decoded.type)) {
+      throw new AuthError('Invalid account type in token', 401, ApiErrorCode.TOKEN_INVALID);
+    }
+
     const result: TokenVerificationResult = {
       accountId: decoded.sub,
       accountType: decoded.type,
@@ -159,8 +189,18 @@ export function verifyToken(token: string): TokenVerificationResult {
     }
 
     return result;
-  } catch {
-    throw new AuthError('Invalid or expired token', 401, ApiErrorCode.TOKEN_INVALID);
+  } catch (error) {
+    // If it's already an AuthError, re-throw it
+    if (error instanceof AuthError) {
+      throw error;
+    }
+
+    // Preserve the original error message for JWT-specific errors
+    const errorMessage =
+      error instanceof Error
+        ? error.message.charAt(0).toUpperCase() + error.message.slice(1)
+        : 'Invalid or expired token';
+    throw new AuthError(errorMessage, 401, ApiErrorCode.TOKEN_INVALID);
   }
 }
 

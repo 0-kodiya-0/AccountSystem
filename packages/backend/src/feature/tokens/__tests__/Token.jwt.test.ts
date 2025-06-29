@@ -157,7 +157,7 @@ describe('Token JWT Functions', () => {
 
     it('should throw AuthError for invalid token', () => {
       expect(() => verifyToken('invalid.token.here')).toThrow(AuthError);
-      expect(() => verifyToken('invalid.token.here')).toThrow('Invalid or expired token');
+      expect(() => verifyToken('invalid.token.here')).toThrow('Invalid token');
     });
 
     it('should throw AuthError with correct error code', () => {

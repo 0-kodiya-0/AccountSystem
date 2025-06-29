@@ -234,8 +234,8 @@ describe('Token Service', () => {
 
         expect(info.isValid).toBe(false);
         expect(info.isExpired).toBe(true);
-        expect(info.type).toBe('local_jwt'); // Default fallback
-        expect(info.error).toBe('invalid signature');
+        expect(info.type).toBe(undefined);
+        expect(info.error).toBe('Invalid signature');
         expect(info.accountId).toBeUndefined();
       });
 
@@ -247,7 +247,7 @@ describe('Token Service', () => {
         const info = getTokenInfo('invalid.signature.token', false);
 
         expect(info.isValid).toBe(false);
-        expect(info.error).toBe('jwt signature required');
+        expect(info.error).toBe('Jwt signature required');
       });
 
       it('should handle completely invalid token format', () => {
@@ -258,7 +258,7 @@ describe('Token Service', () => {
         const info = getTokenInfo('not-a-token', false);
 
         expect(info.isValid).toBe(false);
-        expect(info.error).toBe('jwt malformed');
+        expect(info.error).toBe('Jwt malformed');
       });
 
       it('should handle empty token', () => {
@@ -269,7 +269,7 @@ describe('Token Service', () => {
         const info = getTokenInfo('', false);
 
         expect(info.isValid).toBe(false);
-        expect(info.error).toBe('jwt must be provided');
+        expect(info.error).toBe('Jwt must be provided');
       });
 
       it('should handle null token', () => {
@@ -280,7 +280,7 @@ describe('Token Service', () => {
         const info = getTokenInfo(null as any, false);
 
         expect(info.isValid).toBe(false);
-        expect(info.error).toBe('jwt must be provided');
+        expect(info.error).toBe('Jwt must be provided');
       });
     });
 
@@ -377,7 +377,7 @@ describe('Token Service', () => {
         const info = getTokenInfo('string.error.token', false);
 
         expect(info.isValid).toBe(false);
-        expect(info.error).toBe('Invalid token');
+        expect(info.error).toBe('Invalid or expired token');
       });
 
       it('should handle undefined exceptions', () => {
@@ -388,7 +388,7 @@ describe('Token Service', () => {
         const info = getTokenInfo('undefined.error.token', false);
 
         expect(info.isValid).toBe(false);
-        expect(info.error).toBe('Invalid token');
+        expect(info.error).toBe('Invalid or expired token');
       });
 
       it('should handle tokens with missing sub field', () => {
@@ -404,7 +404,7 @@ describe('Token Service', () => {
 
         const info = getTokenInfo('missing.sub.token', false);
 
-        expect(info.isValid).toBe(true); // JWT verification passes
+        expect(info.isValid).toBe(false);
         expect(info.accountId).toBeUndefined();
       });
 
