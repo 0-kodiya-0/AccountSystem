@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 
-import { startServer, stopServer } from "./index";
-import fs from "fs";
-import path from "path";
-import dotenv from "dotenv";
-import { pathToFileURL } from "url";
+import { startServer, stopServer } from './index';
+import fs from 'fs';
+import path from 'path';
+import dotenv from 'dotenv';
+import { pathToFileURL } from 'url';
 
-const VERSION = "1.0.0";
+const VERSION = '1.0.0';
 
 interface CLIOptions {
   // Environment & Basic
@@ -25,7 +25,7 @@ interface CLIOptions {
   internalSslCa?: string;
 
   // Logging
-  logLevel?: "debug" | "info" | "warn" | "error";
+  logLevel?: 'debug' | 'info' | 'warn' | 'error';
   noRequestLogs?: boolean;
   debug?: boolean;
   quiet?: boolean;
@@ -42,7 +42,7 @@ interface CLIOptions {
   version?: boolean;
 }
 
-function showHelp(): void {
+export function showHelp(): void {
   console.log(`
 AccountSystem Backend Server v${VERSION}
 
@@ -99,7 +99,7 @@ function showVersion(): void {
   console.log(`AccountSystem Backend Server v${VERSION}`);
 }
 
-function parseArgs(): CLIOptions {
+export function parseArgs(): CLIOptions {
   const args = process.argv.slice(2);
   const options: CLIOptions = {};
 
@@ -108,178 +108,170 @@ function parseArgs(): CLIOptions {
     const nextArg = args[i + 1];
 
     switch (arg) {
-      case "-h":
-      case "--help":
+      case '-h':
+      case '--help':
         options.help = true;
         break;
-      case "-v":
-      case "--version":
+      case '-v':
+      case '--version':
         options.version = true;
         break;
 
       // Environment & Basic
-      case "--env":
-        if (nextArg && !nextArg.startsWith("-")) {
+      case '--env':
+        if (nextArg && !nextArg.startsWith('-')) {
           options.env = nextArg;
           i++;
         } else {
-          console.error("Error: --env requires a path");
+          console.error('Error: --env requires a path');
           process.exit(1);
         }
         break;
-      case "-p":
-      case "--port":
-        if (nextArg && !nextArg.startsWith("-")) {
+      case '-p':
+      case '--port':
+        if (nextArg && !nextArg.startsWith('-')) {
           const port = parseInt(nextArg);
           if (isNaN(port) || port < 1 || port > 65535) {
-            console.error(
-              "Error: --port must be a valid port number (1-65535)",
-            );
+            console.error('Error: --port must be a valid port number (1-65535)');
             process.exit(1);
           }
           options.port = port;
           i++;
         } else {
-          console.error("Error: --port requires a number");
+          console.error('Error: --port requires a number');
           process.exit(1);
         }
         break;
 
       // Database
-      case "--db-uri":
-        if (nextArg && !nextArg.startsWith("-")) {
+      case '--db-uri':
+        if (nextArg && !nextArg.startsWith('-')) {
           options.dbUri = nextArg;
           i++;
         } else {
-          console.error("Error: --db-uri requires a URI");
+          console.error('Error: --db-uri requires a URI');
           process.exit(1);
         }
         break;
-      case "--db-timeout":
-        if (nextArg && !nextArg.startsWith("-")) {
+      case '--db-timeout':
+        if (nextArg && !nextArg.startsWith('-')) {
           const timeout = parseInt(nextArg);
           if (isNaN(timeout) || timeout < 1000) {
-            console.error("Error: --db-timeout must be a number >= 1000");
+            console.error('Error: --db-timeout must be a number >= 1000');
             process.exit(1);
           }
           options.dbTimeout = timeout;
           i++;
         } else {
-          console.error("Error: --db-timeout requires a number");
+          console.error('Error: --db-timeout requires a number');
           process.exit(1);
         }
         break;
 
       // Internal Server
-      case "--internal-port":
-        if (nextArg && !nextArg.startsWith("-")) {
+      case '--internal-port':
+        if (nextArg && !nextArg.startsWith('-')) {
           const port = parseInt(nextArg);
           if (isNaN(port) || port < 1 || port > 65535) {
-            console.error(
-              "Error: --internal-port must be a valid port number (1-65535)",
-            );
+            console.error('Error: --internal-port must be a valid port number (1-65535)');
             process.exit(1);
           }
           options.internalPort = port;
           i++;
         } else {
-          console.error("Error: --internal-port requires a number");
+          console.error('Error: --internal-port requires a number');
           process.exit(1);
         }
         break;
-      case "--disable-internal":
+      case '--disable-internal':
         options.disableInternal = true;
         break;
-      case "--internal-ssl-key":
-        if (nextArg && !nextArg.startsWith("-")) {
+      case '--internal-ssl-key':
+        if (nextArg && !nextArg.startsWith('-')) {
           options.internalSslKey = nextArg;
           i++;
         } else {
-          console.error("Error: --internal-ssl-key requires a path");
+          console.error('Error: --internal-ssl-key requires a path');
           process.exit(1);
         }
         break;
-      case "--internal-ssl-cert":
-        if (nextArg && !nextArg.startsWith("-")) {
+      case '--internal-ssl-cert':
+        if (nextArg && !nextArg.startsWith('-')) {
           options.internalSslCert = nextArg;
           i++;
         } else {
-          console.error("Error: --internal-ssl-cert requires a path");
+          console.error('Error: --internal-ssl-cert requires a path');
           process.exit(1);
         }
         break;
-      case "--internal-ssl-ca":
-        if (nextArg && !nextArg.startsWith("-")) {
+      case '--internal-ssl-ca':
+        if (nextArg && !nextArg.startsWith('-')) {
           options.internalSslCa = nextArg;
           i++;
         } else {
-          console.error("Error: --internal-ssl-ca requires a path");
+          console.error('Error: --internal-ssl-ca requires a path');
           process.exit(1);
         }
         break;
 
       // Logging
-      case "--log-level":
-        if (nextArg && !nextArg.startsWith("-")) {
-          const validLevels = ["debug", "info", "warn", "error"];
+      case '--log-level':
+        if (nextArg && !nextArg.startsWith('-')) {
+          const validLevels = ['debug', 'info', 'warn', 'error'];
           if (!validLevels.includes(nextArg)) {
-            console.error(
-              `Error: --log-level must be one of: ${validLevels.join(", ")}`,
-            );
+            console.error(`Error: --log-level must be one of: ${validLevels.join(', ')}`);
             process.exit(1);
           }
-          options.logLevel = nextArg as "debug" | "info" | "warn" | "error";
+          options.logLevel = nextArg as 'debug' | 'info' | 'warn' | 'error';
           i++;
         } else {
-          console.error(
-            "Error: --log-level requires a level (debug, info, warn, error)",
-          );
+          console.error('Error: --log-level requires a level (debug, info, warn, error)');
           process.exit(1);
         }
         break;
-      case "--no-request-logs":
+      case '--no-request-logs':
         options.noRequestLogs = true;
         break;
-      case "--debug":
+      case '--debug':
         options.debug = true;
         break;
-      case "--quiet":
+      case '--quiet':
         options.quiet = true;
         break;
 
       // Authentication
-      case "--jwt-secret":
-        if (nextArg && !nextArg.startsWith("-")) {
+      case '--jwt-secret':
+        if (nextArg && !nextArg.startsWith('-')) {
           options.jwtSecret = nextArg;
           i++;
         } else {
-          console.error("Error: --jwt-secret requires a secret");
+          console.error('Error: --jwt-secret requires a secret');
           process.exit(1);
         }
         break;
-      case "--session-secret":
-        if (nextArg && !nextArg.startsWith("-")) {
+      case '--session-secret':
+        if (nextArg && !nextArg.startsWith('-')) {
           options.sessionSecret = nextArg;
           i++;
         } else {
-          console.error("Error: --session-secret requires a secret");
+          console.error('Error: --session-secret requires a secret');
           process.exit(1);
         }
         break;
-      case "--disable-oauth":
+      case '--disable-oauth':
         options.disableOauth = true;
         break;
-      case "--disable-local-auth":
+      case '--disable-local-auth':
         options.disableLocalAuth = true;
         break;
-      case "--disable-notifications":
+      case '--disable-notifications':
         options.disableNotifications = true;
         break;
 
       default:
-        if (arg.startsWith("-")) {
+        if (arg.startsWith('-')) {
           console.error(`Error: Unknown option: ${arg}`);
-          console.log("Use --help for available options");
+          console.log('Use --help for available options');
           process.exit(1);
         }
         break;
@@ -289,7 +281,7 @@ function parseArgs(): CLIOptions {
   return options;
 }
 
-function validateOptions(options: CLIOptions): void {
+export function validateOptions(options: CLIOptions): void {
   // Validate file paths exist
   if (options.env && !fs.existsSync(options.env)) {
     console.error(`Error: Environment file not found: ${options.env}`);
@@ -297,39 +289,33 @@ function validateOptions(options: CLIOptions): void {
   }
 
   if (options.internalSslKey && !fs.existsSync(options.internalSslKey)) {
-    console.error(
-      `Error: Internal SSL key file not found: ${options.internalSslKey}`,
-    );
+    console.error(`Error: Internal SSL key file not found: ${options.internalSslKey}`);
     process.exit(1);
   }
 
   if (options.internalSslCert && !fs.existsSync(options.internalSslCert)) {
-    console.error(
-      `Error: Internal SSL cert file not found: ${options.internalSslCert}`,
-    );
+    console.error(`Error: Internal SSL cert file not found: ${options.internalSslCert}`);
     process.exit(1);
   }
 
   if (options.internalSslCa && !fs.existsSync(options.internalSslCa)) {
-    console.error(
-      `Error: Internal SSL CA file not found: ${options.internalSslCa}`,
-    );
+    console.error(`Error: Internal SSL CA file not found: ${options.internalSslCa}`);
     process.exit(1);
   }
 
   // Validate secrets are not empty
   if (options.jwtSecret && options.jwtSecret.trim().length === 0) {
-    console.error("Error: JWT secret cannot be empty");
+    console.error('Error: JWT secret cannot be empty');
     process.exit(1);
   }
 
   if (options.sessionSecret && options.sessionSecret.trim().length === 0) {
-    console.error("Error: Session secret cannot be empty");
+    console.error('Error: Session secret cannot be empty');
     process.exit(1);
   }
 }
 
-function applyEnvironmentOverrides(options: CLIOptions): void {
+export function applyEnvironmentOverrides(options: CLIOptions): void {
   // Load custom env file if specified
   if (options.env) {
     const envPath = path.resolve(options.env);
@@ -359,7 +345,7 @@ function applyEnvironmentOverrides(options: CLIOptions): void {
   }
 
   if (options.disableInternal) {
-    process.env.INTERNAL_SERVER_ENABLED = "false";
+    process.env.INTERNAL_SERVER_ENABLED = 'false';
   }
 
   if (options.internalSslKey) {
@@ -367,9 +353,7 @@ function applyEnvironmentOverrides(options: CLIOptions): void {
   }
 
   if (options.internalSslCert) {
-    process.env.INTERNAL_SERVER_CERT_PATH = path.resolve(
-      options.internalSslCert,
-    );
+    process.env.INTERNAL_SERVER_CERT_PATH = path.resolve(options.internalSslCert);
   }
 
   if (options.internalSslCa) {
@@ -390,31 +374,31 @@ function applyEnvironmentOverrides(options: CLIOptions): void {
   }
 
   if (options.noRequestLogs) {
-    process.env.NO_REQUEST_LOGS = "true";
+    process.env.NO_REQUEST_LOGS = 'true';
   }
 
   if (options.debug) {
-    process.env.DEBUG_MODE = "true";
-    process.env.LOG_LEVEL = "debug";
+    process.env.DEBUG_MODE = 'true';
+    process.env.LOG_LEVEL = 'debug';
   }
 
   if (options.quiet) {
-    process.env.LOG_LEVEL = "error"; // Only show errors
-    process.env.NO_REQUEST_LOGS = "true";
-    process.env.QUIET_MODE = "true";
+    process.env.LOG_LEVEL = 'error'; // Only show errors
+    process.env.NO_REQUEST_LOGS = 'true';
+    process.env.QUIET_MODE = 'true';
   }
 
   // Set feature disable flags
   if (options.disableOauth) {
-    process.env.DISABLE_OAUTH = "true";
+    process.env.DISABLE_OAUTH = 'true';
   }
 
   if (options.disableLocalAuth) {
-    process.env.DISABLE_LOCAL_AUTH = "true";
+    process.env.DISABLE_LOCAL_AUTH = 'true';
   }
 
   if (options.disableNotifications) {
-    process.env.DISABLE_NOTIFICATIONS = "true";
+    process.env.DISABLE_NOTIFICATIONS = 'true';
   }
 }
 
@@ -446,25 +430,23 @@ async function main(): Promise<void> {
     try {
       await stopServer();
       if (!options.quiet) {
-        console.log("Backend server stopped");
+        console.log('Backend server stopped');
       }
       process.exit(0);
     } catch (error) {
-      console.error(
-        `Error during shutdown: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
+      console.error(`Error during shutdown: ${error instanceof Error ? error.message : 'Unknown error'}`);
       process.exit(1);
     }
   };
 
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
-  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 
   // Start the server
   console.log(`Starting AccountSystem Backend Server v${VERSION}...`);
 
-  if (options.debug || options.logLevel === "debug") {
-    console.log("Debug mode enabled");
+  if (options.debug || options.logLevel === 'debug') {
+    console.log('Debug mode enabled');
   }
 
   // Start the server
@@ -472,9 +454,7 @@ async function main(): Promise<void> {
     await startServer();
   } catch (error) {
     // Always show critical errors, even in quiet mode
-    console.error(
-      `Failed to start backend server: ${error instanceof Error ? error.message : "Unknown error"}`,
-    );
+    console.error(`Failed to start backend server: ${error instanceof Error ? error.message : 'Unknown error'}`);
     process.exit(1);
   }
 }
@@ -482,9 +462,7 @@ async function main(): Promise<void> {
 // Run the CLI
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((error) => {
-    console.error(
-      `Unexpected error: ${error instanceof Error ? error.message : "Unknown error"}`,
-    );
+    console.error(`Unexpected error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     process.exit(1);
   });
 }
