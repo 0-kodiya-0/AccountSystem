@@ -502,3 +502,19 @@ export const updateOAuthMockConfig = asyncHandler(async (req: Request, res: Resp
     }),
   );
 });
+
+/**
+ * Health check for email mock service
+ * GET /oauth-mock/healthy
+ */
+export const healthCheck = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  next(
+    new JsonSuccess({
+      status: 'healthy',
+      service: 'oauth-mock',
+      enabled: oauthMockService.isEnabled(),
+      configValid: true,
+      timestamp: new Date().toISOString(),
+    }),
+  );
+});
