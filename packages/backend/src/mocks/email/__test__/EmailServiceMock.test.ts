@@ -1,329 +1,299 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { emailMock } from '../../../../src/mocks/email/EmailServiceMock';
-import { EmailTemplate } from '../../../../src/feature/email/Email.types';
-import { getEmailMockConfig } from '../../../../src/config/mock.config';
-import { loadTemplate } from '../../../../src/feature/email';
-
-const mockConfig = {
-  enabled: true,
-  logEmails: true,
-  simulateDelay: false,
-  delayMs: 150,
-  simulateFailures: false,
-  failureRate: 0.1,
-  failOnEmails: ['fail@example.com', 'error@test.com', 'bounce@invalid.com'],
-  blockEmails: ['blocked@example.com', 'spam@test.com'],
-};
-
-// Mock the email templates
-vi.mock('../../../../src/feature/email', () => ({
-  loadTemplate: vi.fn(),
-}));
-
-// Mock the logger
-vi.mock('../../../../src/utils/logger', () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { emailMock } from '../EmailServiceMock';
+import { EmailTemplate } from '../../../feature/email';
+import { updateEmailMockConfig, type EmailMockConfig } from '../../../config/mock.config';
 
 describe('EmailServiceMock', () => {
+  const defaultConfig: EmailMockConfig = {
+    enabled: true,
+    logEmails: false,
+    simulateDelay: false,
+    delayMs: 0,
+    simulateFailures: false,
+    failureRate: 0,
+    failOnEmails: [],
+    blockEmails: [],
+  };
+
+  // Test emails from mock.config.json
+  const mockConfigEmails = {
+    failEmails: ['fail@example.com', 'error@test.com', 'bounce@invalid.com'],
+    blockEmails: ['blocked@example.com', 'spam@test.com'],
+    normalEmail: 'test.user@example.com',
+  };
+
   beforeEach(() => {
-    // Reset mocks
-    vi.clearAllMocks();
-
-    // Clear email history
+    updateEmailMockConfig(defaultConfig);
     emailMock.clearSentEmails();
-
-    // Refresh config
-    emailMock.refreshConfig();
+    vi.clearAllTimers();
   });
 
-  describe('Configuration Management', () => {
-    it('should be enabled when EMAIL_MOCK_ENABLED is true', () => {
-      process.env.EMAIL_MOCK_ENABLED = 'true';
-      expect(emailMock.isEnabled()).toBe(true);
-    });
+  describe('sendEmail', () => {
+    it('should send email successfully with valid parameters', async () => {
+      const template = EmailTemplate.PASSWORD_RESET;
+      const variables = { FIRST_NAME: 'John', RESET_URL: 'https://example.com/reset' };
 
-    it('should be disabled when EMAIL_MOCK_ENABLED is false', () => {
-      process.env.EMAIL_MOCK_ENABLED = 'false';
-      expect(emailMock.isEnabled()).toBe(false);
-    });
-
-    it('should be disabled when EMAIL_MOCK_ENABLED is not set', () => {
-      delete process.env.EMAIL_MOCK_ENABLED;
-      expect(emailMock.isEnabled()).toBe(false);
-    });
-
-    it('should refresh configuration', () => {
-      const newConfig = { ...mockConfig, logEmails: false };
-      vi.mocked(getEmailMockConfig).mockReturnValue(newConfig);
-
-      emailMock.refreshConfig();
-
-      expect(getEmailMockConfig).toHaveBeenCalled();
-      expect(emailMock.getConfig()).toEqual(newConfig);
-    });
-
-    it('should return current configuration', () => {
-      const config = emailMock.getConfig();
-      expect(config).toEqual(mockConfig);
-    });
-  });
-
-  describe('Email Sending', () => {
-    it('should throw error when mock is disabled', async () => {
-      process.env.EMAIL_MOCK_ENABLED = 'false';
-
-      await expect(
-        emailMock.sendEmail('test@example.com', 'Test Subject', EmailTemplate.PASSWORD_RESET, { FIRST_NAME: 'John' }),
-      ).rejects.toThrow('Email mock is not enabled');
-    });
-
-    it('should send email successfully', async () => {
-      vi.mocked(loadTemplate).mockResolvedValue('<html><body>Hello {{FIRST_NAME}}</body></html>');
-
-      await emailMock.sendEmail('test@example.com', 'Test Subject', EmailTemplate.PASSWORD_RESET, {
-        FIRST_NAME: 'John',
-      });
+      await emailMock.sendEmail(mockConfigEmails.normalEmail, 'Test Subject', template, variables);
 
       const sentEmails = emailMock.getSentEmails();
       expect(sentEmails).toHaveLength(1);
 
-      const email = sentEmails[0];
-      expect(email.to).toBe('test@example.com');
-      expect(email.subject).toBe('Test Subject');
-      expect(email.template).toBe(EmailTemplate.PASSWORD_RESET);
-      expect(email.status).toBe('sent');
-      expect(email.html).toContain('Hello John');
+      const sentEmail = sentEmails[0];
+      expect(sentEmail.to).toBe(mockConfigEmails.normalEmail);
+      expect(sentEmail.subject).toBe('Test Subject');
+      expect(sentEmail.template).toBe(template);
+      expect(sentEmail.variables).toEqual(variables);
+      expect(sentEmail.status).toBe('sent');
+      expect(sentEmail.html).toContain('John');
+      expect(sentEmail.text).toBeTruthy();
     });
 
-    it('should block emails in blockEmails list', async () => {
+    it('should throw error when service is disabled', async () => {
+      updateEmailMockConfig({ enabled: false });
+      emailMock.refreshConfig();
+
       await expect(
-        emailMock.sendEmail('blocked@example.com', 'Test Subject', EmailTemplate.PASSWORD_RESET, {
-          FIRST_NAME: 'John',
-        }),
-      ).rejects.toThrow('Email address blocked@example.com is blocked');
+        emailMock.sendEmail(mockConfigEmails.normalEmail, 'Test', EmailTemplate.PASSWORD_RESET, {}),
+      ).rejects.toThrow('Email mock is not enabled');
     });
 
-    it('should fail emails in failOnEmails list', async () => {
+    it('should block emails from mock.config.json blocked list', async () => {
+      updateEmailMockConfig({ blockEmails: mockConfigEmails.blockEmails });
+      emailMock.refreshConfig();
+
+      for (const blockedEmail of mockConfigEmails.blockEmails) {
+        await expect(emailMock.sendEmail(blockedEmail, 'Test', EmailTemplate.PASSWORD_RESET, {})).rejects.toThrow(
+          `Email address ${blockedEmail} is blocked`,
+        );
+      }
+
+      expect(emailMock.getSentEmails()).toHaveLength(0);
+    });
+
+    it('should fail emails from mock.config.json fail list', async () => {
+      updateEmailMockConfig({ failOnEmails: mockConfigEmails.failEmails });
+      emailMock.refreshConfig();
+
+      for (const failEmail of mockConfigEmails.failEmails) {
+        await expect(emailMock.sendEmail(failEmail, 'Test', EmailTemplate.PASSWORD_RESET, {})).rejects.toThrow(
+          `Simulated email failure for ${failEmail}`,
+        );
+      }
+
+      const sentEmails = emailMock.getSentEmails();
+      expect(sentEmails).toHaveLength(mockConfigEmails.failEmails.length);
+
+      sentEmails.forEach((email, index) => {
+        expect(email.to).toBe(mockConfigEmails.failEmails[index]);
+        expect(email.status).toBe('failed');
+        expect(email.error).toContain('Simulated email failure');
+      });
+    });
+
+    it('should simulate random failures when enabled', async () => {
+      updateEmailMockConfig({
+        simulateFailures: true,
+        failureRate: 1.0, // 100% failure rate
+      });
+      emailMock.refreshConfig();
+
       await expect(
-        emailMock.sendEmail('fail@example.com', 'Test Subject', EmailTemplate.PASSWORD_RESET, { FIRST_NAME: 'John' }),
-      ).rejects.toThrow('Simulated email failure for fail@example.com');
+        emailMock.sendEmail(mockConfigEmails.normalEmail, 'Test', EmailTemplate.PASSWORD_RESET, {}),
+      ).rejects.toThrow('Simulated email failure');
 
       const sentEmails = emailMock.getSentEmails();
       expect(sentEmails).toHaveLength(1);
       expect(sentEmails[0].status).toBe('failed');
     });
 
-    it('should simulate random failures when enabled', async () => {
-      const configWithFailures = {
-        ...mockConfig,
-        simulateFailures: true,
-        failureRate: 1.0, // 100% failure rate for testing
-      };
-      vi.mocked(getEmailMockConfig).mockReturnValue(configWithFailures);
-      emailMock.refreshConfig();
-
-      await expect(
-        emailMock.sendEmail('test@example.com', 'Test Subject', EmailTemplate.PASSWORD_RESET, { FIRST_NAME: 'John' }),
-      ).rejects.toThrow('Simulated email failure');
-    });
-
     it('should simulate delay when enabled', async () => {
-      const configWithDelay = {
-        ...mockConfig,
+      vi.useFakeTimers();
+
+      const delayMs = 150;
+      updateEmailMockConfig({
         simulateDelay: true,
-        delayMs: 50,
-      };
-      vi.mocked(getEmailMockConfig).mockReturnValue(configWithDelay);
+        delayMs,
+      });
       emailMock.refreshConfig();
 
-      vi.mocked(loadTemplate).mockResolvedValue('<html><body>Test</body></html>');
-
-      const startTime = Date.now();
-      await emailMock.sendEmail('test@example.com', 'Test Subject', EmailTemplate.PASSWORD_RESET, {
-        FIRST_NAME: 'John',
-      });
-      const endTime = Date.now();
-
-      expect(endTime - startTime).toBeGreaterThanOrEqual(50);
-    });
-
-    it('should use fallback template when loadTemplate fails', async () => {
-      vi.mocked(loadTemplate).mockRejectedValue(new Error('Template not found'));
-
-      await emailMock.sendEmail('test@example.com', 'Test Subject', EmailTemplate.PASSWORD_RESET, {
-        FIRST_NAME: 'John',
+      const sendPromise = emailMock.sendEmail(mockConfigEmails.normalEmail, 'Test', EmailTemplate.PASSWORD_RESET, {
+        FIRST_NAME: 'Test',
+        RESET_URL: 'url',
       });
 
-      const sentEmails = emailMock.getSentEmails();
-      expect(sentEmails).toHaveLength(1);
-      expect(sentEmails[0].html).toContain('Mock Email - password-reset');
-    });
-  });
-
-  describe('Email Retrieval and Filtering', () => {
-    beforeEach(async () => {
-      vi.mocked(loadTemplate).mockResolvedValue('<html><body>Test {{FIRST_NAME}}</body></html>');
-
-      // Send multiple test emails
-      await emailMock.sendEmail('user1@example.com', 'Subject 1', EmailTemplate.PASSWORD_RESET, {
-        FIRST_NAME: 'User1',
-      });
-      await emailMock.sendEmail('user2@example.com', 'Subject 2', EmailTemplate.LOGIN_NOTIFICATION, {
-        FIRST_NAME: 'User2',
-      });
-      await emailMock.sendEmail('user1@example.com', 'Subject 3', EmailTemplate.PASSWORD_CHANGED, {
-        FIRST_NAME: 'User1',
-      });
-    });
-
-    it('should get all sent emails', () => {
-      const emails = emailMock.getSentEmails();
-      expect(emails).toHaveLength(3);
-    });
-
-    it('should filter emails by address', () => {
-      const user1Emails = emailMock.getEmailsForAddress('user1@example.com');
-      expect(user1Emails).toHaveLength(2);
-      expect(user1Emails.every((email) => email.to === 'user1@example.com')).toBe(true);
-    });
-
-    it('should filter emails by template', () => {
-      const resetEmails = emailMock.getEmailsByTemplate(EmailTemplate.PASSWORD_RESET);
-      expect(resetEmails).toHaveLength(1);
-      expect(resetEmails[0].template).toBe(EmailTemplate.PASSWORD_RESET);
-    });
-
-    it('should get latest email for address', () => {
-      const latestEmail = emailMock.getLatestEmailForAddress('user1@example.com');
-      expect(latestEmail).toBeTruthy();
-      expect(latestEmail!.to).toBe('user1@example.com');
-      expect(latestEmail!.subject).toBe('Subject 3');
-    });
-
-    it('should return null for non-existent address', () => {
-      const latestEmail = emailMock.getLatestEmailForAddress('nonexistent@example.com');
-      expect(latestEmail).toBeNull();
-    });
-
-    it('should clear sent emails', () => {
-      emailMock.clearSentEmails();
-      const emails = emailMock.getSentEmails();
-      expect(emails).toHaveLength(0);
-    });
-  });
-
-  describe('Statistics', () => {
-    beforeEach(async () => {
-      vi.mocked(loadTemplate).mockResolvedValue('<html><body>Test</body></html>');
-
-      // Send successful emails
-      await emailMock.sendEmail('success1@example.com', 'Subject 1', EmailTemplate.PASSWORD_RESET, {});
-      await emailMock.sendEmail('success2@example.com', 'Subject 2', EmailTemplate.PASSWORD_RESET, {});
-      await emailMock.sendEmail('success3@example.com', 'Subject 3', EmailTemplate.LOGIN_NOTIFICATION, {});
-
-      // Send failed emails
-      try {
-        await emailMock.sendEmail('fail@example.com', 'Subject 4', EmailTemplate.PASSWORD_RESET, {});
-      } catch {
-        // Expected to fail
-      }
-    });
-
-    it('should provide accurate statistics', () => {
-      const stats = emailMock.getStats();
-
-      expect(stats.totalSent).toBe(3);
-      expect(stats.totalFailed).toBe(1);
-      expect(stats.sentByTemplate[EmailTemplate.PASSWORD_RESET]).toBe(2);
-      expect(stats.sentByTemplate[EmailTemplate.LOGIN_NOTIFICATION]).toBe(1);
-      expect(stats.failedByTemplate[EmailTemplate.PASSWORD_RESET]).toBe(1);
-      expect(stats.recentEmails).toHaveLength(4);
-    });
-  });
-
-  describe('Template Variable Replacement', () => {
-    it('should replace template variables correctly', async () => {
-      vi.mocked(loadTemplate).mockResolvedValue(
-        '<html><body>Hello {{FIRST_NAME}}, your app is {{APP_NAME}} ({{YEAR}})</body></html>',
-      );
-
-      await emailMock.sendEmail('test@example.com', 'Test Subject', EmailTemplate.PASSWORD_RESET, {
-        FIRST_NAME: 'John',
-        RESET_URL: 'http://example.com/reset',
-      });
-
-      const sentEmails = emailMock.getSentEmails();
-      const email = sentEmails[0];
-
-      expect(email.html).toContain('Hello John');
-      expect(email.html).toContain('your app is AccountSystem');
-      expect(email.html).toContain(`(${new Date().getFullYear()})`);
-    });
-
-    it('should handle missing variables gracefully', async () => {
-      vi.mocked(loadTemplate).mockResolvedValue(
-        '<html><body>Hello {{FIRST_NAME}}, missing: {{MISSING_VAR}}</body></html>',
-      );
-
-      await emailMock.sendEmail('test@example.com', 'Test Subject', EmailTemplate.PASSWORD_RESET, {
-        FIRST_NAME: 'John',
-      });
-
-      const sentEmails = emailMock.getSentEmails();
-      const email = sentEmails[0];
-
-      expect(email.html).toContain('Hello John');
-      expect(email.html).toContain('missing: '); // Empty replacement
-    });
-
-    it('should generate plain text from HTML', async () => {
-      vi.mocked(loadTemplate).mockResolvedValue(
-        '<html><head><style>body{color:red}</style></head><body><h1>Hello {{FIRST_NAME}}</h1><p>Welcome!</p></body></html>',
-      );
-
-      await emailMock.sendEmail('test@example.com', 'Test Subject', EmailTemplate.PASSWORD_RESET, {
-        FIRST_NAME: 'John',
-      });
-
-      const sentEmails = emailMock.getSentEmails();
-      const email = sentEmails[0];
-
-      expect(email.text).toBe('Hello John Welcome!');
-      expect(email.text).not.toContain('<');
-      expect(email.text).not.toContain('style');
-    });
-  });
-
-  describe('Error Handling', () => {
-    it('should handle template loading errors gracefully', async () => {
-      vi.mocked(loadTemplate).mockRejectedValue(new Error('Template not found'));
-
-      await emailMock.sendEmail('test@example.com', 'Test Subject', EmailTemplate.PASSWORD_RESET, {
-        FIRST_NAME: 'John',
-      });
+      vi.advanceTimersByTime(delayMs);
+      await sendPromise;
 
       const sentEmails = emailMock.getSentEmails();
       expect(sentEmails).toHaveLength(1);
       expect(sentEmails[0].status).toBe('sent');
-      expect(sentEmails[0].html).toContain('Mock Email - password-reset');
+
+      vi.useRealTimers();
     });
 
-    it('should record failed emails in history', async () => {
+    it('should replace template variables correctly', async () => {
+      const variables = {
+        FIRST_NAME: 'Test User',
+        RESET_URL: 'https://example.com/reset/123',
+      };
+
+      await emailMock.sendEmail(mockConfigEmails.normalEmail, 'Test Email', EmailTemplate.PASSWORD_RESET, variables);
+
+      const sentEmail = emailMock.getSentEmails()[0];
+      expect(sentEmail.html).toContain('Test User');
+      expect(sentEmail.html).toContain('https://example.com/reset/123');
+      expect(sentEmail.html).not.toContain('{{FIRST_NAME}}');
+      expect(sentEmail.html).not.toContain('{{RESET_URL}}');
+    });
+
+    it('should generate unique message IDs', async () => {
+      await emailMock.sendEmail(mockConfigEmails.normalEmail, 'Test1', EmailTemplate.PASSWORD_RESET, {});
+      await emailMock.sendEmail(mockConfigEmails.normalEmail, 'Test2', EmailTemplate.PASSWORD_RESET, {});
+
+      const sentEmails = emailMock.getSentEmails();
+      expect(sentEmails[0].id).toBeTruthy();
+      expect(sentEmails[1].id).toBeTruthy();
+      expect(sentEmails[0].id).not.toBe(sentEmails[1].id);
+      expect(sentEmails[0].id).toMatch(/^mock_\d+_[a-z0-9]+$/);
+    });
+  });
+
+  describe('Email Retrieval', () => {
+    beforeEach(async () => {
+      await emailMock.sendEmail('user1@example.com', 'Welcome', EmailTemplate.PASSWORD_RESET, {
+        FIRST_NAME: 'User1',
+        RESET_URL: 'url1',
+      });
+      await emailMock.sendEmail('user2@example.com', 'Reset', EmailTemplate.PASSWORD_CHANGED, {
+        FIRST_NAME: 'User2',
+        DATE: '2024-01-01',
+        TIME: '12:00',
+      });
+      await emailMock.sendEmail('user1@example.com', 'Login', EmailTemplate.LOGIN_NOTIFICATION, {
+        FIRST_NAME: 'User1',
+        LOGIN_TIME: '2024-01-01',
+        IP_ADDRESS: '1.1.1.1',
+        DEVICE: 'Chrome',
+      });
+    });
+
+    it('should retrieve emails by address', () => {
+      const user1Emails = emailMock.getEmailsForAddress('user1@example.com');
+      const user2Emails = emailMock.getEmailsForAddress('user2@example.com');
+
+      expect(user1Emails).toHaveLength(2);
+      expect(user2Emails).toHaveLength(1);
+      expect(user1Emails.every((email) => email.to === 'user1@example.com')).toBe(true);
+    });
+
+    it('should retrieve emails by template', () => {
+      const resetEmails = emailMock.getEmailsByTemplate(EmailTemplate.PASSWORD_RESET);
+      const changedEmails = emailMock.getEmailsByTemplate(EmailTemplate.PASSWORD_CHANGED);
+
+      expect(resetEmails).toHaveLength(1);
+      expect(changedEmails).toHaveLength(1);
+      expect(resetEmails[0].template).toBe(EmailTemplate.PASSWORD_RESET);
+    });
+
+    it('should get latest email for address', () => {
+      const latestUser1Email = emailMock.getLatestEmailForAddress('user1@example.com');
+      const latestNonExistentEmail = emailMock.getLatestEmailForAddress('nonexistent@example.com');
+
+      expect(latestUser1Email).toBeTruthy();
+      expect(latestUser1Email!.template).toBe(EmailTemplate.LOGIN_NOTIFICATION);
+      expect(latestNonExistentEmail).toBeNull();
+    });
+
+    it('should generate statistics', () => {
+      const stats = emailMock.getStats();
+
+      expect(stats.totalSent).toBe(3);
+      expect(stats.totalFailed).toBe(0);
+      expect(stats.sentByTemplate[EmailTemplate.PASSWORD_RESET]).toBe(1);
+      expect(stats.sentByTemplate[EmailTemplate.PASSWORD_CHANGED]).toBe(1);
+      expect(stats.sentByTemplate[EmailTemplate.LOGIN_NOTIFICATION]).toBe(1);
+    });
+
+    it('should clear email history', () => {
+      expect(emailMock.getSentEmails()).toHaveLength(3);
+
+      emailMock.clearSentEmails();
+
+      expect(emailMock.getSentEmails()).toHaveLength(0);
+      expect(emailMock.getLatestEmailForAddress('user1@example.com')).toBeNull();
+    });
+  });
+
+  describe('Configuration Updates', () => {
+    it('should refresh configuration dynamically', () => {
+      expect(emailMock.getConfig().simulateDelay).toBe(false);
+
+      updateEmailMockConfig({ simulateDelay: true, delayMs: 300 });
+      emailMock.refreshConfig();
+
+      expect(emailMock.getConfig().simulateDelay).toBe(true);
+      expect(emailMock.getConfig().delayMs).toBe(300);
+    });
+
+    it('should handle high failure rates', async () => {
+      updateEmailMockConfig({
+        simulateFailures: true,
+        failureRate: 0.99, // 99% failure rate
+      });
+      emailMock.refreshConfig();
+
+      const promises = Array.from({ length: 10 }, (_, i) =>
+        emailMock
+          .sendEmail(`test${i}@example.com`, 'Test', EmailTemplate.PASSWORD_RESET, {
+            FIRST_NAME: 'Test',
+            RESET_URL: 'url',
+          })
+          .then(() => 'success')
+          .catch(() => 'failed'),
+      );
+
+      const results = await Promise.all(promises);
+      const failureCount = results.filter((r) => r === 'failed').length;
+
+      expect(failureCount).toBeGreaterThan(5);
+    });
+  });
+
+  describe('Edge Cases', () => {
+    it('should handle empty variables gracefully', async () => {
+      await emailMock.sendEmail(mockConfigEmails.normalEmail, 'Test', EmailTemplate.PASSWORD_RESET, {});
+
+      const sentEmail = emailMock.getSentEmails()[0];
+      expect(sentEmail.variables).toEqual({});
+      expect(sentEmail.html).toBeTruthy();
+      expect(sentEmail.text).toBeTruthy();
+    });
+
+    it('should handle undefined variables in templates', async () => {
+      await emailMock.sendEmail(mockConfigEmails.normalEmail, 'Test', EmailTemplate.PASSWORD_RESET, {
+        FIRST_NAME: 'Test',
+        UNDEFINED_VAR: undefined as any,
+      });
+
+      const sentEmail = emailMock.getSentEmails()[0];
+      expect(sentEmail.html).not.toContain('undefined');
+    });
+
+    it('should include error details for failed emails', async () => {
+      updateEmailMockConfig({ failOnEmails: ['fail@example.com'] });
+      emailMock.refreshConfig();
+
       try {
         await emailMock.sendEmail('fail@example.com', 'Test', EmailTemplate.PASSWORD_RESET, {});
       } catch {
         // Expected to fail
       }
 
-      const sentEmails = emailMock.getSentEmails();
-      expect(sentEmails).toHaveLength(1);
-      expect(sentEmails[0].status).toBe('failed');
-      expect(sentEmails[0].error).toContain('Simulated email failure');
+      const failedEmail = emailMock.getSentEmails()[0];
+      expect(failedEmail.status).toBe('failed');
+      expect(failedEmail.error).toBe('Simulated email failure for fail@example.com');
+      expect(failedEmail.html).toBe('');
+      expect(failedEmail.text).toBe('');
     });
   });
 });
