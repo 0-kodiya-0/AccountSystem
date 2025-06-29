@@ -38,7 +38,7 @@ class EmailServiceMock {
   }
 
   isEnabled(): boolean {
-    return this.config.enabled;
+    return this.config.enabled && process.env.NODE_ENV !== 'production';
   }
 
   refreshConfig(): void {
