@@ -64,11 +64,6 @@ oauthMockRouter.post('/:provider/revoke', OAuthMockController.mockOAuthRevoke);
 oauthMockRouter.get('/:provider/info', OAuthMockController.getProviderInfo);
 
 /**
- * @route GET /oauth-mock/health
- */
-oauthMockRouter.get('/health', OAuthMockController.healthCheck);
-
-/**
  * @route GET /oauth-mock/status
  */
 oauthMockRouter.get('/status', OAuthMockController.getOAuthMockStatus);

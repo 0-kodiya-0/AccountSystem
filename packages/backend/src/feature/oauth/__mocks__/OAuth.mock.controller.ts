@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { JsonSuccess, BadRequestError, ApiErrorCode } from '../../../types/response.types';
+import { JsonSuccess, BadRequestError, ApiErrorCode, Redirect } from '../../../types/response.types';
 import { asyncHandler } from '../../../utils/response';
 import { oauthMockService, MockAuthorizationRequest } from '../../../mocks/oauth/OAuthMockService';
 import { GoogleMockProvider } from '../../../mocks/google/GoogleMockProvider';
@@ -11,8 +11,8 @@ import { logger } from '../../../utils/logger';
 // ============================================================================
 
 abstract class BaseProviderHandler {
-  abstract handleAuthorize(req: Request, res: Response, next: NextFunction, stateData: any): Promise<any>;
-  abstract handleToken(req: Request, res: Response, next: NextFunction, provider: OAuthProviders): Promise<any>;
+  abstract handleAuthorize(req: Request, res: Response, next: NextFunction, stateData: any): Promise<void>;
+  abstract handleToken(req: Request, res: Response, next: NextFunction, provider: OAuthProviders): Promise<void>;
 }
 
 class GoogleProviderHandler extends BaseProviderHandler {
@@ -23,7 +23,7 @@ class GoogleProviderHandler extends BaseProviderHandler {
     this.googleProvider = new GoogleMockProvider(oauthMockService.getConfig());
   }
 
-  async handleAuthorize(req: Request, res: Response, next: NextFunction, stateData: any): Promise<any> {
+  async handleAuthorize(req: Request, res: Response, next: NextFunction, stateData: any): Promise<void> {
     const { client_id, response_type, scope, state, redirect_uri, login_hint } =
       req.query as Partial<MockAuthorizationRequest>;
 
@@ -41,8 +41,7 @@ class GoogleProviderHandler extends BaseProviderHandler {
       const errorUrl = `${redirect_uri}?error=invalid_request&error_description=${encodeURIComponent(
         validation.error!,
       )}&state=${state}`;
-      res.redirect(errorUrl);
-      return;
+      return next(new Redirect({}, errorUrl));
     }
 
     // Google-specific account selection
@@ -51,8 +50,7 @@ class GoogleProviderHandler extends BaseProviderHandler {
 
     if (!account) {
       const errorUrl = `${redirect_uri}?error=server_error&error_description=No%20Google%20accounts%20available&state=${state}`;
-      res.redirect(errorUrl);
-      return;
+      return next(new Redirect({}, errorUrl));
     }
 
     // Google-specific status validation
@@ -61,15 +59,13 @@ class GoogleProviderHandler extends BaseProviderHandler {
       const errorUrl = `${redirect_uri}?error=access_denied&error_description=${encodeURIComponent(
         statusCheck.error!,
       )}&state=${state}`;
-      res.redirect(errorUrl);
-      return;
+      return next(new Redirect({}, errorUrl));
     }
 
     // Check if account is blocked
     if (oauthMockService.isEmailBlocked(account.email)) {
       const errorUrl = `${redirect_uri}?error=access_denied&error_description=Account%20is%20blocked&state=${state}`;
-      res.redirect(errorUrl);
-      return;
+      return next(new Redirect({}, errorUrl));
     }
 
     // Simulate Google-specific behavior
@@ -79,8 +75,7 @@ class GoogleProviderHandler extends BaseProviderHandler {
       const errorUrl = `${redirect_uri}?error=server_error&error_description=${encodeURIComponent(
         error instanceof Error ? error.message : 'Unknown error',
       )}&state=${state}`;
-      res.redirect(errorUrl);
-      return;
+      return next(new Redirect({}, errorUrl));
     }
 
     // Generate authorization code
@@ -88,61 +83,44 @@ class GoogleProviderHandler extends BaseProviderHandler {
 
     // Redirect with authorization code
     const successUrl = `${redirect_uri}?code=${authCode}&state=${state}`;
-    res.redirect(successUrl);
-    return;
+    next(new Redirect({}, successUrl));
   }
 
-  async handleToken(req: Request, res: Response, next: NextFunction, provider: OAuthProviders): Promise<any> {
+  async handleToken(req: Request, res: Response, next: NextFunction, provider: OAuthProviders): Promise<void> {
     const { grant_type, code, client_id, client_secret, redirect_uri, refresh_token } = req.body;
 
     if (grant_type === 'authorization_code') {
       // Exchange authorization code for tokens
       if (!code) {
-        res
-          .status(400)
-          .json(this.googleProvider.generateGoogleErrorResponse('invalid_request', 'Missing authorization code'));
-        return;
+        throw new BadRequestError('Missing authorization code', 400, ApiErrorCode.INVALID_REQUEST);
       }
 
       const result = oauthMockService.exchangeAuthorizationCode(code, provider);
       if (!result) {
-        res
-          .status(400)
-          .json(
-            this.googleProvider.generateGoogleErrorResponse('invalid_grant', 'Invalid or expired authorization code'),
-          );
-        return;
+        throw new BadRequestError('Invalid or expired authorization code', 400, ApiErrorCode.TOKEN_INVALID);
       }
 
-      res.json(result.tokens);
+      next(new JsonSuccess(result.tokens));
       return;
     } else if (grant_type === 'refresh_token') {
       // Refresh access token
       if (!refresh_token) {
-        res
-          .status(400)
-          .json(this.googleProvider.generateGoogleErrorResponse('invalid_request', 'Missing refresh token'));
-        return;
+        throw new BadRequestError('Missing refresh token', 400, ApiErrorCode.TOKEN_INVALID);
       }
 
       const tokens = oauthMockService.refreshAccessToken(refresh_token, provider);
       if (!tokens) {
-        res.status(400).json(this.googleProvider.generateGoogleErrorResponse('invalid_grant', 'Invalid refresh token'));
-        return;
+        throw new BadRequestError('Invalid refresh token', 400, ApiErrorCode.TOKEN_INVALID);
       }
 
-      res.json(tokens);
+      next(new JsonSuccess(tokens));
       return;
     } else {
-      res
-        .status(400)
-        .json(
-          this.googleProvider.generateGoogleErrorResponse(
-            'unsupported_grant_type',
-            'Only authorization_code and refresh_token grant types are supported',
-          ),
-        );
-      return;
+      throw new BadRequestError(
+        'Only authorization_code and refresh_token grant types are supported',
+        400,
+        ApiErrorCode.INVALID_REQUEST,
+      );
     }
   }
 }
@@ -226,7 +204,7 @@ export const mockOAuthAuthorize = asyncHandler(async (req: Request, res: Respons
   // Check if we should simulate an error
   if (oauthMockService.shouldSimulateError(stateData.mockAccountEmail)) {
     const errorUrl = `${redirect_uri}?error=access_denied&error_description=User%20denied%20access&state=${state}`;
-    return res.redirect(errorUrl);
+    return next(new Redirect({}, errorUrl));
   }
 
   if (config.logRequests) {
@@ -244,7 +222,7 @@ export const mockOAuthAuthorize = asyncHandler(async (req: Request, res: Respons
   const providerHandler = getProviderHandler(provider);
   if (!providerHandler) {
     const errorUrl = `${redirect_uri}?error=server_error&error_description=Provider%20handler%20not%20available&state=${state}`;
-    return res.redirect(errorUrl);
+    return next(new Redirect({}, errorUrl));
   }
 
   // Delegate to provider-specific logic
@@ -273,26 +251,17 @@ export const mockOAuthToken = asyncHandler(async (req: Request, res: Response, n
 
   // Validate client credentials
   if (!oauthMockService.validateClientCredentials(client_id, client_secret, provider)) {
-    res.status(401).json({
-      error: 'invalid_client',
-      error_description: 'Invalid client credentials',
-    });
-    return;
+    throw new BadRequestError('Invalid client credentials', 401, ApiErrorCode.AUTH_FAILED);
   }
 
   // Get provider-specific handler
   const providerHandler = getProviderHandler(provider);
   if (!providerHandler) {
-    res.status(500).json({
-      error: 'server_error',
-      error_description: 'Provider handler not available',
-    });
-    return;
+    throw new BadRequestError('Provider handler not available', 500, ApiErrorCode.SERVER_ERROR);
   }
 
   // Delegate to provider-specific logic
-  providerHandler.handleToken(req, res, next, provider);
-  return;
+  return providerHandler.handleToken(req, res, next, provider);
 });
 
 /**
@@ -315,25 +284,17 @@ export const mockOAuthUserInfo = asyncHandler(async (req: Request, res: Response
 
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({
-      error: 'invalid_token',
-      error_description: 'Missing or invalid authorization header',
-    });
-    return;
+    throw new BadRequestError('Missing or invalid authorization header', 401, ApiErrorCode.AUTH_FAILED);
   }
 
   const accessToken = authHeader.substring(7);
   const userInfo = oauthMockService.getUserInfo(accessToken, provider);
 
   if (!userInfo) {
-    res.status(401).json({
-      error: 'invalid_token',
-      error_description: 'Invalid access token',
-    });
-    return;
+    throw new BadRequestError('Invalid access token', 401, ApiErrorCode.TOKEN_INVALID);
   }
 
-  res.json(userInfo);
+  next(new JsonSuccess(userInfo));
 });
 
 /**
@@ -357,24 +318,16 @@ export const mockOAuthTokenInfo = asyncHandler(async (req: Request, res: Respons
   const { access_token } = req.query;
 
   if (!access_token) {
-    res.status(400).json({
-      error: 'invalid_request',
-      error_description: 'Missing access_token parameter',
-    });
-    return;
+    throw new BadRequestError('Missing access_token parameter', 400, ApiErrorCode.MISSING_DATA);
   }
 
   const tokenInfo = oauthMockService.getTokenInfo(access_token as string, provider);
 
   if (!tokenInfo) {
-    res.status(400).json({
-      error: 'invalid_token',
-      error_description: 'Invalid access token',
-    });
-    return;
+    throw new BadRequestError('Invalid access token', 400, ApiErrorCode.TOKEN_INVALID);
   }
 
-  res.json(tokenInfo);
+  next(new JsonSuccess(tokenInfo));
 });
 
 /**
@@ -398,24 +351,17 @@ export const mockOAuthRevoke = asyncHandler(async (req: Request, res: Response, 
   const { token } = req.body;
 
   if (!token) {
-    res.status(400).json({
-      error: 'invalid_request',
-      error_description: 'Missing token parameter',
-    });
-    return;
+    throw new BadRequestError('Missing token parameter', 400, ApiErrorCode.MISSING_DATA);
   }
 
   const success = oauthMockService.revokeToken(token, provider);
 
   if (!success) {
-    res.status(400).json({
-      error: 'invalid_token',
-      error_description: 'Invalid token',
-    });
-    return;
+    throw new BadRequestError('Invalid token', 400, ApiErrorCode.TOKEN_INVALID);
   }
 
-  res.status(200).send('');
+  // For OAuth revoke endpoints, success is typically indicated by a 200 status with empty response
+  next(new JsonSuccess({ success: true }, 200, 'Token revoked successfully'));
 });
 
 /**
@@ -499,22 +445,6 @@ export const updateOAuthMockConfig = asyncHandler(async (req: Request, res: Resp
     new JsonSuccess({
       message: 'OAuth mock configuration refreshed',
       config: oauthMockService.getConfig(),
-    }),
-  );
-});
-
-/**
- * Health check for email mock service
- * GET /oauth-mock/healthy
- */
-export const healthCheck = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  next(
-    new JsonSuccess({
-      status: 'healthy',
-      service: 'oauth-mock',
-      enabled: oauthMockService.isEnabled(),
-      configValid: true,
-      timestamp: new Date().toISOString(),
     }),
   );
 });
