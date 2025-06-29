@@ -33,12 +33,40 @@ vi.mock('../../../utils/logger', () => ({
   },
 }));
 
+// Mock the email mock configuration to disable mocking by default
+vi.mock('../../../config/mock.config', () => ({
+  getEmailMockConfig: vi.fn().mockReturnValue({
+    enabled: false, // Disable by default so real service runs
+    logEmails: false,
+    simulateDelay: false,
+    delayMs: 0,
+    simulateFailures: false,
+    failureRate: 0,
+    failOnEmails: [],
+    blockEmails: [],
+  }),
+  updateEmailMockConfig: vi.fn(),
+}));
+
+// Mock the EmailServiceMock instance
+vi.mock('../../../mocks/email/EmailServiceMock', () => ({
+  emailMock: {
+    isEnabled: vi.fn().mockReturnValue(false), // Disable by default
+    sendEmail: vi.fn(),
+    refreshConfig: vi.fn(),
+  },
+}));
+
 // Import mocked modules
 import { getTransporter, resetTransporter } from '../Email.transporter';
 import { ValidationUtils } from '../../../utils/validation';
+import { getEmailMockConfig } from '../../../config/mock.config';
+import { emailMock } from '../../../mocks/email/EmailServiceMock';
 
 const mockGetTransporter = vi.mocked(getTransporter);
 const mockResetTransporter = vi.mocked(resetTransporter);
+const mockGetEmailMockConfig = vi.mocked(getEmailMockConfig);
+const mockEmailMock = vi.mocked(emailMock);
 
 describe('Email Service', () => {
   const mockTransporter = {
@@ -47,6 +75,21 @@ describe('Email Service', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Set up default mock behavior - disable email mocking so real service runs
+    mockEmailMock.isEnabled.mockReturnValue(false);
+    mockGetEmailMockConfig.mockReturnValue({
+      enabled: false,
+      logEmails: false,
+      simulateDelay: false,
+      delayMs: 0,
+      simulateFailures: false,
+      failureRate: 0,
+      failOnEmails: [],
+      blockEmails: [],
+    });
+
+    // Set up transporter mocks
     mockGetTransporter.mockResolvedValue(mockTransporter as any);
     mockTransporter.sendMail.mockResolvedValue({ messageId: 'test-message-id' });
   });
@@ -108,6 +151,32 @@ describe('Email Service', () => {
           text: expect.any(String),
         }),
       );
+    });
+
+    it('should use mock service when mocking is enabled', async () => {
+      // Enable mocking for this specific test
+      mockEmailMock.isEnabled.mockReturnValue(true);
+      mockGetEmailMockConfig.mockReturnValue({
+        enabled: true,
+        logEmails: true,
+        simulateDelay: false,
+        delayMs: 0,
+        simulateFailures: false,
+        failureRate: 0,
+        failOnEmails: [],
+        blockEmails: [],
+      });
+      mockEmailMock.sendEmail.mockResolvedValue();
+
+      await sendCustomEmail(validParams.to, validParams.subject, validParams.template, validParams.variables);
+
+      expect(mockEmailMock.sendEmail).toHaveBeenCalledWith(
+        validParams.to,
+        validParams.subject,
+        validParams.template,
+        validParams.variables,
+      );
+      expect(mockGetTransporter).not.toHaveBeenCalled();
     });
 
     it('should throw ValidationError for empty recipient email', async () => {
@@ -551,6 +620,52 @@ describe('Email Service', () => {
 
       const sendMailCall = mockTransporter.sendMail.mock.calls[0][0];
       expect(sendMailCall.html).toContain(encodeURIComponent(specialToken));
+    });
+  });
+
+  describe('Mock Service Integration Tests', () => {
+    beforeEach(() => {
+      // Enable mocking for these specific tests
+      mockEmailMock.isEnabled.mockReturnValue(true);
+      mockGetEmailMockConfig.mockReturnValue({
+        enabled: true,
+        logEmails: true,
+        simulateDelay: false,
+        delayMs: 0,
+        simulateFailures: false,
+        failureRate: 0,
+        failOnEmails: [],
+        blockEmails: [],
+      });
+    });
+
+    it('should use mock service for all email functions when enabled', async () => {
+      mockEmailMock.sendEmail.mockResolvedValue();
+
+      // Test sendCustomEmail
+      await sendCustomEmail('test@example.com', 'Test', EmailTemplate.PASSWORD_RESET, {
+        FIRST_NAME: 'John',
+        RESET_URL: 'https://example.com/reset',
+      });
+
+      expect(mockEmailMock.sendEmail).toHaveBeenCalledWith('test@example.com', 'Test', EmailTemplate.PASSWORD_RESET, {
+        FIRST_NAME: 'John',
+        RESET_URL: 'https://example.com/reset',
+      });
+      expect(mockGetTransporter).not.toHaveBeenCalled();
+    });
+
+    it('should handle mock service failures', async () => {
+      mockEmailMock.sendEmail.mockRejectedValue(new Error('Mock service failure'));
+
+      await expect(
+        sendCustomEmail('test@example.com', 'Test', EmailTemplate.PASSWORD_RESET, {
+          FIRST_NAME: 'John',
+          RESET_URL: 'https://example.com/reset',
+        }),
+      ).rejects.toThrow('Mock service failure');
+
+      expect(mockGetTransporter).not.toHaveBeenCalled();
     });
   });
 });
