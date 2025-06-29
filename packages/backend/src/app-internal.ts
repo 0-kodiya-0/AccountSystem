@@ -1,11 +1,13 @@
-import express, { NextFunction } from 'express';
+import express from 'express';
 import http from 'http';
 import cors from 'cors';
 import { applyErrorHandlers, asyncHandler } from './utils/response';
-import internalRoutes from './feature/internal/internal.routes';
+
+import { InternalSocketHandler, internalRouter } from './feature/internal';
+import { internalHealthRouter } from './feature/health';
+
+import { ApiErrorCode, NotFoundError } from './types/response.types';
 import socketConfig from './config/socket.config';
-import { InternalSocketHandler } from './feature/internal/internal.socket';
-import { ApiErrorCode, JsonSuccess, NotFoundError } from './types/response.types';
 import { logger } from './utils/logger';
 import { getInternalServerEnabled, getInternalPort } from './config/env.config';
 
@@ -65,43 +67,10 @@ function createInternalApp(): express.Application {
     next();
   });
 
+  app.use('/health', internalHealthRouter);
+
   // Internal API routes
-  app.use('/internal', internalRoutes);
-
-  // Health check endpoint with enhanced information
-  app.get(
-    '/health',
-    asyncHandler(async (req, res, next: NextFunction) => {
-      const socketHandler = req.app.get('internalSocketHandler') as InternalSocketHandler | undefined;
-      const connectedServices = socketHandler?.getConnectedServices() || [];
-
-      next(
-        new JsonSuccess({
-          status: 'healthy',
-          timestamp: new Date().toISOString(),
-          server: 'internal-http',
-          version: '1.0.0',
-          features: {
-            httpApi: true,
-            socketApi: true,
-            authentication: 'header-based',
-            typescript: true,
-          },
-          socket: {
-            namespace: '/internal',
-            connectedServices: connectedServices.length,
-            services: connectedServices.map((s) => ({
-              serviceId: s.serviceId,
-              serviceName: s.serviceName,
-              authenticated: s.authenticated,
-              connectedAt: s.connectedAt,
-              lastActivity: s.lastActivity,
-            })),
-          },
-        }),
-      );
-    }),
-  );
+  app.use('/internal', internalRouter);
 
   // Apply error handlers
   applyErrorHandlers(app);

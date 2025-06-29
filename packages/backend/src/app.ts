@@ -6,7 +6,6 @@ import cookieParser from 'cookie-parser';
 
 import db from './config/db';
 import socketConfig from './config/socket.config';
-import { applyErrorHandlers, asyncHandler } from './utils/response';
 
 import * as oauthRouter from './feature/oauth';
 import * as accountRouter from './feature/account';
@@ -14,13 +13,19 @@ import * as sessionRouter from './feature/session/session.routes'; // NEW: Sessi
 import * as localAuthRouter from './feature/local_auth';
 import * as twoFARouter from './feature/twofa';
 import * as tokenRouter from './feature/tokens';
+import * as healthRouter from './feature/health/Health.routes';
+
 import { emailMockRouter } from './feature/email/__mocks__/Email.mock.routes';
+import { oauthMockRouter } from './feature/oauth/__mocks__/OAuth.mock.routes';
+
 import notificationRouter, { NotificationSocketHandler } from './feature/notifications';
+
 import { authenticateSession, validateAccountAccess, validateTokenAccess } from './middleware';
+import { autoTrackParentUrl } from './middleware/path-track';
+
 import { ApiErrorCode, NotFoundError } from './types/response.types';
 import { logger } from './utils/logger';
-import { autoTrackParentUrl } from './middleware/path-track';
-import { oauthMockRouter } from './feature/oauth/__mock__/OAuth.mock.routes';
+import { applyErrorHandlers, asyncHandler } from './utils/response';
 
 let httpServer: Server | null = null;
 
@@ -46,6 +51,8 @@ function createMainApp(): express.Application {
       next();
     });
   }
+
+  app.use('/health', healthRouter.healthRouter);
 
   if (process.env.NODE_ENV !== 'production') {
     if (process.env.MOCK_ENABLED === 'true') {

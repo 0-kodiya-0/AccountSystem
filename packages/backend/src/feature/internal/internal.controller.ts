@@ -220,22 +220,3 @@ export const validateSession = asyncHandler(async (req: Request, res: Response, 
     }),
   );
 });
-
-/**
- * Health check endpoint
- * GET /internal/health
- */
-export const healthCheck = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  next(
-    new JsonSuccess({
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      server: 'internal-api',
-      services: {
-        accounts: 'available',
-        sessions: 'available',
-        tokens: 'available',
-      },
-    }),
-  );
-});

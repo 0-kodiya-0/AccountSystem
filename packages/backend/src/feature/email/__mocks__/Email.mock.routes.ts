@@ -8,13 +8,6 @@ export const emailMockRouter = express.Router();
  */
 
 /**
- * @route GET /email-mock/health
- * @desc Health check for email mock service
- * @access Public (development/test only)
- */
-emailMockRouter.get('/health', EmailMockController.healthCheck);
-
-/**
  * @route GET /email-mock/status
  * @desc Get email mock status and configuration
  * @access Public (development/test only)

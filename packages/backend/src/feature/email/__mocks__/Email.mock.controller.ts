@@ -191,22 +191,6 @@ export const getEmailsByTemplate = asyncHandler(async (req: Request, res: Respon
 });
 
 /**
- * Health check for email mock service
- * GET /email-mock/health
- */
-export const healthCheck = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  next(
-    new JsonSuccess({
-      status: 'healthy',
-      service: 'email-mock',
-      enabled: emailMock.isEnabled(),
-      configValid: true,
-      timestamp: new Date().toISOString(),
-    }),
-  );
-});
-
-/**
  * Validate email mock configuration
  * POST /email-mock/validate-config
  */
