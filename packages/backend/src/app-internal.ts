@@ -87,11 +87,6 @@ function createInternalApp(): express.Application {
             authentication: 'header-based',
             typescript: true,
           },
-          endpoints: {
-            auth: '/internal/auth/*',
-            users: '/internal/users/*',
-            session: '/internal/session/*',
-          },
           socket: {
             namespace: '/internal',
             connectedServices: connectedServices.length,
