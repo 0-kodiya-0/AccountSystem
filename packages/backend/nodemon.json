@@ -1,13 +1,6 @@
 {
-    "watch": [
-        "src",
-        ".env",
-        "index.ts"
-    ],
-    "ext": "ts,json",
-    "ignore": [
-        "dist",
-        "node_modules"
-    ],
-    "exec": "npx tsx src/cli.ts"
+  "watch": ["src", ".env", "index.ts", "nodemon.json"],
+  "ext": "ts,json",
+  "ignore": ["dist", "node_modules"],
+  "exec": "npx tsx src/cli.ts"
 }
