@@ -9,7 +9,7 @@ import socketConfig from './config/socket.config';
 
 import * as oauthRouter from './feature/oauth';
 import * as accountRouter from './feature/account';
-import * as sessionRouter from './feature/session/session.routes'; // NEW: Session routes
+import * as sessionRouter from './feature/session/session.routes';
 import * as localAuthRouter from './feature/local_auth';
 import * as twoFARouter from './feature/twofa';
 import * as tokenRouter from './feature/tokens';
@@ -17,6 +17,8 @@ import * as healthRouter from './feature/health/Health.routes';
 
 import { emailMockRouter } from './feature/email/__mocks__/Email.mock.routes';
 import { oauthMockRouter } from './feature/oauth/__mocks__/OAuth.mock.routes';
+import { sessionMockRouter } from './feature/session/__mocks__/Session.mock.routes';
+import { tokenMockRouter } from './feature/tokens/__mocks__/Token.mock.routes';
 
 import notificationRouter, { NotificationSocketHandler } from './feature/notifications';
 
@@ -56,11 +58,21 @@ function createMainApp(): express.Application {
 
   if (process.env.NODE_ENV !== 'production') {
     if (process.env.MOCK_ENABLED === 'true') {
-      app.use('/email-mock', emailMockRouter);
+      // Email mock routes
+      app.use('/mock/email', emailMockRouter);
       logger.info('Email mock routes enabled');
 
-      app.use('/oauth-mock', oauthMockRouter);
+      // OAuth mock routes
+      app.use('/mock/oauth', oauthMockRouter);
       logger.info('OAuth mock routes enabled');
+
+      // Session mock routes
+      app.use('/mock/session', sessionMockRouter);
+      logger.info('Session mock routes enabled');
+
+      // Token mock routes
+      app.use('/mock/token', tokenMockRouter);
+      logger.info('Token mock routes enabled');
     }
   }
 
@@ -86,7 +98,7 @@ function createMainApp(): express.Application {
     logger.info('Local authentication routes disabled');
   }
 
-  // NEW: 2FA public routes (enabled unless specifically disabled)
+  // 2FA public routes (enabled unless specifically disabled)
   if (process.env.DISABLE_LOCAL_AUTH !== 'true' || process.env.DISABLE_OAUTH !== 'true') {
     app.use('/twofa', autoTrackParentUrl(), twoFARouter.twoFAPublicRouter);
     logger.info('2FA public routes enabled');
@@ -111,7 +123,7 @@ function createMainApp(): express.Application {
     logger.info('Local auth authenticated routes enabled');
   }
 
-  // NEW: 2FA authenticated routes (enabled unless both auth types are disabled)
+  // 2FA authenticated routes (enabled unless both auth types are disabled)
   if (process.env.DISABLE_LOCAL_AUTH !== 'true' || process.env.DISABLE_OAUTH !== 'true') {
     app.use('/:accountId/twofa', autoTrackParentUrl(), twoFARouter.twoFAAuthenticatedRouter);
     logger.info('2FA authenticated routes enabled');
@@ -169,6 +181,16 @@ export async function startMainServer(): Promise<void> {
     httpServer!.listen(PORT, () => {
       logger.info(`🌐 Main HTTP server running on port ${PORT}`);
       logger.info(`📡 Socket.IO is listening on the same port`);
+
+      // Log enabled mock services
+      if (process.env.NODE_ENV !== 'production' && process.env.MOCK_ENABLED === 'true') {
+        logger.info('🧪 Mock services enabled:');
+        logger.info('   📧 Email Mock: /email-mock/*');
+        logger.info('   🔐 OAuth Mock: /oauth-mock/*');
+        logger.info('   🏷️ Session Mock: /session-mock/*');
+        logger.info('   🎫 Token Mock: /token-mock/*');
+      }
+
       resolve();
     });
 
