@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { MockOAuthAccount, OAuthMockConfig } from '../../config/mock.config';
+import { MockAccount, OAuthMockConfig } from '../../config/mock.config';
 import { OAuthProviders } from '../../feature/account/Account.types';
 import { MockTokenResponse, MockUserInfoResponse } from '../oauth/OAuthMockService';
 import { logger } from '../../utils/logger';
@@ -34,7 +34,7 @@ export class GoogleMockProvider {
   /**
    * Generate Google-specific ID Token (JWT)
    */
-  generateGoogleIdToken(account: MockOAuthAccount): string {
+  generateGoogleIdToken(account: MockAccount): string {
     if (account.provider !== OAuthProviders.Google) {
       throw new Error('Account is not a Google account');
     }
@@ -76,8 +76,8 @@ export class GoogleMockProvider {
   /**
    * Get Google-specific token info
    */
-  getGoogleTokenInfo(accessToken: string, accounts: MockOAuthAccount[]): GoogleTokenInfo | null {
-    const account = accounts.find((acc) => acc.accessToken === accessToken && acc.provider === OAuthProviders.Google);
+  getGoogleTokenInfo(accessToken: string, accounts: MockAccount[]): GoogleTokenInfo | null {
+    const account = accounts.find((acc) => acc.provider === OAuthProviders.Google && acc.accountType === 'oauth');
 
     if (!account) {
       return null;
@@ -89,7 +89,7 @@ export class GoogleMockProvider {
       user_id: account.id,
       scope:
         'openid email profile https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
-      expires_in: account.expiresIn,
+      expires_in: 3600,
       email: account.email,
       verified_email: account.emailVerified,
       access_type: 'offline',
@@ -99,8 +99,8 @@ export class GoogleMockProvider {
   /**
    * Get Google-specific user info
    */
-  getGoogleUserInfo(accessToken: string, accounts: MockOAuthAccount[]): GoogleUserInfo | null {
-    const account = accounts.find((acc) => acc.accessToken === accessToken && acc.provider === OAuthProviders.Google);
+  getGoogleUserInfo(accessToken: string, accounts: MockAccount[]): GoogleUserInfo | null {
+    const account = accounts.find((acc) => acc.provider === OAuthProviders.Google && acc.accountType === 'oauth');
 
     if (!account) {
       return null;
@@ -122,15 +122,20 @@ export class GoogleMockProvider {
   /**
    * Exchange Google authorization code for tokens
    */
-  exchangeGoogleAuthorizationCode(code: string, account: MockOAuthAccount): MockTokenResponse {
-    if (account.provider !== OAuthProviders.Google) {
-      throw new Error('Account is not a Google account');
+  exchangeGoogleAuthorizationCode(code: string, account: MockAccount): MockTokenResponse {
+    if (account.provider !== OAuthProviders.Google || account.accountType !== 'oauth') {
+      throw new Error('Account is not a Google OAuth account');
     }
 
+    // Generate dynamic tokens instead of using static ones
+    const timestamp = Date.now();
+    const accessToken = `mock_google_access_${account.id}_${timestamp}_${crypto.randomBytes(8).toString('hex')}`;
+    const refreshToken = `mock_google_refresh_${account.id}_${timestamp}_${crypto.randomBytes(8).toString('hex')}`;
+
     return {
-      access_token: account.accessToken,
-      refresh_token: account.refreshToken,
-      expires_in: account.expiresIn,
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_in: 3600,
       token_type: 'Bearer',
       scope: 'openid email profile',
       id_token: this.generateGoogleIdToken(account),
@@ -140,15 +145,28 @@ export class GoogleMockProvider {
   /**
    * Refresh Google access token
    */
-  refreshGoogleAccessToken(refreshToken: string, accounts: MockOAuthAccount[]): MockTokenResponse | null {
-    const account = accounts.find((acc) => acc.refreshToken === refreshToken && acc.provider === OAuthProviders.Google);
+  refreshGoogleAccessToken(refreshToken: string, accounts: MockAccount[]): MockTokenResponse | null {
+    // In a real implementation, we'd validate the refresh token
+    // For mock purposes, we'll just generate a new access token
+
+    // Extract account ID from refresh token pattern
+    const tokenMatch = refreshToken.match(/mock_google_refresh_([^_]+)_/);
+    if (!tokenMatch) {
+      return null;
+    }
+
+    const accountId = tokenMatch[1];
+    const account = accounts.find(
+      (acc) => acc.id === accountId && acc.provider === OAuthProviders.Google && acc.accountType === 'oauth',
+    );
 
     if (!account) {
       return null;
     }
 
-    // Generate new access token with timestamp
-    const newAccessToken = `${account.accessToken}_refreshed_${Date.now()}`;
+    // Generate new access token
+    const timestamp = Date.now();
+    const newAccessToken = `mock_google_access_${account.id}_${timestamp}_${crypto.randomBytes(8).toString('hex')}`;
 
     if (this.config.logRequests) {
       logger.info(`Google mock token refreshed for account: ${account.email}`);
@@ -157,7 +175,7 @@ export class GoogleMockProvider {
     return {
       access_token: newAccessToken,
       refresh_token: refreshToken, // Keep the same refresh token
-      expires_in: account.expiresIn,
+      expires_in: 3600,
       token_type: 'Bearer',
       scope: 'openid email profile',
       // Note: ID token not typically included in refresh response
@@ -167,9 +185,24 @@ export class GoogleMockProvider {
   /**
    * Revoke Google token
    */
-  revokeGoogleToken(token: string, accounts: MockOAuthAccount[]): boolean {
+  revokeGoogleToken(token: string, accounts: MockAccount[]): boolean {
+    // Check if token follows our mock token pattern
+    const isAccessToken = token.includes('mock_google_access_');
+    const isRefreshToken = token.includes('mock_google_refresh_');
+
+    if (!isAccessToken && !isRefreshToken) {
+      return false;
+    }
+
+    // Extract account ID from token
+    const tokenMatch = token.match(/mock_google_(?:access|refresh)_([^_]+)_/);
+    if (!tokenMatch) {
+      return false;
+    }
+
+    const accountId = tokenMatch[1];
     const account = accounts.find(
-      (acc) => (acc.accessToken === token || acc.refreshToken === token) && acc.provider === OAuthProviders.Google,
+      (acc) => acc.id === accountId && acc.provider === OAuthProviders.Google && acc.accountType === 'oauth',
     );
 
     if (!account) {
@@ -178,7 +211,7 @@ export class GoogleMockProvider {
 
     if (this.config.logRequests) {
       logger.info(`Google mock token revoked for account: ${account.email}`, {
-        tokenPrefix: token.substring(0, 10) + '...',
+        tokenPrefix: token.substring(0, 20) + '...',
       });
     }
 
@@ -302,12 +335,10 @@ export class GoogleMockProvider {
   /**
    * Handle Google-specific account selection logic
    */
-  selectGoogleAccount(
-    accounts: MockOAuthAccount[],
-    loginHint?: string,
-    mockAccountEmail?: string,
-  ): MockOAuthAccount | null {
-    const googleAccounts = accounts.filter((acc) => acc.provider === OAuthProviders.Google);
+  selectGoogleAccount(accounts: MockAccount[], loginHint?: string, mockAccountEmail?: string): MockAccount | null {
+    const googleAccounts = accounts.filter(
+      (acc) => acc.provider === OAuthProviders.Google && acc.accountType === 'oauth',
+    );
 
     if (googleAccounts.length === 0) {
       return null;
@@ -475,13 +506,13 @@ export class GoogleMockProvider {
   /**
    * Check if Google account meets requirements
    */
-  validateGoogleAccountStatus(account: MockOAuthAccount): {
+  validateGoogleAccountStatus(account: MockAccount): {
     valid: boolean;
     error?: string;
     errorCode?: string;
   } {
-    if (account.provider !== OAuthProviders.Google) {
-      return { valid: false, error: 'Not a Google account', errorCode: 'invalid_account' };
+    if (account.provider !== OAuthProviders.Google || account.accountType !== 'oauth') {
+      return { valid: false, error: 'Not a Google OAuth account', errorCode: 'invalid_account' };
     }
 
     if (account.status === 'suspended') {
@@ -514,7 +545,7 @@ export class GoogleMockProvider {
   /**
    * Get Google account capabilities based on account type
    */
-  getGoogleAccountCapabilities(account: MockOAuthAccount): {
+  getGoogleAccountCapabilities(account: MockAccount): {
     canSignIn: boolean;
     canSignUp: boolean;
     requiresTwoFactor: boolean;

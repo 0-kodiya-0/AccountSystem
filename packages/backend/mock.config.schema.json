@@ -10,9 +10,12 @@
     },
     "oauth": {
       "$ref": "#/definitions/OAuthMockConfig"
+    },
+    "accounts": {
+      "$ref": "#/definitions/AccountsMockConfig"
     }
   },
-  "required": ["email", "oauth"],
+  "required": ["email", "oauth", "accounts"],
   "additionalProperties": false,
   "definitions": {
     "EmailMockConfig": {
@@ -75,6 +78,7 @@
         }
       },
       "required": [
+        "enabled",
         "logEmails",
         "simulateDelay",
         "delayMs",
@@ -117,15 +121,6 @@
           "maximum": 1,
           "description": "Probability of OAuth error (0.0-1.0)",
           "default": 0.05
-        },
-        "mockAccounts": {
-          "type": "array",
-          "description": "Mock user accounts for testing OAuth flows",
-          "items": {
-            "$ref": "#/definitions/MockOAuthAccount"
-          },
-          "minItems": 1,
-          "default": []
         },
         "failOnEmails": {
           "type": "array",
@@ -173,6 +168,22 @@
           "maximum": 65535,
           "description": "Port for the mock OAuth server (if running separately)",
           "default": 8080
+        },
+        "providers": {
+          "type": "object",
+          "description": "OAuth provider configurations",
+          "properties": {
+            "google": {
+              "$ref": "#/definitions/OAuthProviderConfig"
+            },
+            "microsoft": {
+              "$ref": "#/definitions/OAuthProviderConfig"
+            },
+            "facebook": {
+              "$ref": "#/definitions/OAuthProviderConfig"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "required": [
@@ -181,7 +192,6 @@
         "delayMs",
         "simulateErrors",
         "errorRate",
-        "mockAccounts",
         "failOnEmails",
         "blockEmails",
         "autoApprove",
@@ -192,15 +202,61 @@
       ],
       "additionalProperties": false
     },
-    "MockOAuthAccount": {
+    "OAuthProviderConfig": {
       "type": "object",
-      "description": "A mock OAuth account for testing",
+      "description": "Configuration for a specific OAuth provider",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable this OAuth provider",
+          "default": true
+        }
+      },
+      "required": ["enabled"],
+      "additionalProperties": false
+    },
+    "AccountsMockConfig": {
+      "type": "object",
+      "description": "Mock accounts configuration for testing",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable mock accounts seeding",
+          "default": true
+        },
+        "clearOnSeed": {
+          "type": "boolean",
+          "description": "Clear existing mock accounts before seeding",
+          "default": false
+        },
+        "accounts": {
+          "type": "array",
+          "description": "Mock user accounts for testing",
+          "items": {
+            "$ref": "#/definitions/MockAccount"
+          },
+          "minItems": 0,
+          "default": []
+        }
+      },
+      "required": ["enabled", "accounts"],
+      "additionalProperties": false
+    },
+    "MockAccount": {
+      "type": "object",
+      "description": "A mock user account for testing",
       "properties": {
         "id": {
           "type": "string",
           "description": "Unique identifier for the mock account",
           "pattern": "^[a-zA-Z0-9_-]+$",
-          "examples": ["mock_user_1", "test_admin", "demo_account"]
+          "examples": ["account_1", "test_admin", "demo_user"]
+        },
+        "accountType": {
+          "type": "string",
+          "enum": ["local", "oauth"],
+          "description": "Type of account (local or oauth)",
+          "default": "oauth"
         },
         "email": {
           "type": "string",
@@ -217,20 +273,28 @@
         },
         "firstName": {
           "type": "string",
-          "description": "First name of the account holder (optional)",
+          "description": "First name of the account holder",
           "maxLength": 50,
           "examples": ["Test", "John", "Admin"]
         },
         "lastName": {
           "type": "string",
-          "description": "Last name of the account holder (optional)",
+          "description": "Last name of the account holder",
           "maxLength": 50,
           "examples": ["User", "Doe", "User"]
+        },
+        "username": {
+          "type": "string",
+          "description": "Username for local accounts",
+          "minLength": 3,
+          "maxLength": 30,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "examples": ["testuser", "johndoe", "admin"]
         },
         "imageUrl": {
           "type": "string",
           "format": "uri",
-          "description": "Profile image URL for the account (optional)",
+          "description": "Profile image URL for the account",
           "examples": ["https://via.placeholder.com/150?text=Test+User", "https://example.com/avatar.jpg"]
         },
         "emailVerified": {
@@ -241,30 +305,13 @@
         "provider": {
           "type": "string",
           "enum": ["google", "microsoft", "facebook"],
-          "description": "OAuth provider for this account",
-          "default": "google"
+          "description": "OAuth provider for this account (required for oauth accounts)"
         },
-        "accessToken": {
+        "password": {
           "type": "string",
-          "description": "Mock access token for API calls",
-          "minLength": 10,
-          "pattern": "^[a-zA-Z0-9_-]+$",
-          "examples": ["mock_access_token_123456789", "test_token_abc"]
-        },
-        "refreshToken": {
-          "type": "string",
-          "description": "Mock refresh token for token renewal",
-          "minLength": 10,
-          "pattern": "^[a-zA-Z0-9_-]+$",
-          "examples": ["mock_refresh_token_987654321", "test_refresh_xyz"]
-        },
-        "expiresIn": {
-          "type": "integer",
-          "minimum": 300,
-          "maximum": 86400,
-          "description": "Token expiry time in seconds (5 minutes to 24 hours)",
-          "default": 3600,
-          "examples": [3600, 7200, 1800]
+          "description": "Password for local accounts (will be hashed)",
+          "minLength": 8,
+          "examples": ["TestPassword123!", "SecurePass456!"]
         },
         "twoFactorEnabled": {
           "type": "boolean",
@@ -273,16 +320,36 @@
         },
         "status": {
           "type": "string",
-          "enum": ["active", "suspended", "inactive"],
+          "enum": ["active", "suspended", "inactive", "unverified"],
           "description": "Current status of the account",
           "default": "active"
+        },
+        "birthdate": {
+          "type": "string",
+          "format": "date",
+          "description": "Date of birth in YYYY-MM-DD format",
+          "examples": ["1990-01-15", "1985-12-25"]
         }
       },
-      "required": ["id", "email", "name", "emailVerified", "provider", "accessToken", "refreshToken", "expiresIn"],
+      "required": ["id", "email", "name", "accountType", "emailVerified"],
       "additionalProperties": false,
+      "if": {
+        "properties": {
+          "accountType": {
+            "const": "oauth"
+          }
+        }
+      },
+      "then": {
+        "required": ["provider"]
+      },
+      "else": {
+        "required": ["password"]
+      },
       "examples": [
         {
-          "id": "mock_user_1",
+          "id": "account_1",
+          "accountType": "oauth",
           "email": "test.user@example.com",
           "name": "Test User",
           "firstName": "Test",
@@ -290,9 +357,19 @@
           "imageUrl": "https://via.placeholder.com/150?text=Test+User",
           "emailVerified": true,
           "provider": "google",
-          "accessToken": "mock_access_token_test_user_123456789",
-          "refreshToken": "mock_refresh_token_test_user_987654321",
-          "expiresIn": 3600,
+          "twoFactorEnabled": false,
+          "status": "active"
+        },
+        {
+          "id": "account_2",
+          "accountType": "local",
+          "email": "local.user@example.com",
+          "name": "Local User",
+          "firstName": "Local",
+          "lastName": "User",
+          "username": "localuser",
+          "password": "SecurePassword123!",
+          "emailVerified": true,
           "twoFactorEnabled": false,
           "status": "active"
         }

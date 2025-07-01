@@ -50,7 +50,6 @@ class GoogleProviderHandler extends BaseProviderHandler {
       );
     }
 
-    // Google-specific account selection
     const allAccounts = oauthMockService.getAllMockAccounts(OAuthProviders.Google);
     const account = this.googleProvider.selectGoogleAccount(allAccounts, login_hint, stateData.mockAccountEmail);
 
@@ -128,7 +127,7 @@ class GoogleProviderHandler extends BaseProviderHandler {
   }
 
   async handleToken(req: Request, res: Response, next: NextFunction, provider: OAuthProviders): Promise<void> {
-    const { grant_type, code, client_id, client_secret, redirect_uri, refresh_token } = req.body;
+    const { grant_type, code, refresh_token } = req.body;
 
     if (grant_type === 'authorization_code') {
       // Exchange authorization code for tokens
@@ -175,10 +174,10 @@ function getProviderHandler(provider: OAuthProviders): BaseProviderHandler | nul
     case OAuthProviders.Google:
       return new GoogleProviderHandler();
     case OAuthProviders.Microsoft:
-      // TODO: Implement MicrosoftProviderHandler
+      // TODO: Implement MicrosoftProviderHandler when needed
       return null;
     case OAuthProviders.Facebook:
-      // TODO: Implement FacebookProviderHandler
+      // TODO: Implement FacebookProviderHandler when needed
       return null;
     default:
       return null;
@@ -190,7 +189,7 @@ function getProviderHandler(provider: OAuthProviders): BaseProviderHandler | nul
 // ============================================================================
 
 /**
- * Generic OAuth Authorization Endpoint - Simplified
+ * Generic OAuth Authorization Endpoint
  * GET /mock/oauth/:provider/authorize
  */
 export const mockOAuthAuthorize = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
@@ -225,7 +224,7 @@ export const mockOAuthAuthorize = asyncHandler(async (req: Request, res: Respons
     });
   }
 
-  // Get provider-specific handler and delegate all logic to it
+  // Get provider-specific handler
   const providerHandler = getProviderHandler(provider);
   if (!providerHandler) {
     return next(
@@ -262,7 +261,7 @@ export const mockOAuthToken = asyncHandler(async (req: Request, res: Response, n
 
   await oauthMockService.simulateDelay();
 
-  const { grant_type, code, client_id, client_secret, redirect_uri, refresh_token } = req.body;
+  const { client_id, client_secret } = req.body;
 
   // Validate client credentials
   if (!oauthMockService.validateClientCredentials(client_id, client_secret, provider)) {
@@ -375,7 +374,6 @@ export const mockOAuthRevoke = asyncHandler(async (req: Request, res: Response, 
     throw new BadRequestError('Invalid token', 400, ApiErrorCode.TOKEN_INVALID);
   }
 
-  // For OAuth revoke endpoints, success is typically indicated by a 200 status with empty response
   next(new JsonSuccess({ success: true }, 200, 'Token revoked successfully'));
 });
 
@@ -440,6 +438,8 @@ export const getOAuthMockStatus = asyncHandler(async (req: Request, res: Respons
  * DELETE /mock/oauth/clear
  */
 export const clearOAuthMockCache = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  oauthMockService.clearCaches();
+
   next(
     new JsonSuccess({
       message: 'OAuth mock cache cleared successfully',

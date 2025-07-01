@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { MockOAuthAccount } from '../../../config/mock.config';
+import { MockAccount } from '../../../config/mock.config';
 import { OAuthProviders } from '../../../feature/account';
 import { BaseMockOAuthProvider } from './BaseMockOAuthProvider';
 import { MockUserInfoResponse } from '../OAuthMockService';
@@ -9,7 +9,11 @@ export class MicrosoftMockOAuthProvider extends BaseMockOAuthProvider {
     super(OAuthProviders.Microsoft);
   }
 
-  generateIdToken(account: MockOAuthAccount): string {
+  generateIdToken(account: MockAccount): string {
+    if (account.provider !== OAuthProviders.Microsoft || account.accountType !== 'oauth') {
+      throw new Error('Account is not a Microsoft OAuth account');
+    }
+
     const header = btoa(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
     const payload = btoa(
       JSON.stringify({

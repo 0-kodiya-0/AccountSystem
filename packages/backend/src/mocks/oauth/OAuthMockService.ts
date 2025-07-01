@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { LRUCache } from 'lru-cache';
-import { getOAuthMockConfig, MockOAuthAccount, OAuthMockConfig } from '../../config/mock.config';
+import { getOAuthMockConfig, getAccountsMockConfig, OAuthMockConfig, MockAccount } from '../../config/mock.config';
 import { OAuthProviders } from '../../feature/account/Account.types';
 import { logger } from '../../utils/logger';
 import { BaseMockOAuthProvider } from './provider/BaseMockOAuthProvider';
@@ -57,7 +57,7 @@ export interface MockAuthorizationRequest {
 // Cache for authorization codes (5 minutes TTL)
 const authCodeCache = new LRUCache<
   string,
-  { state: string; account: MockOAuthAccount; provider: OAuthProviders; expiresAt: string }
+  { state: string; account: MockAccount; provider: OAuthProviders; expiresAt: string }
 >({
   max: 1000,
   ttl: 1000 * 60 * 5, // 5 minutes
@@ -65,13 +65,22 @@ const authCodeCache = new LRUCache<
   allowStale: false,
 });
 
+// Cache for generated tokens (1 hour TTL)
+const tokenCache = new LRUCache<
+  string,
+  { account: MockAccount; provider: OAuthProviders; expiresAt: string; refreshToken: string }
+>({
+  max: 1000,
+  ttl: 1000 * 60 * 60, // 1 hour
+  updateAgeOnGet: false,
+  allowStale: false,
+});
+
 class OAuthMockService {
   private static instance: OAuthMockService | null = null;
-  private config: OAuthMockConfig;
   private providers: Map<OAuthProviders, BaseMockOAuthProvider>;
 
   private constructor() {
-    this.config = this.loadConfig();
     this.providers = new Map();
     this.initializeProviders();
   }
@@ -89,27 +98,33 @@ class OAuthMockService {
     this.providers.set(OAuthProviders.Facebook, new FacebookMockOAuthProvider());
   }
 
-  private loadConfig(): OAuthMockConfig {
+  // ============================================================================
+  // Configuration Methods
+  // ============================================================================
+
+  private getOAuthConfig(): OAuthMockConfig {
     return getOAuthMockConfig();
   }
 
-  // ============================================================================
-  // General Service Methods
-  // ============================================================================
+  private getAccountsConfig(): MockAccount[] {
+    const accountsConfig = getAccountsMockConfig();
+    return accountsConfig.accounts || [];
+  }
 
   isEnabled(): boolean {
-    return this.config.enabled && process.env.NODE_ENV !== 'production';
+    const config = this.getOAuthConfig();
+    return config.enabled && process.env.NODE_ENV !== 'production';
   }
 
   refreshConfig(): void {
-    this.config = this.loadConfig();
-    if (this.config.logRequests) {
-      logger.info('OAuth mock configuration refreshed', this.config);
+    // Config is loaded fresh each time from the config manager
+    if (this.getOAuthConfig().logRequests) {
+      logger.info('OAuth mock service configuration refreshed');
     }
   }
 
   getConfig(): OAuthMockConfig {
-    return { ...this.config };
+    return this.getOAuthConfig();
   }
 
   getProvider(provider: OAuthProviders): BaseMockOAuthProvider | undefined {
@@ -117,28 +132,46 @@ class OAuthMockService {
   }
 
   getSupportedProviders(): OAuthProviders[] {
-    return Array.from(this.providers.keys());
+    const config = this.getOAuthConfig();
+    const supportedProviders: OAuthProviders[] = [];
+
+    if (config.providers?.google?.enabled) {
+      supportedProviders.push(OAuthProviders.Google);
+    }
+    if (config.providers?.microsoft?.enabled) {
+      supportedProviders.push(OAuthProviders.Microsoft);
+    }
+    if (config.providers?.facebook?.enabled) {
+      supportedProviders.push(OAuthProviders.Facebook);
+    }
+
+    return supportedProviders;
   }
 
   // ============================================================================
-  // Account Management Methods
+  // Account Management Methods (Now from Accounts Config)
   // ============================================================================
 
-  findMockAccount(email: string, provider?: OAuthProviders): MockOAuthAccount | null {
-    let account = this.config.mockAccounts.find((acc) => acc.email === email);
+  findMockAccount(email: string, provider?: OAuthProviders): MockAccount | null {
+    const accounts = this.getAccountsConfig();
 
     if (provider) {
-      account = this.config.mockAccounts.find((acc) => acc.email === email && acc.provider === provider);
+      return (
+        accounts.find((acc) => acc.email === email && acc.provider === provider && acc.accountType === 'oauth') || null
+      );
     }
 
-    return account || null;
+    return accounts.find((acc) => acc.email === email) || null;
   }
 
-  getAllMockAccounts(provider?: OAuthProviders): MockOAuthAccount[] {
+  getAllMockAccounts(provider?: OAuthProviders): MockAccount[] {
+    const accounts = this.getAccountsConfig();
+
     if (provider) {
-      return this.config.mockAccounts.filter((acc) => acc.provider === provider);
+      return accounts.filter((acc) => acc.provider === provider && acc.accountType === 'oauth');
     }
-    return [...this.config.mockAccounts];
+
+    return accounts.filter((acc) => acc.accountType === 'oauth');
   }
 
   // ============================================================================
@@ -146,24 +179,28 @@ class OAuthMockService {
   // ============================================================================
 
   shouldSimulateError(email?: string): boolean {
-    if (email && this.config.failOnEmails.includes(email)) {
+    const config = this.getOAuthConfig();
+
+    if (email && config.failOnEmails.includes(email)) {
       return true;
     }
 
-    if (!this.config.simulateErrors) {
+    if (!config.simulateErrors) {
       return false;
     }
 
-    return Math.random() < this.config.errorRate;
+    return Math.random() < config.errorRate;
   }
 
   isEmailBlocked(email: string): boolean {
-    return this.config.blockEmails.includes(email);
+    const config = this.getOAuthConfig();
+    return config.blockEmails.includes(email);
   }
 
   async simulateDelay(): Promise<void> {
-    if (this.config.simulateDelay) {
-      await new Promise((resolve) => setTimeout(resolve, this.config.delayMs));
+    const config = this.getOAuthConfig();
+    if (config.simulateDelay) {
+      await new Promise((resolve) => setTimeout(resolve, config.delayMs));
     }
   }
 
@@ -171,7 +208,7 @@ class OAuthMockService {
   // Authorization Code Methods
   // ============================================================================
 
-  generateAuthorizationCode(state: string, account: MockOAuthAccount, provider: OAuthProviders): string {
+  generateAuthorizationCode(state: string, account: MockAccount, provider: OAuthProviders): string {
     const code = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
@@ -182,7 +219,8 @@ class OAuthMockService {
       expiresAt: expiresAt.toISOString(),
     });
 
-    if (this.config.logRequests) {
+    const config = this.getOAuthConfig();
+    if (config.logRequests) {
       logger.info(`Mock authorization code generated: ${code}`, {
         state,
         provider,
@@ -222,7 +260,26 @@ class OAuthMockService {
       return null;
     }
 
-    const tokens = providerInstance.exchangeAuthorizationCode(code, account);
+    // Generate dynamic tokens
+    const accessToken = this.generateAccessToken(account, provider);
+    const refreshToken = this.generateRefreshToken(account, provider);
+
+    // Store tokens in cache
+    tokenCache.set(accessToken, {
+      account,
+      provider,
+      expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(), // 1 hour
+      refreshToken,
+    });
+
+    const tokens: MockTokenResponse = {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_in: 3600,
+      token_type: 'Bearer',
+      scope: 'openid email profile',
+      id_token: providerInstance.generateIdToken(account),
+    };
 
     const userInfo: MockUserInfoResponse = {
       id: account.id,
@@ -234,11 +291,12 @@ class OAuthMockService {
       email_verified: account.emailVerified,
     };
 
-    if (this.config.logRequests) {
+    const config = this.getOAuthConfig();
+    if (config.logRequests) {
       logger.info(`Mock tokens exchanged for code: ${code}`, {
         provider,
         accountEmail: account.email,
-        accessToken: account.accessToken.substring(0, 10) + '...',
+        accessToken: accessToken.substring(0, 10) + '...',
       });
     }
 
@@ -246,25 +304,47 @@ class OAuthMockService {
   }
 
   // ============================================================================
-  // Token Operations (Provider-Agnostic)
+  // Token Generation Methods
+  // ============================================================================
+
+  private generateAccessToken(account: MockAccount, provider: OAuthProviders): string {
+    const timestamp = Date.now();
+    const randomPart = crypto.randomBytes(16).toString('hex');
+    return `mock_${provider}_access_${account.id}_${timestamp}_${randomPart}`;
+  }
+
+  private generateRefreshToken(account: MockAccount, provider: OAuthProviders): string {
+    const timestamp = Date.now();
+    const randomPart = crypto.randomBytes(16).toString('hex');
+    return `mock_${provider}_refresh_${account.id}_${timestamp}_${randomPart}`;
+  }
+
+  // ============================================================================
+  // Token Operations
   // ============================================================================
 
   getTokenInfo(accessToken: string, provider: OAuthProviders) {
-    const account = this.config.mockAccounts.find(
-      (acc) => acc.accessToken === accessToken && acc.provider === provider,
-    );
+    const tokenData = tokenCache.get(accessToken);
 
-    if (!account) {
+    if (!tokenData || tokenData.provider !== provider) {
       return null;
     }
 
-    // Basic token info structure (can be customized per provider)
+    // Check if expired
+    if (new Date(tokenData.expiresAt) < new Date()) {
+      tokenCache.delete(accessToken);
+      return null;
+    }
+
+    const { account } = tokenData;
+
+    // Basic token info structure
     return {
       issued_to: this.getClientId(provider),
       audience: this.getClientId(provider),
       user_id: account.id,
       scope: 'openid email profile',
-      expires_in: account.expiresIn,
+      expires_in: Math.floor((new Date(tokenData.expiresAt).getTime() - Date.now()) / 1000),
       email: account.email,
       verified_email: account.emailVerified,
       access_type: 'offline',
@@ -272,13 +352,19 @@ class OAuthMockService {
   }
 
   getUserInfo(accessToken: string, provider: OAuthProviders): MockUserInfoResponse | null {
-    const account = this.config.mockAccounts.find(
-      (acc) => acc.accessToken === accessToken && acc.provider === provider,
-    );
+    const tokenData = tokenCache.get(accessToken);
 
-    if (!account) {
+    if (!tokenData || tokenData.provider !== provider) {
       return null;
     }
+
+    // Check if expired
+    if (new Date(tokenData.expiresAt) < new Date()) {
+      tokenCache.delete(accessToken);
+      return null;
+    }
+
+    const { account } = tokenData;
 
     return {
       id: account.id,
@@ -292,31 +378,79 @@ class OAuthMockService {
   }
 
   refreshAccessToken(refreshToken: string, provider: OAuthProviders): MockTokenResponse | null {
-    const providerInstance = this.getProvider(provider);
-    if (!providerInstance) {
+    // Find token data by refresh token
+    let tokenData: any = null;
+    let currentAccessToken: string | null = null;
+
+    for (const [accessToken, data] of tokenCache.entries()) {
+      if (data.refreshToken === refreshToken && data.provider === provider) {
+        tokenData = data;
+        currentAccessToken = accessToken;
+        break;
+      }
+    }
+
+    if (!tokenData) {
       return null;
     }
 
-    const accounts = this.getAllMockAccounts(provider);
-    return providerInstance.refreshAccessToken(refreshToken, accounts);
+    // Generate new access token
+    const newAccessToken = this.generateAccessToken(tokenData.account, provider);
+    const newExpiresAt = new Date(Date.now() + 3600 * 1000).toISOString();
+
+    // Remove old token and add new one
+    if (currentAccessToken) {
+      tokenCache.delete(currentAccessToken);
+    }
+
+    tokenCache.set(newAccessToken, {
+      account: tokenData.account,
+      provider,
+      expiresAt: newExpiresAt,
+      refreshToken, // Keep the same refresh token
+    });
+
+    const config = this.getOAuthConfig();
+    if (config.logRequests) {
+      logger.info(`Mock token refreshed for account: ${tokenData.account.email}`);
+    }
+
+    return {
+      access_token: newAccessToken,
+      refresh_token: refreshToken,
+      expires_in: 3600,
+      token_type: 'Bearer',
+      scope: 'openid email profile',
+    };
   }
 
   revokeToken(token: string, provider: OAuthProviders): boolean {
-    const providerInstance = this.getProvider(provider);
-    if (!providerInstance) {
-      return false;
+    // Try to find and remove access token
+    const tokenData = tokenCache.get(token);
+    if (tokenData && tokenData.provider === provider) {
+      tokenCache.delete(token);
+
+      const config = this.getOAuthConfig();
+      if (config.logRequests) {
+        logger.info(`Mock access token revoked: ${token.substring(0, 10)}...`);
+      }
+      return true;
     }
 
-    const accounts = this.getAllMockAccounts(provider);
-    const success = providerInstance.revokeToken(token, accounts);
+    // Try to find and remove by refresh token
+    for (const [accessToken, data] of tokenCache.entries()) {
+      if (data.refreshToken === token && data.provider === provider) {
+        tokenCache.delete(accessToken);
 
-    if (success && this.config.logRequests) {
-      logger.info(`Mock token revoked: ${token.substring(0, 10)}...`, {
-        provider,
-      });
+        const config = this.getOAuthConfig();
+        if (config.logRequests) {
+          logger.info(`Mock refresh token revoked: ${token.substring(0, 10)}...`);
+        }
+        return true;
+      }
     }
 
-    return success;
+    return false;
   }
 
   // ============================================================================
@@ -353,20 +487,33 @@ class OAuthMockService {
     mockAccounts: number;
     accountsByProvider: Record<string, number>;
     supportedProviders: OAuthProviders[];
+    enabledProviders: OAuthProviders[];
+    activeTokens: number;
+    activeCodes: number;
     config: OAuthMockConfig;
   } {
     const accountsByProvider: Record<string, number> = {};
+    const accounts = this.getAccountsConfig();
 
-    for (const provider of this.getSupportedProviders()) {
-      accountsByProvider[provider] = this.getAllMockAccounts(provider).length;
+    for (const provider of Object.values(OAuthProviders)) {
+      accountsByProvider[provider] = accounts.filter((acc) => acc.provider === provider).length;
     }
 
     return {
-      mockAccounts: this.config.mockAccounts.length,
+      mockAccounts: accounts.length,
       accountsByProvider,
-      supportedProviders: this.getSupportedProviders(),
-      config: this.config,
+      supportedProviders: Array.from(this.providers.keys()),
+      enabledProviders: this.getSupportedProviders(),
+      activeTokens: tokenCache.size,
+      activeCodes: authCodeCache.size,
+      config: this.getOAuthConfig(),
     };
+  }
+
+  clearCaches(): void {
+    tokenCache.clear();
+    authCodeCache.clear();
+    logger.info('OAuth mock service caches cleared');
   }
 }
 

@@ -3,13 +3,13 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { logger } from '../utils/logger';
 import { z } from 'zod';
-import { OAuthProviders } from '../feature/account/Account.types';
+import { OAuthProviders, AccountType, AccountStatus } from '../feature/account/Account.types';
 
 // ES module equivalents
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Email Mock Configuration Schema (existing)
+// Email Mock Configuration Schema (unchanged)
 const EmailMockConfigSchema = z.object({
   enabled: z.boolean(),
   logEmails: z.boolean(),
@@ -21,127 +21,92 @@ const EmailMockConfigSchema = z.object({
   blockEmails: z.array(z.string().email()),
 });
 
-// OAuth Mock Configuration Schema (new)
-const MockOAuthAccountSchema = z.object({
-  id: z.string(),
-  email: z.string().email(),
-  name: z.string(),
-  firstName: z.string().optional(),
-  lastName: z.string().optional(),
-  imageUrl: z.string().url().optional(),
-  emailVerified: z.boolean(),
-  provider: z.nativeEnum(OAuthProviders),
-  accessToken: z.string(),
-  refreshToken: z.string(),
-  expiresIn: z.number().int().min(0),
-  twoFactorEnabled: z.boolean().optional(),
-  status: z.enum(['active', 'suspended', 'inactive']).optional(),
+// OAuth Provider Config Schema
+const OAuthProviderConfigSchema = z.object({
+  enabled: z.boolean(),
 });
 
+// OAuth Mock Configuration Schema (updated)
 const OAuthMockConfigSchema = z.object({
   enabled: z.boolean(),
   simulateDelay: z.boolean(),
   delayMs: z.number().int().min(0).max(10000),
   simulateErrors: z.boolean(),
   errorRate: z.number().min(0).max(1),
-  mockAccounts: z.array(MockOAuthAccountSchema),
   failOnEmails: z.array(z.string().email()),
   blockEmails: z.array(z.string().email()),
   autoApprove: z.boolean(),
   requireConsent: z.boolean(),
   logRequests: z.boolean(),
-  // Mock server settings
   mockServerEnabled: z.boolean(),
   mockServerPort: z.number().int().min(1000).max(65535),
+  providers: z
+    .object({
+      google: OAuthProviderConfigSchema.optional(),
+      microsoft: OAuthProviderConfigSchema.optional(),
+      facebook: OAuthProviderConfigSchema.optional(),
+    })
+    .optional(),
+});
+
+// Mock Account Schema
+const MockAccountSchema = z
+  .object({
+    id: z.string(),
+    accountType: z.nativeEnum(AccountType),
+    email: z.string().email(),
+    name: z.string(),
+    firstName: z.string().optional(),
+    lastName: z.string().optional(),
+    username: z.string().optional(),
+    imageUrl: z.string().url().optional(),
+    emailVerified: z.boolean(),
+    provider: z.nativeEnum(OAuthProviders).optional(),
+    password: z.string().optional(),
+    twoFactorEnabled: z.boolean().optional().default(false),
+    status: z.nativeEnum(AccountStatus).optional().default(AccountStatus.Active),
+    birthdate: z.string().optional(),
+  })
+  .refine(
+    (data) => {
+      // If accountType is oauth, provider is required
+      if (data.accountType === AccountType.OAuth && !data.provider) {
+        return false;
+      }
+      // If accountType is local, password is required
+      if (data.accountType === AccountType.Local && !data.password) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: 'OAuth accounts require a provider, local accounts require a password',
+    },
+  );
+
+// Accounts Mock Configuration Schema
+const AccountsMockConfigSchema = z.object({
+  enabled: z.boolean(),
+  clearOnSeed: z.boolean().optional().default(false),
+  accounts: z.array(MockAccountSchema),
 });
 
 // Combined Mock Configuration Schema
 const MockConfigSchema = z.object({
   email: EmailMockConfigSchema,
   oauth: OAuthMockConfigSchema,
+  accounts: AccountsMockConfigSchema,
 });
 
 // Export types derived from schemas
 export type EmailMockConfig = z.infer<typeof EmailMockConfigSchema>;
-export type MockOAuthAccount = z.infer<typeof MockOAuthAccountSchema>;
+export type OAuthProviderConfig = z.infer<typeof OAuthProviderConfigSchema>;
 export type OAuthMockConfig = z.infer<typeof OAuthMockConfigSchema>;
+export type MockAccount = z.infer<typeof MockAccountSchema>;
+export type AccountsMockConfig = z.infer<typeof AccountsMockConfigSchema>;
 export type MockConfig = z.infer<typeof MockConfigSchema>;
 
-// Default configuration
-const DEFAULT_MOCK_CONFIG: MockConfig = {
-  email: {
-    enabled: true,
-    logEmails: true,
-    simulateDelay: false,
-    delayMs: 100,
-    simulateFailures: false,
-    failureRate: 0.1,
-    failOnEmails: [],
-    blockEmails: [],
-  },
-  oauth: {
-    enabled: true,
-    simulateDelay: false,
-    delayMs: 1000,
-    simulateErrors: false,
-    errorRate: 0.05,
-    mockAccounts: [
-      // Default test accounts
-      {
-        id: 'mock_user_1',
-        email: 'test.user@example.com',
-        name: 'Test User',
-        firstName: 'Test',
-        lastName: 'User',
-        imageUrl: 'https://via.placeholder.com/150',
-        emailVerified: true,
-        provider: OAuthProviders.Google,
-        accessToken: 'mock_access_token_1',
-        refreshToken: 'mock_refresh_token_1',
-        expiresIn: 3600,
-        twoFactorEnabled: false,
-        status: 'active',
-      },
-      {
-        id: 'mock_user_2',
-        email: 'admin@example.com',
-        name: 'Admin User',
-        firstName: 'Admin',
-        lastName: 'User',
-        imageUrl: 'https://via.placeholder.com/150',
-        emailVerified: true,
-        provider: OAuthProviders.Google,
-        accessToken: 'mock_access_token_2',
-        refreshToken: 'mock_refresh_token_2',
-        expiresIn: 3600,
-        twoFactorEnabled: true,
-        status: 'active',
-      },
-      {
-        id: 'mock_user_3',
-        email: 'suspended@example.com',
-        name: 'Suspended User',
-        firstName: 'Suspended',
-        lastName: 'User',
-        imageUrl: 'https://via.placeholder.com/150',
-        emailVerified: true,
-        provider: OAuthProviders.Google,
-        accessToken: 'mock_access_token_3',
-        refreshToken: 'mock_refresh_token_3',
-        expiresIn: 3600,
-        twoFactorEnabled: false,
-        status: 'suspended',
-      },
-    ],
-    failOnEmails: ['fail@example.com', 'error@test.com'],
-    blockEmails: ['blocked@example.com', 'spam@test.com'],
-    autoApprove: true,
-    requireConsent: false,
-    logRequests: true,
-    mockServerEnabled: true,
-    mockServerPort: 8080,
-  },
-};
+// No default configuration - must be loaded from file
 
 // Validation functions
 export function validateEmailMockConfig(config: unknown): EmailMockConfig {
@@ -168,6 +133,18 @@ export function validateOAuthMockConfig(config: unknown): OAuthMockConfig {
   }
 }
 
+export function validateAccountsMockConfig(config: unknown): AccountsMockConfig {
+  try {
+    return AccountsMockConfigSchema.parse(config);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const formattedErrors = error.errors.map((err) => `${err.path.join('.')}: ${err.message}`).join(', ');
+      throw new Error(`Invalid accounts mock configuration: ${formattedErrors}`);
+    }
+    throw error;
+  }
+}
+
 export function validateMockConfig(config: unknown): MockConfig {
   try {
     return MockConfigSchema.parse(config);
@@ -182,11 +159,11 @@ export function validateMockConfig(config: unknown): MockConfig {
 
 class MockConfigManager {
   private static instance: MockConfigManager;
-  private config: MockConfig;
+  private config: MockConfig | null = null;
   private isInitialized = false;
 
   private constructor() {
-    this.config = this.loadConfiguration();
+    // Don't auto-load - only load when explicitly requested
   }
 
   static getInstance(): MockConfigManager {
@@ -197,27 +174,23 @@ class MockConfigManager {
   }
 
   private loadConfiguration(): MockConfig {
-    // Start with default configuration
-    let config: MockConfig = JSON.parse(JSON.stringify(DEFAULT_MOCK_CONFIG));
-
     try {
-      // Load from mock.config.json file if it exists
+      // Load from mock.config.json file - no defaults
       const configFromFile = this.loadFromFile();
-      if (configFromFile) {
-        // Validate the loaded config
-        const validatedConfig = validateMockConfig(configFromFile);
-        config = { ...config, ...validatedConfig };
+      if (!configFromFile) {
+        throw new Error('Mock configuration file not found');
       }
+
+      // Validate the loaded config
+      const validatedConfig = validateMockConfig(configFromFile);
 
       this.isInitialized = true;
       logger.info('Mock configuration loaded and validated successfully');
+      return validatedConfig;
     } catch (error) {
       logger.error('Failed to load mock configuration:', error);
-      logger.warn('Using default mock configuration');
-      this.isInitialized = true;
+      throw error;
     }
-
-    return config;
   }
 
   private loadFromFile(): unknown | null {
@@ -244,7 +217,7 @@ class MockConfigManager {
   }
 
   public getConfig(): MockConfig {
-    if (!this.isInitialized) {
+    if (!this.config) {
       this.config = this.loadConfiguration();
     }
     return JSON.parse(JSON.stringify(this.config));
@@ -258,24 +231,43 @@ class MockConfigManager {
     return this.getConfig().oauth;
   }
 
+  public getAccountsConfig(): AccountsMockConfig {
+    return this.getConfig().accounts;
+  }
+
   public updateEmailConfig(updates: Partial<EmailMockConfig>): void {
-    const newEmailConfig = { ...this.config.email, ...updates };
+    const config = this.getConfig();
+    const newEmailConfig = { ...config.email, ...updates };
     validateEmailMockConfig(newEmailConfig);
-    this.config.email = newEmailConfig;
+    config.email = newEmailConfig;
+    this.config = config;
     logger.info('Email mock configuration updated and validated', updates);
   }
 
   public updateOAuthConfig(updates: Partial<OAuthMockConfig>): void {
-    const newOAuthConfig = { ...this.config.oauth, ...updates };
+    const config = this.getConfig();
+    const newOAuthConfig = { ...config.oauth, ...updates };
     validateOAuthMockConfig(newOAuthConfig);
-    this.config.oauth = newOAuthConfig;
+    config.oauth = newOAuthConfig;
+    this.config = config;
     logger.info('OAuth mock configuration updated and validated', updates);
   }
 
+  public updateAccountsConfig(updates: Partial<AccountsMockConfig>): void {
+    const config = this.getConfig();
+    const newAccountsConfig = { ...config.accounts, ...updates };
+    validateAccountsMockConfig(newAccountsConfig);
+    config.accounts = newAccountsConfig;
+    this.config = config;
+    logger.info('Accounts mock configuration updated and validated', updates);
+  }
+
   public updateConfig(updates: Partial<MockConfig>): void {
+    const config = this.getConfig();
     const newConfig = {
-      email: { ...this.config.email, ...(updates.email || {}) },
-      oauth: { ...this.config.oauth, ...(updates.oauth || {}) },
+      email: { ...config.email, ...(updates.email || {}) },
+      oauth: { ...config.oauth, ...(updates.oauth || {}) },
+      accounts: { ...config.accounts, ...(updates.accounts || {}) },
     };
     validateMockConfig(newConfig);
     this.config = newConfig;
@@ -283,13 +275,12 @@ class MockConfigManager {
   }
 
   public resetToDefaults(): void {
-    this.config = JSON.parse(JSON.stringify(DEFAULT_MOCK_CONFIG));
-    logger.info('Mock configuration reset to defaults');
+    throw new Error('Reset to defaults not supported - configuration must be loaded from file');
   }
 
   public isConfigValid(): boolean {
     try {
-      validateMockConfig(this.config);
+      validateMockConfig(this.getConfig());
       return true;
     } catch {
       return false;
@@ -297,35 +288,40 @@ class MockConfigManager {
   }
 
   public saveConfigToFile(filePath?: string): void {
+    const config = this.getConfig();
     const configPath = filePath || path.resolve(process.cwd(), 'mock.config.json');
 
     // Validate before saving
-    validateMockConfig(this.config);
+    validateMockConfig(config);
 
-    const configString = JSON.stringify(this.config, null, 2);
+    const configString = JSON.stringify(config, null, 2);
     fs.writeFileSync(configPath, configString, 'utf-8');
     logger.info(`Mock configuration saved to: ${configPath}`);
+  }
+
+  public refreshConfig(): void {
+    this.config = null;
+    this.isInitialized = false;
+    this.getConfig(); // Force reload
   }
 }
 
 // Export singleton instance
 export const mockConfig = MockConfigManager.getInstance();
 
-// Convenience functions for email (existing)
+// Convenience functions for email
 export const getEmailMockConfig = (): EmailMockConfig => mockConfig.getEmailConfig();
 export const updateEmailMockConfig = (updates: Partial<EmailMockConfig>): void => mockConfig.updateEmailConfig(updates);
 
-// Convenience functions for OAuth (new)
+// Convenience functions for OAuth
 export const getOAuthMockConfig = (): OAuthMockConfig => mockConfig.getOAuthConfig();
 export const updateOAuthMockConfig = (updates: Partial<OAuthMockConfig>): void => mockConfig.updateOAuthConfig(updates);
+
+// Convenience functions for accounts
+export const getAccountsMockConfig = (): AccountsMockConfig => mockConfig.getAccountsConfig();
+export const updateAccountsMockConfig = (updates: Partial<AccountsMockConfig>): void =>
+  mockConfig.updateAccountsConfig(updates);
 
 // General convenience functions
 export const resetMockConfig = (): void => mockConfig.resetToDefaults();
 export const saveMockConfig = (filePath?: string): void => mockConfig.saveConfigToFile(filePath);
-
-export const isMockingEnabled = (): boolean => {
-  return process.env.MOCK_ENABLED === 'true' && process.env.NODE_ENV !== 'production';
-};
-
-// Initialize configuration on module load
-mockConfig.getConfig();

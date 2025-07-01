@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { MockOAuthAccount } from '../../../config/mock.config';
+import { MockAccount } from '../../../config/mock.config';
 import { OAuthProviders } from '../../../feature/account';
 import { MockUserInfoResponse } from '../OAuthMockService';
 import { BaseMockOAuthProvider } from './BaseMockOAuthProvider';
@@ -9,7 +9,11 @@ export class FacebookMockOAuthProvider extends BaseMockOAuthProvider {
     super(OAuthProviders.Facebook);
   }
 
-  generateIdToken(account: MockOAuthAccount): string {
+  generateIdToken(account: MockAccount): string {
+    if (account.provider !== OAuthProviders.Facebook || account.accountType !== 'oauth') {
+      throw new Error('Account is not a Facebook OAuth account');
+    }
+
     // Facebook doesn't use ID tokens in the same way, but for consistency
     const header = btoa(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
     const payload = btoa(

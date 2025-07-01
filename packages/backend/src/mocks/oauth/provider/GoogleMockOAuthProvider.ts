@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { MockOAuthAccount } from '../../../config/mock.config';
+import { MockAccount } from '../../../config/mock.config';
 import { OAuthProviders } from '../../../feature/account';
 import { BaseMockOAuthProvider } from './BaseMockOAuthProvider';
 import { MockUserInfoResponse } from '../OAuthMockService';
@@ -9,7 +9,11 @@ export class GoogleMockOAuthProvider extends BaseMockOAuthProvider {
     super(OAuthProviders.Google);
   }
 
-  generateIdToken(account: MockOAuthAccount): string {
+  generateIdToken(account: MockAccount): string {
+    if (account.provider !== OAuthProviders.Google || account.accountType !== 'oauth') {
+      throw new Error('Account is not a Google OAuth account');
+    }
+
     const header = btoa(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
     const payload = btoa(
       JSON.stringify({
@@ -32,12 +36,12 @@ export class GoogleMockOAuthProvider extends BaseMockOAuthProvider {
   }
 
   getTokenInfo(accessToken: string): any | null {
-    // This would be implemented by the main service
+    // This is handled by the main OAuth mock service now
     return null;
   }
 
   getUserInfo(accessToken: string): MockUserInfoResponse | null {
-    // This would be implemented by the main service
+    // This is handled by the main OAuth mock service now
     return null;
   }
 

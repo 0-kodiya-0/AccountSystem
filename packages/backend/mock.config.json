@@ -15,9 +15,32 @@
     "delayMs": 1500,
     "simulateErrors": false,
     "errorRate": 0.05,
-    "mockAccounts": [
+    "failOnEmails": ["fail@example.com", "error@test.com", "oauth-error@example.com"],
+    "blockEmails": ["blocked@example.com", "spam@test.com", "oauth-blocked@example.com"],
+    "autoApprove": true,
+    "requireConsent": false,
+    "logRequests": true,
+    "mockServerEnabled": true,
+    "mockServerPort": 8080,
+    "providers": {
+      "google": {
+        "enabled": true
+      },
+      "microsoft": {
+        "enabled": false
+      },
+      "facebook": {
+        "enabled": false
+      }
+    }
+  },
+  "accounts": {
+    "enabled": true,
+    "clearOnSeed": false,
+    "accounts": [
       {
-        "id": "mock_user_1",
+        "id": "account_1",
+        "accountType": "oauth",
         "email": "test.user@example.com",
         "name": "Test User",
         "firstName": "Test",
@@ -25,14 +48,12 @@
         "imageUrl": "https://via.placeholder.com/150?text=Test+User",
         "emailVerified": true,
         "provider": "google",
-        "accessToken": "mock_access_token_test_user_123456789",
-        "refreshToken": "mock_refresh_token_test_user_987654321",
-        "expiresIn": 3600,
         "twoFactorEnabled": false,
         "status": "active"
       },
       {
-        "id": "mock_user_2",
+        "id": "account_2",
+        "accountType": "oauth",
         "email": "admin@example.com",
         "name": "Admin User",
         "firstName": "Admin",
@@ -40,14 +61,12 @@
         "imageUrl": "https://via.placeholder.com/150?text=Admin+User",
         "emailVerified": true,
         "provider": "google",
-        "accessToken": "mock_access_token_admin_123456789",
-        "refreshToken": "mock_refresh_token_admin_987654321",
-        "expiresIn": 3600,
         "twoFactorEnabled": true,
         "status": "active"
       },
       {
-        "id": "mock_user_3",
+        "id": "account_3",
+        "accountType": "oauth",
         "email": "john.doe@company.com",
         "name": "John Doe",
         "firstName": "John",
@@ -55,14 +74,12 @@
         "imageUrl": "https://via.placeholder.com/150?text=John+Doe",
         "emailVerified": true,
         "provider": "google",
-        "accessToken": "mock_access_token_john_123456789",
-        "refreshToken": "mock_refresh_token_john_987654321",
-        "expiresIn": 3600,
         "twoFactorEnabled": false,
         "status": "active"
       },
       {
-        "id": "mock_user_4",
+        "id": "account_4",
+        "accountType": "oauth",
         "email": "jane.smith@company.com",
         "name": "Jane Smith",
         "firstName": "Jane",
@@ -70,14 +87,12 @@
         "imageUrl": "https://via.placeholder.com/150?text=Jane+Smith",
         "emailVerified": true,
         "provider": "google",
-        "accessToken": "mock_access_token_jane_123456789",
-        "refreshToken": "mock_refresh_token_jane_987654321",
-        "expiresIn": 3600,
         "twoFactorEnabled": true,
         "status": "active"
       },
       {
-        "id": "mock_user_5",
+        "id": "account_5",
+        "accountType": "oauth",
         "email": "suspended@example.com",
         "name": "Suspended User",
         "firstName": "Suspended",
@@ -85,14 +100,12 @@
         "imageUrl": "https://via.placeholder.com/150?text=Suspended",
         "emailVerified": true,
         "provider": "google",
-        "accessToken": "mock_access_token_suspended_123456789",
-        "refreshToken": "mock_refresh_token_suspended_987654321",
-        "expiresIn": 3600,
         "twoFactorEnabled": false,
         "status": "suspended"
       },
       {
-        "id": "mock_user_6",
+        "id": "account_6",
+        "accountType": "oauth",
         "email": "developer@example.com",
         "name": "Developer Test",
         "firstName": "Developer",
@@ -100,19 +113,48 @@
         "imageUrl": "https://via.placeholder.com/150?text=Developer",
         "emailVerified": true,
         "provider": "google",
-        "accessToken": "mock_access_token_dev_123456789",
-        "refreshToken": "mock_refresh_token_dev_987654321",
-        "expiresIn": 3600,
         "twoFactorEnabled": false,
         "status": "active"
+      },
+      {
+        "id": "account_7",
+        "accountType": "local",
+        "email": "local.user@example.com",
+        "name": "Local User",
+        "firstName": "Local",
+        "lastName": "User",
+        "username": "localuser",
+        "password": "TestPassword123!",
+        "emailVerified": true,
+        "twoFactorEnabled": false,
+        "status": "active"
+      },
+      {
+        "id": "account_8",
+        "accountType": "local",
+        "email": "local.admin@example.com",
+        "name": "Local Admin",
+        "firstName": "Local",
+        "lastName": "Admin",
+        "username": "localadmin",
+        "password": "AdminPassword456!",
+        "emailVerified": true,
+        "twoFactorEnabled": true,
+        "status": "active"
+      },
+      {
+        "id": "account_9",
+        "accountType": "local",
+        "email": "unverified@example.com",
+        "name": "Unverified User",
+        "firstName": "Unverified",
+        "lastName": "User",
+        "username": "unverified",
+        "password": "UnverifiedPass789!",
+        "emailVerified": false,
+        "twoFactorEnabled": false,
+        "status": "unverified"
       }
-    ],
-    "failOnEmails": ["fail@example.com", "error@test.com", "oauth-error@example.com"],
-    "blockEmails": ["blocked@example.com", "spam@test.com", "oauth-blocked@example.com"],
-    "autoApprove": true,
-    "requireConsent": false,
-    "logRequests": true,
-    "mockServerEnabled": true,
-    "mockServerPort": 8080
+    ]
   }
 }
