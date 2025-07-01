@@ -253,11 +253,11 @@ export class GoogleMockProvider {
     revoke: string;
   } {
     return {
-      authorization: '/oauth-mock/google/authorize',
-      token: '/oauth-mock/google/token',
-      userinfo: '/oauth-mock/google/userinfo',
-      tokeninfo: '/oauth-mock/google/tokeninfo',
-      revoke: '/oauth-mock/google/revoke',
+      authorization: '/mock/oauth/google/authorize',
+      token: '/mock/oauth/google/token',
+      userinfo: '/mock/oauth/google/userinfo',
+      tokeninfo: '/mock/oauth/google/tokeninfo',
+      revoke: '/mock/oauth/google/revoke',
     };
   }
 
@@ -405,7 +405,7 @@ export class GoogleMockProvider {
     loginHint?: string;
     includeGrantedScopes?: boolean;
   }): string {
-    const baseUrl = '/oauth-mock/google/authorize';
+    const baseUrl = '/mock/oauth/google/authorize';
     const urlParams = new URLSearchParams();
 
     urlParams.append('client_id', params.clientId);

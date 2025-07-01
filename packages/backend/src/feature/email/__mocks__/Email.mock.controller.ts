@@ -7,7 +7,7 @@ import { EmailTemplate } from '../Email.types';
 
 /**
  * Get email mock status and configuration
- * GET /email-mock/status
+ * GET /mock/email/status
  */
 export const getStatus = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const config = getEmailMockConfig();
@@ -23,7 +23,7 @@ export const getStatus = asyncHandler(async (req: Request, res: Response, next: 
 
 /**
  * Update email mock configuration
- * POST /email-mock/config
+ * POST /mock/email/config
  */
 export const updateConfig = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const updates = req.body;
@@ -64,7 +64,7 @@ export const updateConfig = asyncHandler(async (req: Request, res: Response, nex
 
 /**
  * Get sent emails (for E2E testing)
- * GET /email-mock/sent
+ * GET /mock/email/sent
  */
 export const getSentEmails = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { email, template, limit } = req.query;
@@ -97,7 +97,7 @@ export const getSentEmails = asyncHandler(async (req: Request, res: Response, ne
 
 /**
  * Get latest email for specific address (useful for E2E tests)
- * GET /email-mock/latest/:email
+ * GET /mock/email/latest/:email
  */
 export const getLatestEmail = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { email } = req.params;
@@ -124,7 +124,7 @@ export const getLatestEmail = asyncHandler(async (req: Request, res: Response, n
 
 /**
  * Clear sent emails history
- * DELETE /email-mock/clear
+ * DELETE /mock/email/clear
  */
 export const clearSentEmails = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   emailMock.clearSentEmails();
@@ -139,7 +139,7 @@ export const clearSentEmails = asyncHandler(async (req: Request, res: Response, 
 
 /**
  * Test email sending (for E2E testing)
- * POST /email-mock/test-send
+ * POST /mock/email/test-send
  */
 export const testSendEmail = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { to, template, variables } = req.body;
@@ -166,7 +166,7 @@ export const testSendEmail = asyncHandler(async (req: Request, res: Response, ne
 
 /**
  * Get emails by template type
- * GET /email-mock/templates/:template
+ * GET /mock/email/templates/:template
  */
 export const getEmailsByTemplate = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { template } = req.params;
@@ -192,7 +192,7 @@ export const getEmailsByTemplate = asyncHandler(async (req: Request, res: Respon
 
 /**
  * Validate email mock configuration
- * POST /email-mock/validate-config
+ * POST /mock/email/validate-config
  */
 export const validateConfig = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const config = req.body;
@@ -219,7 +219,7 @@ export const validateConfig = asyncHandler(async (req: Request, res: Response, n
 
 /**
  * Get available email templates
- * GET /email-mock/templates
+ * GET /mock/email/templates
  */
 export const getAvailableTemplates = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   // Get all available email templates

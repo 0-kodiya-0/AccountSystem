@@ -13,7 +13,7 @@ export const oauthMockRouter = express.Router();
 // ============================================================================
 
 /**
- * @route GET /oauth-mock/:provider/authorize
+ * @route GET /mock/oauth/:provider/authorize
  * @desc Generic OAuth authorization endpoint for any supported provider
  * @access Public (development/test only)
  * @params provider - OAuth provider (google, microsoft, facebook)
@@ -22,7 +22,7 @@ export const oauthMockRouter = express.Router();
 oauthMockRouter.get('/:provider/authorize', OAuthMockController.mockOAuthAuthorize);
 
 /**
- * @route POST /oauth-mock/:provider/token
+ * @route POST /mock/oauth/:provider/token
  * @desc Generic OAuth token endpoint for any supported provider
  * @access Public (development/test only)
  * @params provider - OAuth provider (google, microsoft, facebook)
@@ -32,7 +32,7 @@ oauthMockRouter.get('/:provider/authorize', OAuthMockController.mockOAuthAuthori
 oauthMockRouter.post('/:provider/token', OAuthMockController.mockOAuthToken);
 
 /**
- * @route GET /oauth-mock/:provider/userinfo
+ * @route GET /mock/oauth/:provider/userinfo
  * @desc Generic OAuth userinfo endpoint for any supported provider
  * @access Public (development/test only)
  * @params provider - OAuth provider (google, microsoft, facebook)
@@ -41,7 +41,7 @@ oauthMockRouter.post('/:provider/token', OAuthMockController.mockOAuthToken);
 oauthMockRouter.get('/:provider/userinfo', OAuthMockController.mockOAuthUserInfo);
 
 /**
- * @route GET /oauth-mock/:provider/tokeninfo
+ * @route GET /mock/oauth/:provider/tokeninfo
  * @desc Generic OAuth tokeninfo endpoint for any supported provider
  * @access Public (development/test only)
  * @params provider - OAuth provider (google, microsoft, facebook)
@@ -50,7 +50,7 @@ oauthMockRouter.get('/:provider/userinfo', OAuthMockController.mockOAuthUserInfo
 oauthMockRouter.get('/:provider/tokeninfo', OAuthMockController.mockOAuthTokenInfo);
 
 /**
- * @route POST /oauth-mock/:provider/revoke
+ * @route POST /mock/oauth/:provider/revoke
  * @desc Generic OAuth token revocation endpoint for any supported provider
  * @access Public (development/test only)
  * @params provider - OAuth provider (google, microsoft, facebook)
@@ -59,20 +59,20 @@ oauthMockRouter.get('/:provider/tokeninfo', OAuthMockController.mockOAuthTokenIn
 oauthMockRouter.post('/:provider/revoke', OAuthMockController.mockOAuthRevoke);
 
 /**
- * @route GET /oauth-mock/:provider/info
+ * @route GET /mock/oauth/:provider/info
  */
 oauthMockRouter.get('/:provider/info', OAuthMockController.getProviderInfo);
 
 /**
- * @route GET /oauth-mock/status
+ * @route GET /mock/oauth/status
  */
 oauthMockRouter.get('/status', OAuthMockController.getOAuthMockStatus);
 
 /**
- * @route GET /oauth-mock/clear
+ * @route GET /mock/oauth/clear
  */
 oauthMockRouter.delete('/clear', OAuthMockController.clearOAuthMockCache);
 /**
- * @route GET /oauth-mock/config
+ * @route GET /mock/oauth/config
  */
 oauthMockRouter.post('/config', OAuthMockController.updateOAuthMockConfig);

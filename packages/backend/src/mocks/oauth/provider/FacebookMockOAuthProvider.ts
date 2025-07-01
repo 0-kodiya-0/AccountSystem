@@ -45,22 +45,22 @@ export class FacebookMockOAuthProvider extends BaseMockOAuthProvider {
   }
 
   getAuthorizationEndpoint(): string {
-    return '/oauth-mock/facebook/authorize';
+    return '/mock/oauth/facebook/authorize';
   }
 
   getTokenEndpoint(): string {
-    return '/oauth-mock/facebook/token';
+    return '/mock/oauth/facebook/token';
   }
 
   getUserInfoEndpoint(): string {
-    return '/oauth-mock/facebook/userinfo';
+    return '/mock/oauth/facebook/userinfo';
   }
 
   getTokenInfoEndpoint(): string {
-    return '/oauth-mock/facebook/tokeninfo';
+    return '/mock/oauth/facebook/tokeninfo';
   }
 
   getRevokeEndpoint(): string {
-    return '/oauth-mock/facebook/revoke';
+    return '/mock/oauth/facebook/revoke';
   }
 }

@@ -147,7 +147,7 @@ export async function processSignIn(stateDetails: SignInState) {
   const needsAdditionalScopes = await checkForAdditionalGoogleScopes(user.id, oauthAccessToken);
 
   return {
-    userId: user.id,
+    accountId: user.id,
     userName: user.userDetails.name,
     accessToken,
     refreshToken,

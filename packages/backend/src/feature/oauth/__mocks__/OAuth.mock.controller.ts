@@ -150,7 +150,7 @@ function getProviderHandler(provider: OAuthProviders): BaseProviderHandler | nul
 
 /**
  * Generic OAuth Authorization Endpoint
- * GET /oauth-mock/:provider/authorize
+ * GET /mock/oauth/:provider/authorize
  */
 export const mockOAuthAuthorize = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   if (!oauthMockService.isEnabled()) {
@@ -231,7 +231,7 @@ export const mockOAuthAuthorize = asyncHandler(async (req: Request, res: Respons
 
 /**
  * Generic OAuth Token Endpoint
- * POST /oauth-mock/:provider/token
+ * POST /mock/oauth/:provider/token
  */
 export const mockOAuthToken = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   if (!oauthMockService.isEnabled()) {
@@ -266,7 +266,7 @@ export const mockOAuthToken = asyncHandler(async (req: Request, res: Response, n
 
 /**
  * Generic OAuth UserInfo Endpoint
- * GET /oauth-mock/:provider/userinfo
+ * GET /mock/oauth/:provider/userinfo
  */
 export const mockOAuthUserInfo = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   if (!oauthMockService.isEnabled()) {
@@ -299,7 +299,7 @@ export const mockOAuthUserInfo = asyncHandler(async (req: Request, res: Response
 
 /**
  * Generic OAuth TokenInfo Endpoint
- * GET /oauth-mock/:provider/tokeninfo
+ * GET /mock/oauth/:provider/tokeninfo
  */
 export const mockOAuthTokenInfo = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   if (!oauthMockService.isEnabled()) {
@@ -332,7 +332,7 @@ export const mockOAuthTokenInfo = asyncHandler(async (req: Request, res: Respons
 
 /**
  * Generic OAuth Revoke Endpoint
- * POST /oauth-mock/:provider/revoke
+ * POST /mock/oauth/:provider/revoke
  */
 export const mockOAuthRevoke = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   if (!oauthMockService.isEnabled()) {
@@ -366,7 +366,7 @@ export const mockOAuthRevoke = asyncHandler(async (req: Request, res: Response, 
 
 /**
  * Get provider-specific information
- * GET /oauth-mock/:provider/info
+ * GET /mock/oauth/:provider/info
  */
 export const getProviderInfo = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const provider = req.params.provider as OAuthProviders;
@@ -407,7 +407,7 @@ export const getProviderInfo = asyncHandler(async (req: Request, res: Response, 
 
 /**
  * Get OAuth mock status and configuration
- * GET /oauth-mock/status
+ * GET /mock/oauth/status
  */
 export const getOAuthMockStatus = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const stats = oauthMockService.getStats();
@@ -422,7 +422,7 @@ export const getOAuthMockStatus = asyncHandler(async (req: Request, res: Respons
 
 /**
  * Clear OAuth mock cache
- * DELETE /oauth-mock/clear
+ * DELETE /mock/oauth/clear
  */
 export const clearOAuthMockCache = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   oauthMockService.clearCache();
@@ -436,7 +436,7 @@ export const clearOAuthMockCache = asyncHandler(async (req: Request, res: Respon
 
 /**
  * Update OAuth mock configuration
- * POST /oauth-mock/config
+ * POST /mock/oauth/config
  */
 export const updateOAuthMockConfig = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   oauthMockService.refreshConfig();

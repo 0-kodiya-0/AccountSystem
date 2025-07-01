@@ -46,22 +46,22 @@ export class GoogleMockOAuthProvider extends BaseMockOAuthProvider {
   }
 
   getAuthorizationEndpoint(): string {
-    return '/oauth-mock/google/authorize';
+    return '/mock/oauth/google/authorize';
   }
 
   getTokenEndpoint(): string {
-    return '/oauth-mock/google/token';
+    return '/mock/oauth/google/token';
   }
 
   getUserInfoEndpoint(): string {
-    return '/oauth-mock/google/userinfo';
+    return '/mock/oauth/google/userinfo';
   }
 
   getTokenInfoEndpoint(): string {
-    return '/oauth-mock/google/tokeninfo';
+    return '/mock/oauth/google/tokeninfo';
   }
 
   getRevokeEndpoint(): string {
-    return '/oauth-mock/google/revoke';
+    return '/mock/oauth/google/revoke';
   }
 }

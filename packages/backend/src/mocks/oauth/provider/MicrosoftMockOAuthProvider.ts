@@ -44,22 +44,22 @@ export class MicrosoftMockOAuthProvider extends BaseMockOAuthProvider {
   }
 
   getAuthorizationEndpoint(): string {
-    return '/oauth-mock/microsoft/authorize';
+    return '/mock/oauth/microsoft/authorize';
   }
 
   getTokenEndpoint(): string {
-    return '/oauth-mock/microsoft/token';
+    return '/mock/oauth/microsoft/token';
   }
 
   getUserInfoEndpoint(): string {
-    return '/oauth-mock/microsoft/userinfo';
+    return '/mock/oauth/microsoft/userinfo';
   }
 
   getTokenInfoEndpoint(): string {
-    return '/oauth-mock/microsoft/tokeninfo';
+    return '/mock/oauth/microsoft/tokeninfo';
   }
 
   getRevokeEndpoint(): string {
-    return '/oauth-mock/microsoft/revoke';
+    return '/mock/oauth/microsoft/revoke';
   }
 }

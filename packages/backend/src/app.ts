@@ -185,8 +185,8 @@ export async function startMainServer(): Promise<void> {
       // Log enabled mock services
       if (process.env.NODE_ENV !== 'production' && process.env.MOCK_ENABLED === 'true') {
         logger.info('🧪 Mock services enabled:');
-        logger.info('   📧 Email Mock: /email-mock/*');
-        logger.info('   🔐 OAuth Mock: /oauth-mock/*');
+        logger.info('   📧 Email Mock: /mock/email/*');
+        logger.info('   🔐 OAuth Mock: /mock/oauth/*');
         logger.info('   🏷️ Session Mock: /session-mock/*');
         logger.info('   🎫 Token Mock: /token-mock/*');
       }

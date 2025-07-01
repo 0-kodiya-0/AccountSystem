@@ -246,10 +246,10 @@ export const handleOAuthCallback = asyncHandler(async (req, res, next) => {
         setupCompleteAccountSession(
           req,
           res,
-          signinResult.userId,
-          signinResult.accessToken,
+          signinResult.accountId,
+          signinResult.accessToken as string,
           signinResult.accessTokenInfo.expires_in * 1000,
-          signinResult.refreshToken,
+          signinResult.refreshToken as string,
           true, // set as current account
         );
       }
@@ -258,7 +258,7 @@ export const handleOAuthCallback = asyncHandler(async (req, res, next) => {
 
       const callbackData: CallbackData = {
         code: CallbackCode.OAUTH_SIGNIN_SUCCESS,
-        accountId: signinResult.userId,
+        accountId: signinResult.accountId,
         name: signinResult.userName,
         provider: stateDetails.provider,
         needsAdditionalScopes: signinResult.needsAdditionalScopes,

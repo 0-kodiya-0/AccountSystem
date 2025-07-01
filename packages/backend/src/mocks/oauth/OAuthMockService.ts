@@ -315,7 +315,7 @@ class OAuthMockService {
   // Token Operations (Provider-Agnostic)
   // ============================================================================
 
-  getTokenInfo(accessToken: string, provider: OAuthProviders): any | null {
+  getTokenInfo(accessToken: string, provider: OAuthProviders) {
     const account = this.config.mockAccounts.find(
       (acc) => acc.accessToken === accessToken && acc.provider === provider,
     );

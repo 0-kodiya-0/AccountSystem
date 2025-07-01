@@ -8,7 +8,7 @@ export const emailMockRouter = express.Router();
  */
 
 /**
- * @route GET /email-mock/status
+ * @route GET /mock/email/status
  * @desc Get email mock status and configuration
  * @access Public (development/test only)
  */
@@ -19,7 +19,7 @@ emailMockRouter.get('/status', EmailMockController.getStatus);
  */
 
 /**
- * @route POST /email-mock/config
+ * @route POST /mock/email/config
  * @desc Update email mock configuration
  * @access Public (development/test only)
  * @body { logEmails?: boolean, simulateDelay?: boolean, delayMs?: number, simulateFailures?: boolean, failureRate?: number, failOnEmails?: string[], blockEmails?: string[] }
@@ -27,7 +27,7 @@ emailMockRouter.get('/status', EmailMockController.getStatus);
 emailMockRouter.post('/config', EmailMockController.updateConfig);
 
 /**
- * @route POST /email-mock/validate-config
+ * @route POST /mock/email/validate-config
  * @desc Validate email mock configuration
  * @access Public (development/test only)
  * @body MockConfiguration object to validate
@@ -39,7 +39,7 @@ emailMockRouter.post('/validate-config', EmailMockController.validateConfig);
  */
 
 /**
- * @route GET /email-mock/sent
+ * @route GET /mock/email/sent
  * @desc Get sent emails (for E2E testing)
  * @access Public (development/test only)
  * @query email - Filter by recipient email
@@ -49,7 +49,7 @@ emailMockRouter.post('/validate-config', EmailMockController.validateConfig);
 emailMockRouter.get('/sent', EmailMockController.getSentEmails);
 
 /**
- * @route GET /email-mock/latest/:email
+ * @route GET /mock/email/latest/:email
  * @desc Get latest email for specific address (useful for E2E tests)
  * @access Public (development/test only)
  * @param email - Recipient email address
@@ -58,21 +58,21 @@ emailMockRouter.get('/sent', EmailMockController.getSentEmails);
 emailMockRouter.get('/latest/:email', EmailMockController.getLatestEmail);
 
 /**
- * @route DELETE /email-mock/clear
+ * @route DELETE /mock/email/clear
  * @desc Clear sent emails history
  * @access Public (development/test only)
  */
 emailMockRouter.delete('/clear', EmailMockController.clearSentEmails);
 
 /**
- * @route GET /email-mock/templates
+ * @route GET /mock/email/templates
  * @desc Get available email templates with usage statistics
  * @access Public (development/test only)
  */
 emailMockRouter.get('/templates', EmailMockController.getAvailableTemplates);
 
 /**
- * @route GET /email-mock/templates/:template
+ * @route GET /mock/email/templates/:template
  * @desc Get emails by template type
  * @access Public (development/test only)
  * @param template - Email template name
@@ -85,7 +85,7 @@ emailMockRouter.get('/templates/:template', EmailMockController.getEmailsByTempl
  */
 
 /**
- * @route POST /email-mock/test-send
+ * @route POST /mock/email/test-send
  * @desc Test email sending (for E2E testing)
  * @access Public (development/test only)
  * @body { to: string, template: string, variables?: Record<string, string> }
