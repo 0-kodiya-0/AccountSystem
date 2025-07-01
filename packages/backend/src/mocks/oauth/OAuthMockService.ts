@@ -54,14 +54,6 @@ export interface MockAuthorizationRequest {
   include_granted_scopes?: string;
 }
 
-// Cache for OAuth states (10 minutes TTL)
-const stateCache = new LRUCache<string, MockOAuthState>({
-  max: 1000,
-  ttl: 1000 * 60 * 10, // 10 minutes
-  updateAgeOnGet: false,
-  allowStale: false,
-});
-
 // Cache for authorization codes (5 minutes TTL)
 const authCodeCache = new LRUCache<
   string,
@@ -126,64 +118,6 @@ class OAuthMockService {
 
   getSupportedProviders(): OAuthProviders[] {
     return Array.from(this.providers.keys());
-  }
-
-  // ============================================================================
-  // State Management Methods
-  // ============================================================================
-
-  saveOAuthState(
-    provider: OAuthProviders,
-    authType: 'signup' | 'signin' | 'permission',
-    callbackUrl: string,
-    mockAccountEmail?: string,
-    scopes?: string[],
-  ): string {
-    const state = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
-    const stateData: MockOAuthState = {
-      state,
-      provider,
-      authType,
-      callbackUrl,
-      expiresAt: expiresAt.toISOString(),
-      createdAt: new Date().toISOString(),
-      mockAccountEmail,
-      scopes,
-    };
-
-    stateCache.set(state, stateData);
-
-    if (this.config.logRequests) {
-      logger.info(`Mock OAuth state saved: ${state}`, {
-        provider,
-        authType,
-        mockAccountEmail,
-      });
-    }
-
-    return state;
-  }
-
-  getOAuthState(state: string): MockOAuthState | null {
-    const stateData = stateCache.get(state);
-
-    if (!stateData) {
-      return null;
-    }
-
-    // Check if expired
-    if (new Date(stateData.expiresAt) < new Date()) {
-      stateCache.delete(state);
-      return null;
-    }
-
-    return stateData;
-  }
-
-  removeOAuthState(state: string): void {
-    stateCache.delete(state);
   }
 
   // ============================================================================
@@ -416,8 +350,6 @@ class OAuthMockService {
   // ============================================================================
 
   getStats(): {
-    activeStates: number;
-    activeCodes: number;
     mockAccounts: number;
     accountsByProvider: Record<string, number>;
     supportedProviders: OAuthProviders[];
@@ -430,22 +362,11 @@ class OAuthMockService {
     }
 
     return {
-      activeStates: stateCache.size,
-      activeCodes: authCodeCache.size,
       mockAccounts: this.config.mockAccounts.length,
       accountsByProvider,
       supportedProviders: this.getSupportedProviders(),
       config: this.config,
     };
-  }
-
-  clearCache(): void {
-    stateCache.clear();
-    authCodeCache.clear();
-
-    if (this.config.logRequests) {
-      logger.info('OAuth mock cache cleared');
-    }
   }
 }
 

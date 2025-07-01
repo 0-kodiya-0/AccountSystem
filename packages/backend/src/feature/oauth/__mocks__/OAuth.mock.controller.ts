@@ -38,10 +38,16 @@ class GoogleProviderHandler extends BaseProviderHandler {
     });
 
     if (!validation.valid) {
-      const errorUrl = `${redirect_uri}?error=invalid_request&error_description=${encodeURIComponent(
-        validation.error!,
-      )}&state=${state}`;
-      return next(new Redirect({}, errorUrl));
+      return next(
+        new Redirect(
+          {
+            error: 'invalid_request',
+            error_description: validation.error!,
+            state,
+          },
+          redirect_uri as string,
+        ),
+      );
     }
 
     // Google-specific account selection
@@ -49,41 +55,76 @@ class GoogleProviderHandler extends BaseProviderHandler {
     const account = this.googleProvider.selectGoogleAccount(allAccounts, login_hint, stateData.mockAccountEmail);
 
     if (!account) {
-      const errorUrl = `${redirect_uri}?error=server_error&error_description=No%20Google%20accounts%20available&state=${state}`;
-      return next(new Redirect({}, errorUrl));
+      return next(
+        new Redirect(
+          {
+            error: 'server_error',
+            error_description: 'No Google accounts available',
+            state,
+          },
+          redirect_uri as string,
+        ),
+      );
     }
 
     // Google-specific status validation
     const statusCheck = this.googleProvider.validateGoogleAccountStatus(account);
     if (!statusCheck.valid) {
-      const errorUrl = `${redirect_uri}?error=access_denied&error_description=${encodeURIComponent(
-        statusCheck.error!,
-      )}&state=${state}`;
-      return next(new Redirect({}, errorUrl));
+      return next(
+        new Redirect(
+          {
+            error: 'access_denied',
+            error_description: statusCheck.error!,
+            state,
+          },
+          redirect_uri as string,
+        ),
+      );
     }
 
     // Check if account is blocked
     if (oauthMockService.isEmailBlocked(account.email)) {
-      const errorUrl = `${redirect_uri}?error=access_denied&error_description=Account%20is%20blocked&state=${state}`;
-      return next(new Redirect({}, errorUrl));
+      return next(
+        new Redirect(
+          {
+            error: 'access_denied',
+            error_description: 'Account is blocked',
+            state,
+          },
+          redirect_uri as string,
+        ),
+      );
     }
 
     // Simulate Google-specific behavior
     try {
       await this.googleProvider.simulateGoogleBehavior(account.email);
     } catch (error) {
-      const errorUrl = `${redirect_uri}?error=server_error&error_description=${encodeURIComponent(
-        error instanceof Error ? error.message : 'Unknown error',
-      )}&state=${state}`;
-      return next(new Redirect({}, errorUrl));
+      return next(
+        new Redirect(
+          {
+            error: 'server_error',
+            error_description: error instanceof Error ? error.message : 'Unknown error',
+            state,
+          },
+          redirect_uri as string,
+        ),
+      );
     }
 
     // Generate authorization code
     const authCode = oauthMockService.generateAuthorizationCode(state as string, account, OAuthProviders.Google);
 
     // Redirect with authorization code
-    const successUrl = `${redirect_uri}?code=${authCode}&state=${state}`;
-    next(new Redirect({}, successUrl));
+    next(
+      new Redirect(
+        {
+          code: authCode,
+          state,
+        },
+        redirect_uri as string,
+      ),
+    );
   }
 
   async handleToken(req: Request, res: Response, next: NextFunction, provider: OAuthProviders): Promise<void> {
@@ -149,7 +190,7 @@ function getProviderHandler(provider: OAuthProviders): BaseProviderHandler | nul
 // ============================================================================
 
 /**
- * Generic OAuth Authorization Endpoint
+ * Generic OAuth Authorization Endpoint - Simplified
  * GET /mock/oauth/:provider/authorize
  */
 export const mockOAuthAuthorize = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
@@ -166,67 +207,41 @@ export const mockOAuthAuthorize = asyncHandler(async (req: Request, res: Respons
 
   await oauthMockService.simulateDelay();
 
-  const {
-    client_id,
-    response_type,
-    scope,
-    state,
-    redirect_uri,
-    access_type,
-    prompt,
-    login_hint,
-    include_granted_scopes,
-  } = req.query as Partial<MockAuthorizationRequest>;
+  const { state, redirect_uri, scope, login_hint } = req.query as Partial<MockAuthorizationRequest>;
 
-  // Validate required parameters
-  if (!client_id || !response_type || !scope || !state || !redirect_uri) {
+  // Basic validation
+  if (!state || !redirect_uri) {
     throw new BadRequestError('Missing required OAuth parameters', 400, ApiErrorCode.MISSING_DATA);
   }
 
-  // Validate response_type
-  if (response_type !== 'code') {
-    throw new BadRequestError('Unsupported response_type', 400, ApiErrorCode.INVALID_REQUEST);
-  }
-
-  // Get state data
-  const stateData = oauthMockService.getOAuthState(state as string);
-  if (!stateData) {
-    throw new BadRequestError('Invalid or expired state parameter', 400, ApiErrorCode.INVALID_STATE);
-  }
-
-  // Validate provider matches state
-  if (stateData.provider !== provider) {
-    throw new BadRequestError('Provider mismatch in state', 400, ApiErrorCode.INVALID_STATE);
-  }
-
   const config = oauthMockService.getConfig();
-
-  // Check if we should simulate an error
-  if (oauthMockService.shouldSimulateError(stateData.mockAccountEmail)) {
-    const errorUrl = `${redirect_uri}?error=access_denied&error_description=User%20denied%20access&state=${state}`;
-    return next(new Redirect({}, errorUrl));
-  }
 
   if (config.logRequests) {
     logger.info('Mock OAuth authorization request received', {
       provider,
       state,
-      authType: stateData.authType,
-      mockAccountEmail: stateData.mockAccountEmail,
       scope,
       login_hint,
     });
   }
 
-  // Get provider-specific handler
+  // Get provider-specific handler and delegate all logic to it
   const providerHandler = getProviderHandler(provider);
   if (!providerHandler) {
-    const errorUrl = `${redirect_uri}?error=server_error&error_description=Provider%20handler%20not%20available&state=${state}`;
-    return next(new Redirect({}, errorUrl));
+    return next(
+      new Redirect(
+        {
+          error: 'server_error',
+          error_description: 'Provider handler not available',
+          state,
+        },
+        redirect_uri as string,
+      ),
+    );
   }
 
-  // Delegate to provider-specific logic
-  return providerHandler.handleAuthorize(req, res, next, stateData);
+  // Delegate to provider-specific authorization logic
+  return providerHandler.handleAuthorize(req, res, next, {});
 });
 
 /**
@@ -425,8 +440,6 @@ export const getOAuthMockStatus = asyncHandler(async (req: Request, res: Respons
  * DELETE /mock/oauth/clear
  */
 export const clearOAuthMockCache = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  oauthMockService.clearCache();
-
   next(
     new JsonSuccess({
       message: 'OAuth mock cache cleared successfully',
