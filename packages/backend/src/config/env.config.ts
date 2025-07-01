@@ -68,6 +68,15 @@ const OPTIONAL_ENV_VARS = {
 
   // Mock Configuration
   MOCK_ENABLED: 'false',
+
+  // Memory Database Configuration
+  USE_MEMORY_DB: 'false',
+  MEMORY_DB_NAME: 'test-accounts-db',
+  MEMORY_DB_VERSION: '7.0.0',
+
+  // Test Database Configuration
+  TEST_DB_CLEAR_ON_START: 'false',
+  TEST_DB_SEED_ON_START: 'false',
 } as const;
 
 type RequiredEnvVar = (typeof REQUIRED_ENV_VARS)[number];
@@ -224,3 +233,12 @@ export const getInternalCACertPath = (): string => envConfig.get('INTERNAL_CA_CE
 // NEW: Mock configuration
 export const isMockEnabled = (): boolean => envConfig.isMockEnabled();
 export const getMockEnabled = (): boolean => envConfig.get('MOCK_ENABLED') === 'true';
+
+// Memory Database configuration
+export const getUseMemoryDb = (): boolean => envConfig.get('USE_MEMORY_DB') === 'true';
+export const getMemoryDbName = (): string => envConfig.get('MEMORY_DB_NAME');
+export const getMemoryDbVersion = (): string => envConfig.get('MEMORY_DB_VERSION');
+
+// Test Database configuration
+export const getTestDbClearOnStart = (): boolean => envConfig.get('TEST_DB_CLEAR_ON_START') === 'true';
+export const getTestDbSeedOnStart = (): boolean => envConfig.get('TEST_DB_SEED_ON_START') === 'true';

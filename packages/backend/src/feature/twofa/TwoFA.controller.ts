@@ -20,6 +20,10 @@ import {
   updateAccountScopes,
   checkForAdditionalGoogleScopes,
 } from '../google/services/tokenInfo/tokenInfo.services';
+import { getNodeEnv, isMockEnabled } from '../../config/env.config';
+import { getAllSetupTokens, getAllTempTokens, getTwoFactorTempToken } from './TwoFA.cache';
+
+const isMock = getNodeEnv() !== 'production' && isMockEnabled();
 
 /**
  * Get 2FA status for the current account
@@ -57,7 +61,7 @@ export const setupTwoFactor = asyncHandler(async (req, res, next) => {
   const result = await TwoFAService.setupTwoFactor(accountId, data, oauthAccessToken);
 
   // If enabling 2FA, generate QR code and return setup token
-  if (data.enableTwoFactor && result.secret && result.qrCodeUrl && result.setupToken) {
+  if (isMock && data.enableTwoFactor && result.secret && result.qrCodeUrl && result.setupToken) {
     try {
       const qrCodeDataUrl = await QRCode.toDataURL(result.qrCodeUrl);
 
@@ -67,6 +71,13 @@ export const setupTwoFactor = asyncHandler(async (req, res, next) => {
         new JsonSuccess({
           ...result,
           qrCode: qrCodeDataUrl,
+          // Mock data only included when mock is enabled
+          mock: {
+            setupToken: result.setupToken,
+            secret: result.secret,
+            nextStep: 'Use setupToken in verify-setup endpoint',
+            note: 'Setup token and secret exposed for testing',
+          },
         }),
       );
     } catch (error) {
@@ -74,7 +85,18 @@ export const setupTwoFactor = asyncHandler(async (req, res, next) => {
       throw new BadRequestError('Failed to generate QR code', 500, ApiErrorCode.SERVER_ERROR);
     }
   } else {
-    next(new JsonSuccess(result));
+    // Original response logic for production
+    if (data.enableTwoFactor && result.secret && result.qrCodeUrl && result.setupToken) {
+      try {
+        const qrCodeDataUrl = await QRCode.toDataURL(result.qrCodeUrl);
+        next(new JsonSuccess({ ...result, qrCode: qrCodeDataUrl }));
+      } catch (error) {
+        logger.error('Failed to generate QR code:', error);
+        throw new BadRequestError('Failed to generate QR code', 500, ApiErrorCode.SERVER_ERROR);
+      }
+    } else {
+      next(new JsonSuccess(result));
+    }
   }
 });
 
@@ -212,14 +234,77 @@ export const verifyTwoFactorLogin = asyncHandler(async (req, res, next) => {
     );
   }
 
-  // Remove OAuth tokens from response for security
-  const responseData = {
-    accountId: result.accountId,
-    name: result.name,
-    message: result.message,
-    ...(result.needsAdditionalScopes !== undefined && { needsAdditionalScopes: result.needsAdditionalScopes }),
-    ...(result.missingScopes && { missingScopes: result.missingScopes }),
-  };
+  if (isMock) {
+    const tempTokenData = getTwoFactorTempToken(data.tempToken);
 
-  next(new JsonSuccess(responseData));
+    const responseData = {
+      accountId: result.accountId,
+      name: result.name,
+      message: result.message,
+      ...(result.needsAdditionalScopes !== undefined && { needsAdditionalScopes: result.needsAdditionalScopes }),
+      ...(result.missingScopes && { missingScopes: result.missingScopes }),
+      // Mock data only included when mock is enabled
+      mock: {
+        tempTokenData: tempTokenData
+          ? {
+              accountId: tempTokenData.accountId,
+              email: tempTokenData.email,
+              accountType: tempTokenData.accountType,
+              expiresAt: tempTokenData.expiresAt,
+            }
+          : null,
+        loginCompleted: true,
+        note: 'Temp token data exposed for testing',
+      },
+    };
+
+    next(new JsonSuccess(responseData));
+  } else {
+    // Original response logic
+    const responseData = {
+      accountId: result.accountId,
+      name: result.name,
+      message: result.message,
+      ...(result.needsAdditionalScopes !== undefined && { needsAdditionalScopes: result.needsAdditionalScopes }),
+      ...(result.missingScopes && { missingScopes: result.missingScopes }),
+    };
+
+    next(new JsonSuccess(responseData));
+  }
+});
+
+/**
+ * Get active 2FA tokens
+ */
+export const getActiveTwoFactorTokens = asyncHandler(async (req, res, next) => {
+  if (!isMock) {
+    throw new BadRequestError('2FA token inspection disabled in production', 400, ApiErrorCode.INVALID_REQUEST);
+  }
+
+  const tempTokens = getAllTempTokens();
+  const setupTokens = getAllSetupTokens();
+
+  next(
+    new JsonSuccess({
+      tempTokens: tempTokens.map((tokenData) => ({
+        token: tokenData.token,
+        accountId: tokenData.accountId,
+        email: tokenData.email,
+        accountType: tokenData.accountType,
+        expiresAt: tokenData.expiresAt,
+        hasOAuthTokens: !!tokenData.oauthTokens,
+      })),
+      setupTokens: setupTokens.map((tokenData) => ({
+        token: tokenData.token,
+        accountId: tokenData.accountId,
+        accountType: tokenData.accountType,
+        expiresAt: tokenData.expiresAt,
+        createdAt: tokenData.createdAt,
+        hasSecret: !!tokenData.secret,
+      })),
+      tempCount: tempTokens.length,
+      setupCount: setupTokens.length,
+      message: 'Active 2FA tokens retrieved successfully',
+    }),
+  );
 });

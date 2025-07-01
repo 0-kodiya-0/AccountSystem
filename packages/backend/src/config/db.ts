@@ -1,8 +1,9 @@
-import initAccountModel from "../feature/account/Account.model";
-import initNotificationModel from "../feature/notifications/Notification.model";
-import initGooglePermissionsModel from "../feature/google/models/GooglePermissions.model";
-import dbConfig from "./db.config";
-import { logger } from "../utils/logger";
+import initAccountModel from '../feature/account/Account.model';
+import initNotificationModel from '../feature/notifications/Notification.model';
+import initGooglePermissionsModel from '../feature/google/models/GooglePermissions.model';
+import dbConfig from './db.config';
+import { logger } from '../utils/logger';
+import { getNodeEnv, getTestDbClearOnStart, getTestDbSeedOnStart } from './env.config';
 
 // Define model types for type safety
 export type AccountModels = {
@@ -41,8 +42,7 @@ const initializeDB = async (): Promise<DatabaseModels> => {
     // Initialize environment models on the accounts database
     const accountsConnection = dbConfig.connections.accounts!;
     const notificationModel = await initNotificationModel(accountsConnection);
-    const googlePermissionsModel =
-      await initGooglePermissionsModel(accountsConnection);
+    const googlePermissionsModel = await initGooglePermissionsModel(accountsConnection);
 
     // Store initialized models
     models = {
@@ -58,11 +58,30 @@ const initializeDB = async (): Promise<DatabaseModels> => {
     };
 
     isInitialized = true;
-    logger.info("Database models initialized successfully");
+    logger.info('Database models initialized successfully');
+
+    // Handle test database initialization
+    if (getNodeEnv() === 'test' || getNodeEnv() === 'development') {
+      // Clear database if requested
+      if (getTestDbClearOnStart()) {
+        await dbConfig.clearDatabase();
+        logger.info('Test database cleared on startup');
+      }
+
+      // Seed database if requested
+      if (getTestDbSeedOnStart()) {
+        await dbConfig.seedTestDatabase();
+        logger.info('Test database seeded on startup');
+      }
+
+      // Log database stats for development/test
+      const stats = await dbConfig.getDatabaseStats();
+      logger.info('Database statistics:', stats);
+    }
 
     return models;
   } catch (error) {
-    logger.error("Failed to initialize database models:", error);
+    logger.error('Failed to initialize database models:', error);
     throw error;
   }
 };

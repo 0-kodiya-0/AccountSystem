@@ -156,3 +156,41 @@ export const getTwoFactorCacheStats = () => {
     },
   };
 };
+
+/**
+ * Get all temporary tokens (for testing purposes)
+ */
+export const getAllTempTokens = (): TwoFactorTempToken[] => {
+  const tokens: TwoFactorTempToken[] = [];
+
+  for (const [token, data] of twoFactorTempCache.entries()) {
+    // Check if not expired
+    if (new Date(data.expiresAt) >= new Date()) {
+      tokens.push(data);
+    } else {
+      // Clean up expired tokens
+      twoFactorTempCache.delete(token);
+    }
+  }
+
+  return tokens;
+};
+
+/**
+ * Get all setup tokens (for testing purposes)
+ */
+export const getAllSetupTokens = (): TwoFactorSetupToken[] => {
+  const tokens: TwoFactorSetupToken[] = [];
+
+  for (const [token, data] of twoFactorSetupCache.entries()) {
+    // Check if not expired
+    if (new Date(data.expiresAt) >= new Date()) {
+      tokens.push(data);
+    } else {
+      // Clean up expired tokens
+      twoFactorSetupCache.delete(token);
+    }
+  }
+
+  return tokens;
+};

@@ -335,7 +335,7 @@ export async function authenticateLocalUser(
 /**
  * Request a password reset with callback URL
  */
-export async function requestPasswordReset(data: PasswordResetRequest): Promise<boolean> {
+export async function requestPasswordReset(data: PasswordResetRequest) {
   const models = await db.getModels();
 
   ValidationUtils.validateRequiredFields(data, ['email', 'callbackUrl']);
@@ -351,8 +351,7 @@ export async function requestPasswordReset(data: PasswordResetRequest): Promise<
   // If no account found, we still return success (security through obscurity)
   // But we don't send an email
   if (!account) {
-    logger.info(`Password reset requested for non-existent email: ${data.email}`);
-    return true;
+    throw new BadRequestError(`Password reset requested for non-existent email: ${data.email}`);
   }
 
   // Generate reset token using cache
@@ -371,7 +370,7 @@ export async function requestPasswordReset(data: PasswordResetRequest): Promise<
       { maxAttempts: 3, delayMs: 2000 },
     );
     logger.info(`Password reset email sent successfully to ${data.email}`);
-    return true;
+    return { resetToken: resetToken };
   } catch (emailError) {
     logger.error('Failed to send password reset email:', emailError);
 

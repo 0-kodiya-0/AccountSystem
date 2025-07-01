@@ -7,7 +7,16 @@ import { setupCompleteAccountSession } from '../session/session.utils';
 import { ValidationUtils } from '../../utils/validation';
 import { createLocalAccessToken, createLocalRefreshToken } from '../tokens';
 import { Account } from '../account';
-import { getEmailVerificationData, getProfileCompletionData } from './LocalAuth.cache';
+import {
+  getEmailVerificationData,
+  getProfileCompletionData,
+  getAllPasswordResetTokens,
+  getAllProfileCompletionTokens,
+  getAllEmailVerificationTokens,
+} from './LocalAuth.cache';
+import { getNodeEnv, isMockEnabled } from '../../config/env.config';
+
+const isMock = getNodeEnv() !== 'production' && isMockEnabled();
 
 /**
  * Step 1: Request email verification - UPDATED to require callback URL
@@ -19,15 +28,31 @@ export const requestEmailVerification = asyncHandler(async (req, res, next) => {
     throw new BadRequestError('Email and callbackUrl are required', 400, ApiErrorCode.MISSING_DATA);
   }
 
-  await LocalAuthService.requestEmailVerification(email, callbackUrl);
+  const { token } = await LocalAuthService.requestEmailVerification(email, callbackUrl);
 
-  next(
-    new JsonSuccess({
-      message: 'Verification email sent. Please check your email to continue.',
-      email: email,
-      callbackUrl: callbackUrl,
-    }),
-  );
+  if (isMock) {
+    next(
+      new JsonSuccess({
+        message: 'Verification email sent. Please check your email to continue.',
+        email: email,
+        callbackUrl: callbackUrl,
+        // Mock data only included when mock is enabled
+        mock: {
+          verificationToken: token,
+          verifyUrl: `${callbackUrl}?token=${token}`,
+          note: 'Mock data included for testing',
+        },
+      }),
+    );
+  } else {
+    next(
+      new JsonSuccess({
+        message: 'Verification email sent. Please check your email to continue.',
+        email: email,
+        callbackUrl: callbackUrl,
+      }),
+    );
+  }
 });
 
 /**
@@ -210,15 +235,30 @@ export const requestPasswordReset = asyncHandler(async (req, res, next) => {
   }
 
   // Request password reset using cached tokens with callback URL
-  await LocalAuthService.requestPasswordReset({ email, callbackUrl });
+  const { resetToken } = await LocalAuthService.requestPasswordReset({ email, callbackUrl });
 
   // Return success response (even if email not found for security)
-  next(
-    new JsonSuccess({
-      message: 'If your email is registered, you will receive instructions to reset your password.',
-      callbackUrl: callbackUrl,
-    }),
-  );
+  if (isMock) {
+    next(
+      new JsonSuccess({
+        message: 'If your email is registered, you will receive instructions to reset your password.',
+        callbackUrl: callbackUrl,
+        // Mock data only included when mock is enabled
+        mock: {
+          resetToken: resetToken,
+          resetUrl: resetToken ? `${callbackUrl}?token=${resetToken}` : null,
+          note: 'Reset token exposed for testing',
+        },
+      }),
+    );
+  } else {
+    next(
+      new JsonSuccess({
+        message: 'If your email is registered, you will receive instructions to reset your password.',
+        callbackUrl: callbackUrl,
+      }),
+    );
+  }
 });
 
 export const verifyPasswordResetRequest = asyncHandler(async (req, res, next) => {
@@ -285,6 +325,50 @@ export const changePassword = asyncHandler(async (req, res, next) => {
   next(
     new JsonSuccess({
       message: 'Password changed successfully.',
+    }),
+  );
+});
+
+export const getActiveTokens = asyncHandler(async (req, res, next) => {
+  if (getNodeEnv() === 'production') {
+    throw new BadRequestError('Token inspection disabled in production', 400, ApiErrorCode.INVALID_REQUEST);
+  }
+
+  const emailTokens = getAllEmailVerificationTokens();
+  const profileTokens = getAllProfileCompletionTokens();
+  const resetTokens = getAllPasswordResetTokens();
+
+  next(
+    new JsonSuccess({
+      emailVerification: {
+        tokens: emailTokens.map((token) => ({
+          email: token.email,
+          verificationToken: token.verificationToken,
+          step: token.step,
+          expiresAt: token.expiresAt,
+          createdAt: token.createdAt,
+        })),
+        count: emailTokens.length,
+      },
+      profileCompletion: {
+        tokens: profileTokens.map((token) => ({
+          email: token.email,
+          verificationToken: token.verificationToken,
+          emailVerified: token.emailVerified,
+          expiresAt: token.expiresAt,
+        })),
+        count: profileTokens.length,
+      },
+      passwordReset: {
+        tokens: resetTokens.map((token) => ({
+          accountId: token.accountId,
+          email: token.email,
+          token: token.token,
+          expiresAt: token.expiresAt,
+        })),
+        count: resetTokens.length,
+      },
+      message: 'Active tokens retrieved successfully',
     }),
   );
 });

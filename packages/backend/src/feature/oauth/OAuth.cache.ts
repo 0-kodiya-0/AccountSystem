@@ -95,6 +95,59 @@ export const getPermissionState = (state: string, provider: OAuthProviders): Per
   return stateData;
 };
 
+/**
+ * Get all OAuth states (for testing purposes)
+ */
+export const getAllOAuthStates = (): OAuthState[] => {
+  const states: OAuthState[] = [];
+
+  for (const [state, data] of oAuthStateCache.entries()) {
+    // Check if not expired
+    if (new Date(data.expiresAt) >= new Date()) {
+      states.push(data);
+    } else {
+      // Clean up expired states
+      oAuthStateCache.delete(state);
+    }
+  }
+
+  return states;
+};
+
+/**
+ * Get all permission states (for testing purposes)
+ */
+export const getAllPermissionStates = (): PermissionState[] => {
+  const states: PermissionState[] = [];
+
+  for (const [state, data] of permissionStateCache.entries()) {
+    // Check if not expired
+    if (new Date(data.expiresAt) >= new Date()) {
+      states.push(data);
+    } else {
+      // Clean up expired states
+      permissionStateCache.delete(state);
+    }
+  }
+
+  return states;
+};
+
+/**
+ * Get OAuth state by provider (for testing purposes)
+ */
+export const getOAuthStatesByProvider = (provider: OAuthProviders): OAuthState[] => {
+  const states: OAuthState[] = [];
+
+  for (const [, data] of oAuthStateCache.entries()) {
+    if (data.provider === provider && new Date(data.expiresAt) >= new Date()) {
+      states.push(data);
+    }
+  }
+
+  return states;
+};
+
 export const removePermissionState = (state: string): void => {
   permissionStateCache.delete(state);
 };

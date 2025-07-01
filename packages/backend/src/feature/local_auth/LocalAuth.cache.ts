@@ -196,6 +196,63 @@ export const getProfileCompletionData = (token: string): ProfileCompletionData |
 };
 
 /**
+ * Get all email verification tokens (for testing purposes)
+ */
+export const getAllEmailVerificationTokens = (): EmailVerificationData[] => {
+  const tokens: EmailVerificationData[] = [];
+
+  for (const [email, data] of emailVerificationStepCache.entries()) {
+    // Check if not expired
+    if (new Date(data.expiresAt) >= new Date()) {
+      tokens.push(data);
+    } else {
+      // Clean up expired tokens
+      emailVerificationStepCache.delete(email);
+    }
+  }
+
+  return tokens;
+};
+
+/**
+ * Get all profile completion tokens (for testing purposes)
+ */
+export const getAllProfileCompletionTokens = (): ProfileCompletionData[] => {
+  const tokens: ProfileCompletionData[] = [];
+
+  for (const [token, data] of profileCompletionCache.entries()) {
+    // Check if not expired
+    if (new Date(data.expiresAt) >= new Date()) {
+      tokens.push(data);
+    } else {
+      // Clean up expired tokens
+      profileCompletionCache.delete(token);
+    }
+  }
+
+  return tokens;
+};
+
+/**
+ * Get all password reset tokens (for testing purposes)
+ */
+export const getAllPasswordResetTokens = (): PasswordResetToken[] => {
+  const tokens: PasswordResetToken[] = [];
+
+  for (const [token, data] of passwordResetCache.entries()) {
+    // Check if not expired
+    if (new Date(data.expiresAt) >= new Date()) {
+      tokens.push(data);
+    } else {
+      // Clean up expired tokens
+      passwordResetCache.delete(token);
+    }
+  }
+
+  return tokens;
+};
+
+/**
  * Remove email from verification cache
  */
 export const removeEmailVerificationData = (email: string): void => {

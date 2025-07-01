@@ -23,13 +23,14 @@ import { buildGoogleScopeUrls, validateScopeNames } from '../google/config';
 import { asyncHandler } from '../../utils/response';
 import { logger } from '../../utils/logger';
 import { createOAuthAccessToken, createOAuthRefreshToken } from '../tokens';
-import { getBaseUrl, getProxyUrl } from '../../config/env.config';
+import { getBaseUrl, getNodeEnv, getProxyUrl, isMockEnabled } from '../../config/env.config';
 import {
   buildGoogleSignupUrl,
   buildGoogleSigninUrl,
   buildGooglePermissionUrl,
   buildGoogleReauthorizeUrl,
 } from '../google/config';
+import { getAllOAuthStates, getAllPermissionStates } from './OAuth.cache';
 
 /**
  * Generate OAuth signup URL
@@ -530,6 +531,39 @@ export const generateReauthorizeUrl = asyncHandler(async (req, res, next) => {
       accountId,
       userEmail: account.userDetails.email,
       callbackUrl,
+    }),
+  );
+});
+
+export const getOAuthStates = asyncHandler(async (req, res, next) => {
+  if (getNodeEnv() === 'production' && isMockEnabled()) {
+    throw new BadRequestError('OAuth state inspection disabled in production', 400, ApiErrorCode.INVALID_REQUEST);
+  }
+
+  const oauthStates = getAllOAuthStates();
+  const permissionStates = getAllPermissionStates();
+
+  next(
+    new JsonSuccess({
+      oauthStates: oauthStates.map((state) => ({
+        state: state.state,
+        provider: state.provider,
+        authType: state.authType,
+        callbackUrl: state.callbackUrl,
+        expiresAt: state.expiresAt,
+      })),
+      permissionStates: permissionStates.map((state) => ({
+        state: state.state,
+        provider: state.provider,
+        authType: state.authType,
+        accountId: state.accountId,
+        service: state.service,
+        scopeLevel: state.scopeLevel,
+        callbackUrl: state.callbackUrl,
+        expiresAt: state.expiresAt,
+      })),
+      totalStates: oauthStates.length + permissionStates.length,
+      message: 'OAuth states retrieved successfully',
     }),
   );
 });

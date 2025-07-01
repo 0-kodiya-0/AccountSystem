@@ -19,7 +19,7 @@ export const generateOAuthState = async (
   const isProduction = getNodeEnv() === 'production';
   const useMock = !isProduction && mockConfig.enabled;
 
-  if (useMock && provider === OAuthProviders.Google) {
+  if (useMock) {
     // Save state in mock service with additional mock-specific data
     oauthMockService.saveOAuthState(
       provider,
@@ -50,7 +50,7 @@ export const generatePermissionState = async (
   const isProduction = getNodeEnv() === 'production';
   const useMock = !isProduction && mockConfig.enabled;
 
-  if (useMock && provider === OAuthProviders.Google) {
+  if (useMock) {
     // Save permission state in mock service
     oauthMockService.saveOAuthState(
       provider,
