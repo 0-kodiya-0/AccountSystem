@@ -1,376 +1,445 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { GoogleMockProvider } from '../../../../src/mocks/google/GoogleMockProvider';
-import { MockOAuthAccount, OAuthMockConfig } from '../../../../src/config/mock.config';
-import { OAuthProviders } from '../../../../src/feature/account/Account.types';
-
-// Mock the logger
-vi.mock('../../../../src/utils/logger', () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { GoogleMockProvider } from '../GoogleMockProvider';
+import { OAuthProviders, AccountStatus, AccountType } from '../../../feature/account/Account.types';
+import { getOAuthMockConfig, type MockAccount, type OAuthMockConfig } from '../../../config/mock.config';
 
 describe('GoogleMockProvider', () => {
   let googleProvider: GoogleMockProvider;
-
-  const mockConfig: OAuthMockConfig = {
-    enabled: true,
-    simulateDelay: false,
-    delayMs: 1000,
-    simulateErrors: false,
-    errorRate: 0.05,
-    mockAccounts: [],
-    failOnEmails: ['fail@example.com'],
-    blockEmails: ['blocked@example.com'],
-    autoApprove: true,
-    requireConsent: false,
-    logRequests: true,
-    mockServerEnabled: true,
-    mockServerPort: 8080,
-  };
-
-  const mockGoogleAccount: MockOAuthAccount = {
-    id: 'google_user_1',
-    email: 'test@example.com',
-    name: 'Test User',
-    firstName: 'Test',
-    lastName: 'User',
-    imageUrl: 'https://lh3.googleusercontent.com/test',
-    emailVerified: true,
-    provider: OAuthProviders.Google,
-    accessToken: 'ya29.test_access_token',
-    refreshToken: '1//test_refresh_token',
-    expiresIn: 3600,
-    twoFactorEnabled: false,
-    status: 'active',
-  };
-
-  const suspendedGoogleAccount: MockOAuthAccount = {
-    ...mockGoogleAccount,
-    id: 'google_suspended',
-    email: 'suspended@example.com',
-    status: 'suspended',
-  };
-
-  const unverifiedGoogleAccount: MockOAuthAccount = {
-    ...mockGoogleAccount,
-    id: 'google_unverified',
-    email: 'unverified@example.com',
-    emailVerified: false,
-  };
+  let mockConfig: OAuthMockConfig;
+  let testGoogleAccount: MockAccount;
+  let testMicrosoftAccount: MockAccount;
+  const originalEnv = process.env;
 
   beforeEach(() => {
-    vi.clearAllMocks();
     process.env.GOOGLE_CLIENT_ID = 'test-google-client-id';
     process.env.GOOGLE_CLIENT_SECRET = 'test-google-client-secret';
 
+    mockConfig = getOAuthMockConfig();
     googleProvider = new GoogleMockProvider(mockConfig);
+
+    // Create test accounts
+    testGoogleAccount = {
+      id: 'google_account_1',
+      accountType: AccountType.OAuth,
+      email: 'test.google@example.com',
+      name: 'Google Test User',
+      firstName: 'Google',
+      lastName: 'User',
+      imageUrl: 'https://example.com/avatar.jpg',
+      emailVerified: true,
+      provider: OAuthProviders.Google,
+      twoFactorEnabled: false,
+      status: AccountStatus.Active,
+    };
+
+    testMicrosoftAccount = {
+      id: 'microsoft_account_1',
+      accountType: AccountType.OAuth,
+      email: 'test.microsoft@example.com',
+      name: 'Microsoft Test User',
+      firstName: 'Microsoft',
+      lastName: 'User',
+      imageUrl: 'https://example.com/ms-avatar.jpg',
+      emailVerified: true,
+      provider: OAuthProviders.Microsoft,
+      twoFactorEnabled: false,
+      status: AccountStatus.Active,
+    };
   });
 
   afterEach(() => {
-    delete process.env.GOOGLE_CLIENT_ID;
-    delete process.env.GOOGLE_CLIENT_SECRET;
+    process.env = originalEnv;
+    vi.clearAllMocks();
   });
 
-  describe('Token Operations', () => {
-    it('should generate Google ID token', () => {
-      const idToken = googleProvider.generateGoogleIdToken(mockGoogleAccount);
+  describe('Google ID Token Generation', () => {
+    it('should generate Google ID token with correct structure', () => {
+      const idToken = googleProvider.generateGoogleIdToken(testGoogleAccount);
 
-      expect(idToken).toBeTruthy();
       expect(typeof idToken).toBe('string');
+      expect(idToken.split('.')).toHaveLength(3); // JWT format: header.payload.signature
 
-      // Should be a JWT with 3 parts
-      const parts = idToken.split('.');
-      expect(parts).toHaveLength(3);
+      // Decode and verify payload (base64 decode middle part)
+      const [header, payload, signature] = idToken.split('.');
+      const decodedHeader = JSON.parse(atob(header));
+      const decodedPayload = JSON.parse(atob(payload));
 
-      // Decode and verify payload
-      const payload = JSON.parse(atob(parts[1]));
-      expect(payload.iss).toBe('https://accounts.google.com');
-      expect(payload.sub).toBe(mockGoogleAccount.id);
-      expect(payload.email).toBe(mockGoogleAccount.email);
-      expect(payload.email_verified).toBe(mockGoogleAccount.emailVerified);
-      expect(payload.name).toBe(mockGoogleAccount.name);
-      expect(payload.given_name).toBe(mockGoogleAccount.firstName);
-      expect(payload.family_name).toBe(mockGoogleAccount.lastName);
+      // Verify header
+      expect(decodedHeader.alg).toBe('RS256');
+      expect(decodedHeader.typ).toBe('JWT');
+      expect(decodedHeader.kid).toBe('mock_google_key_id');
+
+      // Verify payload claims
+      expect(decodedPayload.iss).toBe('https://accounts.google.com');
+      expect(decodedPayload.sub).toBe(testGoogleAccount.id);
+      expect(decodedPayload.aud).toBe('test-google-client-id');
+      expect(decodedPayload.email).toBe(testGoogleAccount.email);
+      expect(decodedPayload.email_verified).toBe(testGoogleAccount.emailVerified);
+      expect(decodedPayload.name).toBe(testGoogleAccount.name);
+      expect(decodedPayload.given_name).toBe(testGoogleAccount.firstName);
+      expect(decodedPayload.family_name).toBe(testGoogleAccount.lastName);
+      expect(decodedPayload.picture).toBe(testGoogleAccount.imageUrl);
+      expect(decodedPayload.locale).toBe('en');
+      expect(decodedPayload.iat).toBeTypeOf('number');
+      expect(decodedPayload.exp).toBeTypeOf('number');
+      expect(decodedPayload.exp).toBeGreaterThan(decodedPayload.iat);
     });
 
     it('should throw error for non-Google account', () => {
-      const nonGoogleAccount = { ...mockGoogleAccount, provider: OAuthProviders.Microsoft };
-
-      expect(() => {
-        googleProvider.generateGoogleIdToken(nonGoogleAccount as MockOAuthAccount);
-      }).toThrow('Account is not a Google account');
+      expect(() => googleProvider.generateGoogleIdToken(testMicrosoftAccount)).toThrow(
+        'Account is not a Google account',
+      );
     });
 
-    it('should get Google token info', () => {
-      const accounts = [mockGoogleAccount];
-      const tokenInfo = googleProvider.getGoogleTokenInfo(mockGoogleAccount.accessToken, accounts);
+    it('should include hosted domain for enterprise emails', () => {
+      const enterpriseAccount = {
+        ...testGoogleAccount,
+        email: 'user@company.com',
+      };
 
-      expect(tokenInfo).toBeTruthy();
-      expect(tokenInfo!.user_id).toBe(mockGoogleAccount.id);
-      expect(tokenInfo!.email).toBe(mockGoogleAccount.email);
-      expect(tokenInfo!.verified_email).toBe(mockGoogleAccount.emailVerified);
-      expect(tokenInfo!.expires_in).toBe(mockGoogleAccount.expiresIn);
+      const idToken = googleProvider.generateGoogleIdToken(enterpriseAccount);
+      const payload = JSON.parse(atob(idToken.split('.')[1]));
+
+      expect(payload.hd).toBe('company.com');
+    });
+  });
+
+  describe('Google Token Info', () => {
+    it('should return Google token info for valid account', () => {
+      const accounts = [testGoogleAccount];
+      const tokenInfo = googleProvider.getGoogleTokenInfo('mock-access-token', accounts);
+
+      expect(tokenInfo).toBeDefined();
+      expect(tokenInfo!.issued_to).toBe('test-google-client-id');
+      expect(tokenInfo!.audience).toBe('test-google-client-id');
+      expect(tokenInfo!.user_id).toBe(testGoogleAccount.id);
+      expect(tokenInfo!.scope).toContain('openid');
       expect(tokenInfo!.scope).toContain('email');
       expect(tokenInfo!.scope).toContain('profile');
+      expect(tokenInfo!.expires_in).toBe(3600);
+      expect(tokenInfo!.email).toBe(testGoogleAccount.email);
+      expect(tokenInfo!.verified_email).toBe(testGoogleAccount.emailVerified);
+      expect(tokenInfo!.access_type).toBe('offline');
     });
 
-    it('should return null for invalid access token', () => {
-      const accounts = [mockGoogleAccount];
-      const tokenInfo = googleProvider.getGoogleTokenInfo('invalid-token', accounts);
+    it('should return null when no Google account found', () => {
+      const accounts = [testMicrosoftAccount]; // No Google accounts
+      const tokenInfo = googleProvider.getGoogleTokenInfo('mock-access-token', accounts);
 
       expect(tokenInfo).toBeNull();
     });
 
-    it('should get Google user info', () => {
-      const accounts = [mockGoogleAccount];
-      const userInfo = googleProvider.getGoogleUserInfo(mockGoogleAccount.accessToken, accounts);
+    it('should return null for empty accounts array', () => {
+      const tokenInfo = googleProvider.getGoogleTokenInfo('mock-access-token', []);
+      expect(tokenInfo).toBeNull();
+    });
+  });
 
-      expect(userInfo).toBeTruthy();
-      expect(userInfo!.id).toBe(mockGoogleAccount.id);
-      expect(userInfo!.email).toBe(mockGoogleAccount.email);
-      expect(userInfo!.name).toBe(mockGoogleAccount.name);
-      expect(userInfo!.given_name).toBe(mockGoogleAccount.firstName);
-      expect(userInfo!.family_name).toBe(mockGoogleAccount.lastName);
-      expect(userInfo!.email_verified).toBe(mockGoogleAccount.emailVerified);
+  describe('Google User Info', () => {
+    it('should return Google user info for valid account', () => {
+      const accounts = [testGoogleAccount];
+      const userInfo = googleProvider.getGoogleUserInfo('mock-access-token', accounts);
+
+      expect(userInfo).toBeDefined();
+      expect(userInfo!.id).toBe(testGoogleAccount.id);
+      expect(userInfo!.email).toBe(testGoogleAccount.email);
+      expect(userInfo!.name).toBe(testGoogleAccount.name);
+      expect(userInfo!.picture).toBe(testGoogleAccount.imageUrl);
+      expect(userInfo!.given_name).toBe(testGoogleAccount.firstName);
+      expect(userInfo!.family_name).toBe(testGoogleAccount.lastName);
+      expect(userInfo!.email_verified).toBe(testGoogleAccount.emailVerified);
       expect(userInfo!.locale).toBe('en');
     });
 
-    it('should include hosted domain in user info for enterprise accounts', () => {
-      const enterpriseAccount = { ...mockGoogleAccount, email: 'user@company.com' };
+    it('should include hosted domain for enterprise emails', () => {
+      const enterpriseAccount = {
+        ...testGoogleAccount,
+        email: 'user@company.com',
+      };
       const accounts = [enterpriseAccount];
-      const userInfo = googleProvider.getGoogleUserInfo(enterpriseAccount.accessToken, accounts);
+      const userInfo = googleProvider.getGoogleUserInfo('mock-access-token', accounts);
 
-      expect(userInfo).toBeTruthy();
       expect(userInfo!.hd).toBe('company.com');
     });
+
+    it('should return null when no Google account found', () => {
+      const accounts = [testMicrosoftAccount];
+      const userInfo = googleProvider.getGoogleUserInfo('mock-access-token', accounts);
+
+      expect(userInfo).toBeNull();
+    });
   });
 
-  describe('Authorization Code Exchange', () => {
+  describe('Google Authorization Code Exchange', () => {
     it('should exchange authorization code for tokens', () => {
-      const tokens = googleProvider.exchangeGoogleAuthorizationCode('auth-code', mockGoogleAccount);
+      const tokens = googleProvider.exchangeGoogleAuthorizationCode('auth-code-123', testGoogleAccount);
 
-      expect(tokens.access_token).toBe(mockGoogleAccount.accessToken);
-      expect(tokens.refresh_token).toBe(mockGoogleAccount.refreshToken);
-      expect(tokens.expires_in).toBe(mockGoogleAccount.expiresIn);
+      expect(tokens).toBeDefined();
+      expect(tokens.access_token).toMatch(/^mock_google_access_/);
+      expect(tokens.refresh_token).toMatch(/^mock_google_refresh_/);
+      expect(tokens.expires_in).toBe(3600);
       expect(tokens.token_type).toBe('Bearer');
       expect(tokens.scope).toBe('openid email profile');
-      expect(tokens.id_token).toBeTruthy();
+      expect(tokens.id_token).toBeDefined();
 
-      // Verify ID token
-      const idTokenParts = tokens.id_token!.split('.');
-      expect(idTokenParts).toHaveLength(3);
+      // Verify tokens contain account ID
+      expect(tokens.access_token).toContain(testGoogleAccount.id);
+      expect(tokens.refresh_token).toContain(testGoogleAccount.id);
+
+      // Verify ID token is valid JWT
+      expect(tokens.id_token.split('.')).toHaveLength(3);
     });
 
-    it('should throw error for non-Google account in code exchange', () => {
-      const nonGoogleAccount = { ...mockGoogleAccount, provider: OAuthProviders.Microsoft };
+    it('should throw error for non-Google account', () => {
+      expect(() => googleProvider.exchangeGoogleAuthorizationCode('auth-code-123', testMicrosoftAccount)).toThrow(
+        'Account is not a Google OAuth account',
+      );
+    });
 
-      expect(() => {
-        googleProvider.exchangeGoogleAuthorizationCode('auth-code', nonGoogleAccount as MockOAuthAccount);
-      }).toThrow('Account is not a Google account');
+    it('should generate unique tokens for each exchange', () => {
+      const tokens1 = googleProvider.exchangeGoogleAuthorizationCode('code-1', testGoogleAccount);
+      const tokens2 = googleProvider.exchangeGoogleAuthorizationCode('code-2', testGoogleAccount);
+
+      expect(tokens1.access_token).not.toBe(tokens2.access_token);
+      expect(tokens1.refresh_token).not.toBe(tokens2.refresh_token);
     });
   });
 
-  describe('Token Refresh', () => {
+  describe('Google Token Refresh', () => {
     it('should refresh Google access token', () => {
-      const accounts = [mockGoogleAccount];
-      const refreshedTokens = googleProvider.refreshGoogleAccessToken(mockGoogleAccount.refreshToken, accounts);
+      const accounts = [testGoogleAccount];
+      const refreshToken = `mock_google_refresh_${testGoogleAccount.id}_123456789_abcdef`;
 
-      expect(refreshedTokens).toBeTruthy();
-      expect(refreshedTokens!.access_token).toContain('refreshed');
-      expect(refreshedTokens!.refresh_token).toBe(mockGoogleAccount.refreshToken);
-      expect(refreshedTokens!.expires_in).toBe(mockGoogleAccount.expiresIn);
-      expect(refreshedTokens!.token_type).toBe('Bearer');
-      expect(refreshedTokens!.scope).toBe('openid email profile');
+      const newTokens = googleProvider.refreshGoogleAccessToken(refreshToken, accounts);
+
+      expect(newTokens).toBeDefined();
+      expect(newTokens!.access_token).toMatch(/^mock_google_access_/);
+      expect(newTokens!.refresh_token).toBe(refreshToken); // Same refresh token
+      expect(newTokens!.expires_in).toBe(3600);
+      expect(newTokens!.token_type).toBe('Bearer');
+      expect(newTokens!.scope).toBe('openid email profile');
     });
 
-    it('should return null for invalid refresh token', () => {
-      const accounts = [mockGoogleAccount];
-      const refreshedTokens = googleProvider.refreshGoogleAccessToken('invalid-refresh-token', accounts);
+    it('should return null for invalid refresh token format', () => {
+      const accounts = [testGoogleAccount];
+      const invalidToken = 'invalid-token-format';
 
-      expect(refreshedTokens).toBeNull();
+      const result = googleProvider.refreshGoogleAccessToken(invalidToken, accounts);
+      expect(result).toBeNull();
+    });
+
+    it('should return null for non-existent account', () => {
+      const accounts = [testGoogleAccount];
+      const refreshToken = 'mock_google_refresh_nonexistent_123456789_abcdef';
+
+      const result = googleProvider.refreshGoogleAccessToken(refreshToken, accounts);
+      expect(result).toBeNull();
+    });
+
+    it('should return null for non-Google account', () => {
+      const accounts = [testMicrosoftAccount];
+      const refreshToken = `mock_google_refresh_${testMicrosoftAccount.id}_123456789_abcdef`;
+
+      const result = googleProvider.refreshGoogleAccessToken(refreshToken, accounts);
+      expect(result).toBeNull();
     });
   });
 
-  describe('Token Revocation', () => {
-    it('should revoke Google token', () => {
-      const accounts = [mockGoogleAccount];
-      const success = googleProvider.revokeGoogleToken(mockGoogleAccount.accessToken, accounts);
+  describe('Google Token Revocation', () => {
+    it('should revoke Google access token', () => {
+      const accounts = [testGoogleAccount];
+      const accessToken = `mock_google_access_${testGoogleAccount.id}_123456789_abcdef`;
 
-      expect(success).toBe(true);
+      const revoked = googleProvider.revokeGoogleToken(accessToken, accounts);
+      expect(revoked).toBe(true);
     });
 
     it('should revoke Google refresh token', () => {
-      const accounts = [mockGoogleAccount];
-      const success = googleProvider.revokeGoogleToken(mockGoogleAccount.refreshToken, accounts);
+      const accounts = [testGoogleAccount];
+      const refreshToken = `mock_google_refresh_${testGoogleAccount.id}_123456789_abcdef`;
 
-      expect(success).toBe(true);
+      const revoked = googleProvider.revokeGoogleToken(refreshToken, accounts);
+      expect(revoked).toBe(true);
     });
 
-    it('should return false for invalid token', () => {
-      const accounts = [mockGoogleAccount];
-      const success = googleProvider.revokeGoogleToken('invalid-token', accounts);
+    it('should return false for invalid token format', () => {
+      const accounts = [testGoogleAccount];
+      const invalidToken = 'invalid-token-format';
 
-      expect(success).toBe(false);
+      const revoked = googleProvider.revokeGoogleToken(invalidToken, accounts);
+      expect(revoked).toBe(false);
+    });
+
+    it('should return false for non-existent account', () => {
+      const accounts = [testGoogleAccount];
+      const token = 'mock_google_access_nonexistent_123456789_abcdef';
+
+      const revoked = googleProvider.revokeGoogleToken(token, accounts);
+      expect(revoked).toBe(false);
     });
   });
 
-  describe('Client Credentials Validation', () => {
-    it('should validate correct Google client credentials', () => {
+  describe('Google Client Credentials Validation', () => {
+    it('should validate correct Google credentials', () => {
       const isValid = googleProvider.validateGoogleClientCredentials(
         'test-google-client-id',
         'test-google-client-secret',
       );
-
       expect(isValid).toBe(true);
     });
 
-    it('should reject invalid client ID', () => {
+    it('should reject incorrect client ID', () => {
       const isValid = googleProvider.validateGoogleClientCredentials('wrong-client-id', 'test-google-client-secret');
-
       expect(isValid).toBe(false);
     });
 
-    it('should reject invalid client secret', () => {
+    it('should reject incorrect client secret', () => {
       const isValid = googleProvider.validateGoogleClientCredentials('test-google-client-id', 'wrong-client-secret');
-
       expect(isValid).toBe(false);
     });
   });
 
-  describe('Authorization Request Validation', () => {
-    const validParams = {
-      client_id: 'test-google-client-id',
-      response_type: 'code',
-      scope: 'email profile',
-      state: 'test-state',
-      redirect_uri: 'http://localhost:3000/callback',
-    };
-
+  describe('Google Authorization Request Validation', () => {
     it('should validate correct authorization request', () => {
-      const result = googleProvider.validateGoogleAuthorizationRequest(validParams);
+      const params = {
+        client_id: 'test-google-client-id',
+        response_type: 'code',
+        scope: 'openid email profile',
+        state: 'random-state-123',
+        redirect_uri: 'https://example.com/callback',
+        access_type: 'offline',
+        prompt: 'consent',
+      };
 
+      const result = googleProvider.validateGoogleAuthorizationRequest(params);
       expect(result.valid).toBe(true);
       expect(result.error).toBeUndefined();
     });
 
     it('should reject missing required parameters', () => {
-      const invalidParams = { ...validParams };
-      delete (invalidParams as any).client_id;
+      const params = {
+        client_id: 'test-google-client-id',
+        // Missing response_type, scope, state, redirect_uri
+      } as any;
 
-      const result = googleProvider.validateGoogleAuthorizationRequest(invalidParams);
-
+      const result = googleProvider.validateGoogleAuthorizationRequest(params);
       expect(result.valid).toBe(false);
       expect(result.error).toBe('Missing required parameters');
     });
 
     it('should reject invalid client_id', () => {
-      const invalidParams = { ...validParams, client_id: 'wrong-client-id' };
+      const params = {
+        client_id: 'wrong-client-id',
+        response_type: 'code',
+        scope: 'openid email profile',
+        state: 'state-123',
+        redirect_uri: 'https://example.com/callback',
+      };
 
-      const result = googleProvider.validateGoogleAuthorizationRequest(invalidParams);
-
+      const result = googleProvider.validateGoogleAuthorizationRequest(params);
       expect(result.valid).toBe(false);
       expect(result.error).toBe('Invalid client_id');
     });
 
     it('should reject unsupported response_type', () => {
-      const invalidParams = { ...validParams, response_type: 'token' };
+      const params = {
+        client_id: 'test-google-client-id',
+        response_type: 'token', // Should be 'code'
+        scope: 'openid email profile',
+        state: 'state-123',
+        redirect_uri: 'https://example.com/callback',
+      };
 
-      const result = googleProvider.validateGoogleAuthorizationRequest(invalidParams);
-
+      const result = googleProvider.validateGoogleAuthorizationRequest(params);
       expect(result.valid).toBe(false);
       expect(result.error).toBe('Unsupported response_type');
     });
 
     it('should reject missing required scopes', () => {
-      const invalidParams = { ...validParams, scope: 'calendar' };
+      const params = {
+        client_id: 'test-google-client-id',
+        response_type: 'code',
+        scope: 'openid', // Missing email and profile
+        state: 'state-123',
+        redirect_uri: 'https://example.com/callback',
+      };
 
-      const result = googleProvider.validateGoogleAuthorizationRequest(invalidParams);
-
+      const result = googleProvider.validateGoogleAuthorizationRequest(params);
       expect(result.valid).toBe(false);
       expect(result.error).toBe('Missing required scopes');
     });
   });
 
-  describe('Account Selection', () => {
-    const accounts = [mockGoogleAccount, suspendedGoogleAccount, unverifiedGoogleAccount];
+  describe('Google Endpoints', () => {
+    it('should return correct Google endpoints', () => {
+      const endpoints = googleProvider.getGoogleEndpoints();
 
-    it('should select account by mock email', () => {
-      const account = googleProvider.selectGoogleAccount(accounts, undefined, 'test@example.com');
+      expect(endpoints.authorization).toBe('/mock/oauth/google/authorize');
+      expect(endpoints.token).toBe('/mock/oauth/google/token');
+      expect(endpoints.userinfo).toBe('/mock/oauth/google/userinfo');
+      expect(endpoints.tokeninfo).toBe('/mock/oauth/google/tokeninfo');
+      expect(endpoints.revoke).toBe('/mock/oauth/google/revoke');
+    });
+  });
 
-      expect(account).toBeTruthy();
-      expect(account!.email).toBe('test@example.com');
+  describe('Google Error Response Generation', () => {
+    it('should generate standard Google error response', () => {
+      const error = googleProvider.generateGoogleErrorResponse('invalid_request');
+
+      expect(error.error).toBe('invalid_request');
+      expect(error.error_description).toContain('missing a required parameter');
     });
 
-    it('should select account by login hint', () => {
-      const account = googleProvider.selectGoogleAccount(accounts, 'suspended@example.com');
+    it('should generate error response with custom description', () => {
+      const customDescription = 'Custom error description';
+      const error = googleProvider.generateGoogleErrorResponse('invalid_request', customDescription);
 
-      expect(account).toBeTruthy();
-      expect(account!.email).toBe('suspended@example.com');
+      expect(error.error).toBe('invalid_request');
+      expect(error.error_description).toBe(customDescription);
     });
 
-    it('should prioritize mock email over login hint', () => {
-      const account = googleProvider.selectGoogleAccount(accounts, 'suspended@example.com', 'test@example.com');
+    it('should handle unknown error codes', () => {
+      const error = googleProvider.generateGoogleErrorResponse('unknown_error');
 
-      expect(account).toBeTruthy();
-      expect(account!.email).toBe('test@example.com');
+      expect(error.error).toBe('unknown_error');
+      expect(error.error_description).toBe('An error occurred');
+    });
+  });
+
+  describe('Google Account Selection', () => {
+    it('should select account by mockAccountEmail priority', () => {
+      const accounts = [testGoogleAccount];
+      const selected = googleProvider.selectGoogleAccount(accounts, undefined, testGoogleAccount.email);
+
+      expect(selected).toBe(testGoogleAccount);
+    });
+
+    it('should select account by loginHint when no mockAccountEmail', () => {
+      const accounts = [testGoogleAccount];
+      const selected = googleProvider.selectGoogleAccount(accounts, testGoogleAccount.email);
+
+      expect(selected).toBe(testGoogleAccount);
     });
 
     it('should select first active account as fallback', () => {
-      const accountsWithoutMockMatch = [suspendedGoogleAccount, mockGoogleAccount];
-      const account = googleProvider.selectGoogleAccount(accountsWithoutMockMatch);
+      const suspendedAccount = { ...testGoogleAccount, status: AccountStatus.Suspended };
+      const activeAccount = { ...testGoogleAccount, id: 'active_account', status: AccountStatus.Active };
+      const accounts = [suspendedAccount, activeAccount];
 
-      expect(account).toBeTruthy();
-      expect(account!.email).toBe('test@example.com');
-      expect(account!.status).toBe('active');
+      const selected = googleProvider.selectGoogleAccount(accounts);
+      expect(selected).toBe(activeAccount);
     });
 
-    it('should return null for empty accounts list', () => {
-      const account = googleProvider.selectGoogleAccount([]);
+    it('should return null when no Google accounts available', () => {
+      const accounts = [testMicrosoftAccount];
+      const selected = googleProvider.selectGoogleAccount(accounts);
 
-      expect(account).toBeNull();
-    });
-  });
-
-  describe('Account Status Validation', () => {
-    it('should validate active Google account', () => {
-      const result = googleProvider.validateGoogleAccountStatus(mockGoogleAccount);
-
-      expect(result.valid).toBe(true);
-      expect(result.error).toBeUndefined();
-    });
-
-    it('should reject suspended account', () => {
-      const result = googleProvider.validateGoogleAccountStatus(suspendedGoogleAccount);
-
-      expect(result.valid).toBe(false);
-      expect(result.error).toBe('Google account is suspended');
-      expect(result.errorCode).toBe('account_suspended');
-    });
-
-    it('should reject unverified email account', () => {
-      const result = googleProvider.validateGoogleAccountStatus(unverifiedGoogleAccount);
-
-      expect(result.valid).toBe(false);
-      expect(result.error).toBe('Google account email is not verified');
-      expect(result.errorCode).toBe('email_not_verified');
-    });
-
-    it('should reject non-Google account', () => {
-      const nonGoogleAccount = { ...mockGoogleAccount, provider: OAuthProviders.Microsoft };
-
-      const result = googleProvider.validateGoogleAccountStatus(nonGoogleAccount as MockOAuthAccount);
-
-      expect(result.valid).toBe(false);
-      expect(result.error).toBe('Not a Google account');
-      expect(result.errorCode).toBe('invalid_account');
+      expect(selected).toBeNull();
     });
   });
 
-  describe('Scope Parsing', () => {
-    it('should parse basic Google scopes', () => {
+  describe('Google Scope Parsing', () => {
+    it('should parse and normalize standard scopes', () => {
       const result = googleProvider.parseGoogleScopes('openid email profile');
 
       expect(result.valid).toBe(true);
@@ -380,16 +449,7 @@ describe('GoogleMockProvider', () => {
       expect(result.normalizedScopes).toContain('profile');
     });
 
-    it('should parse full Google API scopes', () => {
-      const scopeString = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive';
-      const result = googleProvider.parseGoogleScopes(scopeString);
-
-      expect(result.valid).toBe(true);
-      expect(result.normalizedScopes).toContain('https://www.googleapis.com/auth/calendar');
-      expect(result.normalizedScopes).toContain('https://www.googleapis.com/auth/drive');
-    });
-
-    it('should normalize common scope names', () => {
+    it('should normalize short scope names', () => {
       const result = googleProvider.parseGoogleScopes('userinfo.email userinfo.profile');
 
       expect(result.valid).toBe(true);
@@ -397,66 +457,159 @@ describe('GoogleMockProvider', () => {
       expect(result.normalizedScopes).toContain('https://www.googleapis.com/auth/userinfo.profile');
     });
 
-    it('should ensure minimum required scopes', () => {
-      const result = googleProvider.parseGoogleScopes('calendar');
+    it('should add missing required scopes', () => {
+      const result = googleProvider.parseGoogleScopes('openid');
 
       expect(result.valid).toBe(true);
       expect(result.normalizedScopes).toContain('https://www.googleapis.com/auth/userinfo.email');
       expect(result.normalizedScopes).toContain('https://www.googleapis.com/auth/userinfo.profile');
     });
-  });
 
-  describe('Error Generation', () => {
-    it('should generate Google-style error responses', () => {
-      const error = googleProvider.generateGoogleErrorResponse('invalid_request');
+    it('should handle custom Google API scopes', () => {
+      const result = googleProvider.parseGoogleScopes('calendar.readonly');
 
-      expect(error.error).toBe('invalid_request');
-      expect(error.error_description).toContain('missing a required parameter');
-    });
-
-    it('should use custom error description', () => {
-      const customDescription = 'Custom error message';
-      const error = googleProvider.generateGoogleErrorResponse('server_error', customDescription);
-
-      expect(error.error).toBe('server_error');
-      expect(error.error_description).toBe(customDescription);
+      expect(result.valid).toBe(true);
+      expect(result.normalizedScopes).toContain('https://www.googleapis.com/auth/calendar.readonly');
     });
   });
 
-  describe('Behavior Simulation', () => {
-    it('should not throw for normal email', async () => {
-      await expect(googleProvider.simulateGoogleBehavior('normal@example.com')).resolves.toBeUndefined();
+  describe('Google Authorization URL Generation', () => {
+    it('should generate complete authorization URL', () => {
+      const params = {
+        clientId: 'test-client-id',
+        redirectUri: 'https://example.com/callback',
+        scope: 'openid email profile',
+        state: 'state-123',
+        accessType: 'offline',
+        prompt: 'consent',
+        loginHint: 'user@example.com',
+        includeGrantedScopes: true,
+      };
+
+      const url = googleProvider.generateGoogleAuthorizationUrl(params);
+
+      expect(url).toContain('/mock/oauth/google/authorize?');
+      expect(url).toContain('client_id=test-client-id');
+      expect(url).toContain('response_type=code');
+      expect(url).toContain('scope=openid%20email%20profile');
+      expect(url).toContain('state=state-123');
+      expect(url).toContain('redirect_uri=https%3A%2F%2Fexample.com%2Fcallback');
+      expect(url).toContain('access_type=offline');
+      expect(url).toContain('prompt=consent');
+      expect(url).toContain('login_hint=user%40example.com');
+      expect(url).toContain('include_granted_scopes=true');
     });
 
-    it('should throw for suspended account', async () => {
+    it('should generate minimal authorization URL', () => {
+      const params = {
+        clientId: 'test-client-id',
+        redirectUri: 'https://example.com/callback',
+        scope: 'openid email profile',
+        state: 'state-123',
+      };
+
+      const url = googleProvider.generateGoogleAuthorizationUrl(params);
+
+      expect(url).toContain('/mock/oauth/google/authorize?');
+      expect(url).toContain('client_id=test-client-id');
+      expect(url).not.toContain('access_type');
+      expect(url).not.toContain('prompt');
+      expect(url).not.toContain('login_hint');
+    });
+  });
+
+  describe('Google Behavior Simulation', () => {
+    it('should simulate delay when enabled', async () => {
+      googleProvider.updateConfig({
+        ...mockConfig,
+        simulateDelay: true,
+        delayMs: 10, // Short delay for testing
+      });
+
+      const startTime = Date.now();
+      await googleProvider.simulateGoogleBehavior();
+      const endTime = Date.now();
+
+      expect(endTime - startTime).toBeGreaterThanOrEqual(10);
+    });
+
+    it('should not delay when simulation disabled', async () => {
+      googleProvider.updateConfig({
+        ...mockConfig,
+        simulateDelay: false,
+        delayMs: 1000,
+      });
+
+      const startTime = Date.now();
+      await googleProvider.simulateGoogleBehavior();
+      const endTime = Date.now();
+
+      expect(endTime - startTime).toBeLessThan(50);
+    });
+
+    it('should throw specific Google errors for email patterns', async () => {
       await expect(googleProvider.simulateGoogleBehavior('suspended@example.com')).rejects.toThrow(
         'Google account suspended',
       );
-    });
 
-    it('should throw for not found account', async () => {
       await expect(googleProvider.simulateGoogleBehavior('notfound@example.com')).rejects.toThrow(
         'Google account not found',
       );
-    });
 
-    it('should throw for rate limited account', async () => {
       await expect(googleProvider.simulateGoogleBehavior('ratelimit@example.com')).rejects.toThrow(
         'Rate limit exceeded',
       );
     });
 
     it('should simulate random errors when enabled', async () => {
-      const errorConfig = { ...mockConfig, simulateErrors: true, errorRate: 1.0 };
-      const errorProvider = new GoogleMockProvider(errorConfig);
+      googleProvider.updateConfig({
+        ...mockConfig,
+        simulateErrors: true,
+        errorRate: 1.0, // 100% error rate
+      });
 
-      await expect(errorProvider.simulateGoogleBehavior('test@example.com')).rejects.toThrow();
+      await expect(googleProvider.simulateGoogleBehavior('normal@example.com')).rejects.toThrow();
     });
   });
 
-  describe('Account Capabilities', () => {
-    it('should get capabilities for regular account', () => {
-      const capabilities = googleProvider.getGoogleAccountCapabilities(mockGoogleAccount);
+  describe('Google Account Status Validation', () => {
+    it('should validate active Google account', () => {
+      const result = googleProvider.validateGoogleAccountStatus(testGoogleAccount);
+
+      expect(result.valid).toBe(true);
+      expect(result.error).toBeUndefined();
+    });
+
+    it('should reject suspended account', () => {
+      const suspendedAccount = { ...testGoogleAccount, status: AccountStatus.Suspended };
+      const result = googleProvider.validateGoogleAccountStatus(suspendedAccount);
+
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('Google account is suspended');
+      expect(result.errorCode).toBe('account_suspended');
+    });
+
+    it('should reject unverified email', () => {
+      const unverifiedAccount = { ...testGoogleAccount, emailVerified: false };
+      const result = googleProvider.validateGoogleAccountStatus(unverifiedAccount);
+
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('Google account email is not verified');
+      expect(result.errorCode).toBe('email_not_verified');
+    });
+
+    it('should reject non-Google account', () => {
+      const result = googleProvider.validateGoogleAccountStatus(testMicrosoftAccount);
+
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe('Not a Google OAuth account');
+      expect(result.errorCode).toBe('invalid_account');
+    });
+  });
+
+  describe('Google Account Capabilities', () => {
+    it('should return correct capabilities for standard account', () => {
+      const capabilities = googleProvider.getGoogleAccountCapabilities(testGoogleAccount);
 
       expect(capabilities.canSignIn).toBe(true);
       expect(capabilities.canSignUp).toBe(true);
@@ -466,19 +619,43 @@ describe('GoogleMockProvider', () => {
       expect(capabilities.supportedScopes).toContain('profile');
     });
 
+    it('should return enhanced capabilities for enterprise account', () => {
+      const enterpriseAccount = { ...testGoogleAccount, email: 'user@company.com' };
+      const capabilities = googleProvider.getGoogleAccountCapabilities(enterpriseAccount);
+
+      expect(capabilities.supportedScopes).toContain('https://www.googleapis.com/auth/admin.directory.user.readonly');
+      expect(capabilities.supportedScopes).toContain('https://www.googleapis.com/auth/admin.directory.group.readonly');
+    });
+
     it('should restrict capabilities for suspended account', () => {
-      const capabilities = googleProvider.getGoogleAccountCapabilities(suspendedGoogleAccount);
+      const suspendedAccount = { ...testGoogleAccount, status: AccountStatus.Suspended };
+      const capabilities = googleProvider.getGoogleAccountCapabilities(suspendedAccount);
 
       expect(capabilities.canSignIn).toBe(false);
       expect(capabilities.canSignUp).toBe(false);
     });
 
-    it('should add enterprise scopes for company accounts', () => {
-      const enterpriseAccount = { ...mockGoogleAccount, email: 'user@company.com' };
-      const capabilities = googleProvider.getGoogleAccountCapabilities(enterpriseAccount);
+    it('should require 2FA when enabled', () => {
+      const twoFAAccount = { ...testGoogleAccount, twoFactorEnabled: true };
+      const capabilities = googleProvider.getGoogleAccountCapabilities(twoFAAccount);
 
-      expect(capabilities.supportedScopes).toContain('https://www.googleapis.com/auth/admin.directory.user.readonly');
-      expect(capabilities.supportedScopes).toContain('https://www.googleapis.com/auth/admin.directory.group.readonly');
+      expect(capabilities.requiresTwoFactor).toBe(true);
+    });
+  });
+
+  describe('Configuration Updates', () => {
+    it('should update configuration at runtime', () => {
+      const newConfig = {
+        ...mockConfig,
+        simulateDelay: true,
+        delayMs: 500,
+      };
+
+      googleProvider.updateConfig(newConfig);
+
+      // Config should be updated (we can't directly test internal state,
+      // but we can test behavior that depends on config)
+      expect(() => googleProvider.updateConfig(newConfig)).not.toThrow();
     });
   });
 });

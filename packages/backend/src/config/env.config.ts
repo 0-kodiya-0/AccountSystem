@@ -9,7 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Define required environment variables
-const REQUIRED_ENV_VARS = [
+export const REQUIRED_ENV_VARS = [
   // Core Authentication & Security
   'JWT_SECRET',
   'SESSION_SECRET',
@@ -37,7 +37,7 @@ const REQUIRED_ENV_VARS = [
 ] as const;
 
 // Define optional environment variables with defaults
-const OPTIONAL_ENV_VARS = {
+export const OPTIONAL_ENV_VARS = {
   // Environment & Server
   NODE_ENV: 'development',
   PORT: '3000',

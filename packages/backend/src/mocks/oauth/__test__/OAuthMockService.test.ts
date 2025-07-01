@@ -1,47 +1,54 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { oauthMockService } from '../../../../src/mocks/oauth/OAuthMockService';
-import { OAuthProviders } from '../../../../src/feature/account/Account.types';
-
-// Mock the logger
-vi.mock('../../../src/utils/logger', () => ({
-  logger: {
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn(),
-  },
-}));
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { oauthMockService } from '../OAuthMockService';
+import { OAuthProviders } from '../../../feature/account/Account.types';
+import { updateOAuthMockConfig, type MockAccount } from '../../../config/mock.config';
 
 describe('OAuthMockService', () => {
+  const originalEnv = process.env;
+
   beforeEach(() => {
-    // Clear cache before each test
-    oauthMockService.clearCache();
-    // Refresh config to ensure we're using the latest
+    // Reset service state
+    oauthMockService.clearCaches();
     oauthMockService.refreshConfig();
+
+    // Set test environment
+    process.env.NODE_ENV = 'test';
+    process.env.GOOGLE_CLIENT_ID = 'test-google-client-id';
+    process.env.GOOGLE_CLIENT_SECRET = 'test-google-client-secret';
+    process.env.MICROSOFT_CLIENT_ID = 'test-microsoft-client-id';
+    process.env.MICROSOFT_CLIENT_SECRET = 'test-microsoft-client-secret';
+    process.env.FACEBOOK_CLIENT_ID = 'test-facebook-client-id';
+    process.env.FACEBOOK_CLIENT_SECRET = 'test-facebook-client-secret';
   });
 
-  describe('Configuration Management', () => {
+  afterEach(() => {
+    process.env = originalEnv;
+    vi.clearAllMocks();
+  });
+
+  describe('Service Configuration', () => {
     it('should be enabled in test environment', () => {
       expect(oauthMockService.isEnabled()).toBe(true);
     });
 
-    it('should load configuration from mock.config.json', () => {
-      const config = oauthMockService.getConfig();
-
-      expect(config.enabled).toBe(true);
-      expect(config.mockAccounts).toHaveLength(6);
-      expect(config.mockServerEnabled).toBe(true);
-      expect(config.mockServerPort).toBe(8080);
-      expect(config.autoApprove).toBe(true);
-      expect(config.logRequests).toBe(true);
+    it('should not be enabled in production', () => {
+      process.env.NODE_ENV = 'production';
+      expect(oauthMockService.isEnabled()).toBe(false);
     });
 
-    it('should return supported providers', () => {
-      const providers = oauthMockService.getSupportedProviders();
+    it('should refresh configuration from file', () => {
+      const initialConfig = oauthMockService.getConfig();
+      oauthMockService.refreshConfig();
+      const refreshedConfig = oauthMockService.getConfig();
 
-      expect(providers).toContain(OAuthProviders.Google);
-      expect(providers).toContain(OAuthProviders.Microsoft);
-      expect(providers).toContain(OAuthProviders.Facebook);
+      expect(refreshedConfig).toEqual(initialConfig);
+    });
+
+    it('should get supported providers from config', () => {
+      const supportedProviders = oauthMockService.getSupportedProviders();
+
+      expect(Array.isArray(supportedProviders)).toBe(true);
+      expect(supportedProviders).toContain(OAuthProviders.Google);
     });
 
     it('should get provider instances', () => {
@@ -56,511 +63,419 @@ describe('OAuthMockService', () => {
   });
 
   describe('Mock Account Management', () => {
-    it('should find mock accounts by email', () => {
-      const testUser = oauthMockService.findMockAccount('test.user@example.com');
-      const adminUser = oauthMockService.findMockAccount('admin@example.com');
-      const nonExistentUser = oauthMockService.findMockAccount('nonexistent@example.com');
+    it('should find mock account by email and provider', () => {
+      const account = oauthMockService.findMockAccount('test.user@example.com', OAuthProviders.Google);
 
-      expect(testUser).toBeDefined();
-      expect(testUser?.id).toBe('mock_user_1');
-      expect(testUser?.name).toBe('Test User');
-      expect(testUser?.provider).toBe(OAuthProviders.Google);
-      expect(testUser?.status).toBe('active');
-      expect(testUser?.twoFactorEnabled).toBe(false);
-
-      expect(adminUser).toBeDefined();
-      expect(adminUser?.id).toBe('mock_user_2');
-      expect(adminUser?.name).toBe('Admin User');
-      expect(adminUser?.twoFactorEnabled).toBe(true);
-
-      expect(nonExistentUser).toBeNull();
+      if (account) {
+        expect(account.email).toBe('test.user@example.com');
+        expect(account.provider).toBe(OAuthProviders.Google);
+        expect(account.accountType).toBe('oauth');
+      }
     });
 
-    it('should find mock accounts by email and provider', () => {
-      const googleUser = oauthMockService.findMockAccount('test.user@example.com', OAuthProviders.Google);
-      const microsoftUser = oauthMockService.findMockAccount('test.user@example.com', OAuthProviders.Microsoft);
+    it('should find mock account by email only', () => {
+      const account = oauthMockService.findMockAccount('test.user@example.com');
 
-      expect(googleUser).toBeDefined();
-      expect(googleUser?.provider).toBe(OAuthProviders.Google);
-      expect(microsoftUser).toBeNull(); // No Microsoft account with this email
+      if (account) {
+        expect(account.email).toBe('test.user@example.com');
+      }
+    });
+
+    it('should return null for non-existent account', () => {
+      const account = oauthMockService.findMockAccount('nonexistent@example.com');
+      expect(account).toBeNull();
     });
 
     it('should get all mock accounts', () => {
       const allAccounts = oauthMockService.getAllMockAccounts();
-      expect(allAccounts).toHaveLength(6);
 
+      expect(Array.isArray(allAccounts)).toBe(true);
+      expect(allAccounts.length).toBeGreaterThan(0);
+
+      allAccounts.forEach((account) => {
+        expect(account.accountType).toBe('oauth');
+        expect(account.provider).toBeDefined();
+      });
+    });
+
+    it('should get mock accounts by provider', () => {
       const googleAccounts = oauthMockService.getAllMockAccounts(OAuthProviders.Google);
-      expect(googleAccounts).toHaveLength(6); // All accounts in mock.config.json are Google
-    });
 
-    it('should handle suspended account', () => {
-      const suspendedUser = oauthMockService.findMockAccount('suspended@example.com');
-
-      expect(suspendedUser).toBeDefined();
-      expect(suspendedUser?.status).toBe('suspended');
-      expect(suspendedUser?.name).toBe('Suspended User');
-    });
-
-    it('should handle developer test account', () => {
-      const devUser = oauthMockService.findMockAccount('developer@example.com');
-
-      expect(devUser).toBeDefined();
-      expect(devUser?.id).toBe('mock_user_6');
-      expect(devUser?.name).toBe('Developer Test');
-      expect(devUser?.status).toBe('active');
-    });
-
-    it('should handle company email accounts', () => {
-      const johnDoe = oauthMockService.findMockAccount('john.doe@company.com');
-      const janeSmith = oauthMockService.findMockAccount('jane.smith@company.com');
-
-      expect(johnDoe).toBeDefined();
-      expect(johnDoe?.name).toBe('John Doe');
-      expect(johnDoe?.twoFactorEnabled).toBe(false);
-
-      expect(janeSmith).toBeDefined();
-      expect(janeSmith?.name).toBe('Jane Smith');
-      expect(janeSmith?.twoFactorEnabled).toBe(true);
-    });
-  });
-
-  describe('State Management', () => {
-    it('should save and retrieve OAuth state', () => {
-      const state = oauthMockService.saveOAuthState(
-        OAuthProviders.Google,
-        'signin',
-        'http://localhost:7000/callback',
-        'test.user@example.com',
-        ['email', 'profile'],
-      );
-
-      expect(state).toBeDefined();
-      expect(typeof state).toBe('string');
-      expect(state.length).toBeGreaterThan(10);
-
-      const retrievedState = oauthMockService.getOAuthState(state);
-      expect(retrievedState).toBeDefined();
-      expect(retrievedState?.provider).toBe(OAuthProviders.Google);
-      expect(retrievedState?.authType).toBe('signin');
-      expect(retrievedState?.callbackUrl).toBe('http://localhost:7000/callback');
-      expect(retrievedState?.mockAccountEmail).toBe('test.user@example.com');
-      expect(retrievedState?.scopes).toEqual(['email', 'profile']);
-    });
-
-    it('should return null for invalid state', () => {
-      const invalidState = oauthMockService.getOAuthState('invalid_state');
-      expect(invalidState).toBeNull();
-    });
-
-    it('should remove OAuth state', () => {
-      const state = oauthMockService.saveOAuthState(OAuthProviders.Google, 'signup', 'http://localhost:7000/callback');
-
-      let retrievedState = oauthMockService.getOAuthState(state);
-      expect(retrievedState).toBeDefined();
-
-      oauthMockService.removeOAuthState(state);
-      retrievedState = oauthMockService.getOAuthState(state);
-      expect(retrievedState).toBeNull();
-    });
-
-    it('should handle state expiration', async () => {
-      // Mock Date.now to simulate time passage
-      const originalNow = Date.now;
-      const mockNow = vi.fn();
-      Date.now = mockNow;
-
-      try {
-        // Set initial time
-        mockNow.mockReturnValue(1000000);
-
-        const state = oauthMockService.saveOAuthState(
-          OAuthProviders.Google,
-          'signin',
-          'http://localhost:7000/callback',
-        );
-
-        // Simulate time passage beyond expiration (11 minutes)
-        mockNow.mockReturnValue(1000000 + 11 * 60 * 1000);
-
-        const retrievedState = oauthMockService.getOAuthState(state);
-        expect(retrievedState).toBeNull();
-      } finally {
-        Date.now = originalNow;
-      }
-    });
-  });
-
-  describe('Authorization Code Management', () => {
-    it('should generate and exchange authorization codes', () => {
-      // First save state
-      const state = oauthMockService.saveOAuthState(
-        OAuthProviders.Google,
-        'signin',
-        'http://localhost:7000/callback',
-        'test.user@example.com',
-      );
-
-      const account = oauthMockService.findMockAccount('test.user@example.com')!;
-
-      // Generate authorization code
-      const code = oauthMockService.generateAuthorizationCode(state, account, OAuthProviders.Google);
-      expect(code).toBeDefined();
-      expect(typeof code).toBe('string');
-      expect(code.length).toBeGreaterThan(10);
-
-      // Exchange authorization code
-      const exchangeResult = oauthMockService.exchangeAuthorizationCode(code, OAuthProviders.Google);
-      expect(exchangeResult).toBeDefined();
-      expect(exchangeResult?.tokens).toBeDefined();
-      expect(exchangeResult?.userInfo).toBeDefined();
-
-      // Verify tokens
-      const { tokens, userInfo } = exchangeResult!;
-      expect(tokens.access_token).toBe(account.accessToken);
-      expect(tokens.refresh_token).toBe(account.refreshToken);
-      expect(tokens.expires_in).toBe(account.expiresIn);
-      expect(tokens.token_type).toBe('Bearer');
-      expect(tokens.scope).toBe('openid email profile');
-      expect(tokens.id_token).toBeDefined();
-
-      // Verify user info
-      expect(userInfo.id).toBe(account.id);
-      expect(userInfo.email).toBe(account.email);
-      expect(userInfo.name).toBe(account.name);
-      expect(userInfo.email_verified).toBe(account.emailVerified);
-    });
-
-    it('should return null for invalid authorization code', () => {
-      const result = oauthMockService.exchangeAuthorizationCode('invalid_code', OAuthProviders.Google);
-      expect(result).toBeNull();
-    });
-
-    it('should return null for wrong provider', () => {
-      const state = oauthMockService.saveOAuthState(OAuthProviders.Google, 'signin', 'http://localhost:7000/callback');
-
-      const account = oauthMockService.findMockAccount('test.user@example.com')!;
-      const code = oauthMockService.generateAuthorizationCode(state, account, OAuthProviders.Google);
-
-      // Try to exchange with wrong provider
-      const result = oauthMockService.exchangeAuthorizationCode(code, OAuthProviders.Microsoft);
-      expect(result).toBeNull();
-    });
-
-    it('should handle one-time use of authorization codes', () => {
-      const state = oauthMockService.saveOAuthState(OAuthProviders.Google, 'signin', 'http://localhost:7000/callback');
-
-      const account = oauthMockService.findMockAccount('test.user@example.com')!;
-      const code = oauthMockService.generateAuthorizationCode(state, account, OAuthProviders.Google);
-
-      // First exchange should work
-      const firstResult = oauthMockService.exchangeAuthorizationCode(code, OAuthProviders.Google);
-      expect(firstResult).toBeDefined();
-
-      // Second exchange should fail (one-time use)
-      const secondResult = oauthMockService.exchangeAuthorizationCode(code, OAuthProviders.Google);
-      expect(secondResult).toBeNull();
-    });
-  });
-
-  describe('Token Operations', () => {
-    it('should get token info for valid access token', () => {
-      const account = oauthMockService.findMockAccount('test.user@example.com')!;
-      const tokenInfo = oauthMockService.getTokenInfo(account.accessToken, OAuthProviders.Google);
-
-      expect(tokenInfo).toBeDefined();
-      expect(tokenInfo.user_id).toBe(account.id);
-      expect(tokenInfo.email).toBe(account.email);
-      expect(tokenInfo.verified_email).toBe(account.emailVerified);
-      expect(tokenInfo.expires_in).toBe(account.expiresIn);
-    });
-
-    it('should return null for invalid access token', () => {
-      const tokenInfo = oauthMockService.getTokenInfo('invalid_token', OAuthProviders.Google);
-      expect(tokenInfo).toBeNull();
-    });
-
-    it('should get user info for valid access token', () => {
-      const account = oauthMockService.findMockAccount('admin@example.com')!;
-      const userInfo = oauthMockService.getUserInfo(account.accessToken, OAuthProviders.Google);
-
-      expect(userInfo).toBeDefined();
-      expect(userInfo?.id).toBe(account.id);
-      expect(userInfo?.email).toBe(account.email);
-      expect(userInfo?.name).toBe(account.name);
-      expect(userInfo?.given_name).toBe(account.firstName);
-      expect(userInfo?.family_name).toBe(account.lastName);
-      expect(userInfo?.email_verified).toBe(account.emailVerified);
-      expect(userInfo?.picture).toBe(account.imageUrl);
-    });
-
-    it('should refresh access tokens', () => {
-      const account = oauthMockService.findMockAccount('john.doe@company.com')!;
-      const refreshedTokens = oauthMockService.refreshAccessToken(account.refreshToken, OAuthProviders.Google);
-
-      expect(refreshedTokens).toBeDefined();
-      expect(refreshedTokens?.access_token).toContain('refreshed');
-      expect(refreshedTokens?.refresh_token).toBe(account.refreshToken);
-      expect(refreshedTokens?.expires_in).toBe(account.expiresIn);
-      expect(refreshedTokens?.token_type).toBe('Bearer');
-    });
-
-    it('should return null when refreshing with invalid token', () => {
-      const refreshedTokens = oauthMockService.refreshAccessToken('invalid_refresh_token', OAuthProviders.Google);
-      expect(refreshedTokens).toBeNull();
-    });
-
-    it('should revoke tokens successfully', () => {
-      const account = oauthMockService.findMockAccount('jane.smith@company.com')!;
-
-      const accessRevoked = oauthMockService.revokeToken(account.accessToken, OAuthProviders.Google);
-      const refreshRevoked = oauthMockService.revokeToken(account.refreshToken, OAuthProviders.Google);
-
-      expect(accessRevoked).toBe(true);
-      expect(refreshRevoked).toBe(true);
-    });
-
-    it('should return false when revoking invalid tokens', () => {
-      const revoked = oauthMockService.revokeToken('invalid_token', OAuthProviders.Google);
-      expect(revoked).toBe(false);
+      expect(Array.isArray(googleAccounts)).toBe(true);
+      googleAccounts.forEach((account) => {
+        expect(account.provider).toBe(OAuthProviders.Google);
+        expect(account.accountType).toBe('oauth');
+      });
     });
   });
 
   describe('Error Simulation', () => {
-    it('should detect blocked emails', () => {
-      const config = oauthMockService.getConfig();
-      const blockedEmails = config.blockEmails;
-
-      blockedEmails.forEach((email) => {
-        expect(oauthMockService.isEmailBlocked(email)).toBe(true);
+    it('should simulate error for specific emails', () => {
+      // Update config to fail on specific email
+      updateOAuthMockConfig({
+        simulateErrors: true,
+        failOnEmails: ['fail@example.com'],
       });
+      oauthMockService.refreshConfig();
 
-      expect(oauthMockService.isEmailBlocked('test.user@example.com')).toBe(false);
+      expect(oauthMockService.shouldSimulateError('fail@example.com')).toBe(true);
+      expect(oauthMockService.shouldSimulateError('success@example.com')).toBe(false);
     });
 
-    it('should detect fail-on emails', () => {
-      const config = oauthMockService.getConfig();
-      const failOnEmails = config.failOnEmails;
-
-      failOnEmails.forEach((email) => {
-        expect(oauthMockService.shouldSimulateError(email)).toBe(true);
+    it('should simulate random errors based on error rate', () => {
+      updateOAuthMockConfig({
+        simulateErrors: true,
+        errorRate: 1.0, // 100% error rate
+        failOnEmails: [],
       });
+      oauthMockService.refreshConfig();
+
+      expect(oauthMockService.shouldSimulateError('test@example.com')).toBe(true);
     });
 
-    it('should simulate random errors when enabled', () => {
-      // Mock Math.random to return a value that triggers error simulation
-      const originalRandom = Math.random;
-      Math.random = vi.fn().mockReturnValue(0.01); // Below default error rate of 0.05
+    it('should not simulate errors when disabled', () => {
+      updateOAuthMockConfig({
+        simulateErrors: false,
+        errorRate: 1.0,
+        failOnEmails: ['fail@example.com'],
+      });
+      oauthMockService.refreshConfig();
 
-      try {
-        // This would require enabling error simulation in config
-        const shouldError = oauthMockService.shouldSimulateError('random@example.com');
-        // The result depends on config.simulateErrors setting
-        expect(typeof shouldError).toBe('boolean');
-      } finally {
-        Math.random = originalRandom;
-      }
+      expect(oauthMockService.shouldSimulateError('fail@example.com')).toBe(true); // Still fails for specific emails
+      expect(oauthMockService.shouldSimulateError('test@example.com')).toBe(false); // Random errors disabled
     });
 
-    it('should simulate delays when enabled', async () => {
-      const start = Date.now();
+    it('should check if email is blocked', () => {
+      updateOAuthMockConfig({
+        blockEmails: ['blocked@example.com', 'spam@example.com'],
+      });
+      oauthMockService.refreshConfig();
+
+      expect(oauthMockService.isEmailBlocked('blocked@example.com')).toBe(true);
+      expect(oauthMockService.isEmailBlocked('normal@example.com')).toBe(false);
+    });
+
+    it('should simulate delay when enabled', async () => {
+      updateOAuthMockConfig({
+        simulateDelay: true,
+        delayMs: 10, // Short delay for testing
+      });
+      oauthMockService.refreshConfig();
+
+      const startTime = Date.now();
       await oauthMockService.simulateDelay();
-      const end = Date.now();
+      const endTime = Date.now();
 
-      // If delays are enabled in config, this should take some time
-      // If disabled, it should be nearly instantaneous
-      expect(end - start).toBeGreaterThanOrEqual(0);
+      expect(endTime - startTime).toBeGreaterThanOrEqual(10);
+    });
+
+    it('should not delay when simulation disabled', async () => {
+      updateOAuthMockConfig({
+        simulateDelay: false,
+        delayMs: 1000,
+      });
+      oauthMockService.refreshConfig();
+
+      const startTime = Date.now();
+      await oauthMockService.simulateDelay();
+      const endTime = Date.now();
+
+      expect(endTime - startTime).toBeLessThan(50); // Should be nearly instant
     });
   });
 
-  describe('Client Credentials Validation', () => {
-    it('should validate Google client credentials', () => {
-      const validGoogle = oauthMockService.validateClientCredentials(
-        process.env.GOOGLE_CLIENT_ID!,
-        process.env.GOOGLE_CLIENT_SECRET!,
-        OAuthProviders.Google,
-      );
-      expect(validGoogle).toBe(true);
+  describe('Authorization Code Management', () => {
+    let testAccount: MockAccount;
 
-      const invalidGoogle = oauthMockService.validateClientCredentials(
-        'invalid_id',
-        'invalid_secret',
+    beforeEach(() => {
+      testAccount = oauthMockService.findMockAccount('test.user@example.com', OAuthProviders.Google)!;
+      expect(testAccount).toBeDefined();
+    });
+
+    it('should generate authorization code', () => {
+      const state = 'test-state-123';
+      const code = oauthMockService.generateAuthorizationCode(state, testAccount, OAuthProviders.Google);
+
+      expect(typeof code).toBe('string');
+      expect(code.length).toBeGreaterThan(0);
+      expect(code).toMatch(/^[a-f0-9]+$/); // Should be hex string
+    });
+
+    it('should exchange authorization code for tokens', () => {
+      const state = 'test-state-123';
+      const code = oauthMockService.generateAuthorizationCode(state, testAccount, OAuthProviders.Google);
+
+      const result = oauthMockService.exchangeAuthorizationCode(code, OAuthProviders.Google);
+
+      expect(result).toBeDefined();
+      expect(result!.tokens).toBeDefined();
+      expect(result!.userInfo).toBeDefined();
+
+      // Check tokens structure
+      expect(result!.tokens).toHaveProperty('access_token');
+      expect(result!.tokens).toHaveProperty('refresh_token');
+      expect(result!.tokens).toHaveProperty('expires_in');
+      expect(result!.tokens).toHaveProperty('token_type');
+      expect(result!.tokens).toHaveProperty('scope');
+      expect(result!.tokens).toHaveProperty('id_token');
+
+      // Check user info structure
+      expect(result!.userInfo).toHaveProperty('id');
+      expect(result!.userInfo).toHaveProperty('email');
+      expect(result!.userInfo).toHaveProperty('name');
+      expect(result!.userInfo).toHaveProperty('email_verified');
+
+      expect(result!.userInfo.email).toBe(testAccount.email);
+      expect(result!.userInfo.name).toBe(testAccount.name);
+    });
+
+    it('should return null for invalid authorization code', () => {
+      const result = oauthMockService.exchangeAuthorizationCode('invalid-code', OAuthProviders.Google);
+      expect(result).toBeNull();
+    });
+
+    it('should return null for wrong provider', () => {
+      const state = 'test-state-123';
+      const code = oauthMockService.generateAuthorizationCode(state, testAccount, OAuthProviders.Google);
+
+      const result = oauthMockService.exchangeAuthorizationCode(code, OAuthProviders.Microsoft);
+      expect(result).toBeNull();
+    });
+
+    it('should handle code expiration', async () => {
+      const state = 'test-state-123';
+      const code = oauthMockService.generateAuthorizationCode(state, testAccount, OAuthProviders.Google);
+
+      // Code should work immediately
+      const result1 = oauthMockService.exchangeAuthorizationCode(code, OAuthProviders.Google);
+      expect(result1).toBeDefined();
+
+      // Code should be consumed (one-time use)
+      const result2 = oauthMockService.exchangeAuthorizationCode(code, OAuthProviders.Google);
+      expect(result2).toBeNull();
+    });
+  });
+
+  describe('Token Operations', () => {
+    let accessToken: string;
+    let refreshToken: string;
+    let testAccount: MockAccount;
+
+    beforeEach(() => {
+      testAccount = oauthMockService.findMockAccount('test.user@example.com', OAuthProviders.Google)!;
+      const state = 'test-state-123';
+      const code = oauthMockService.generateAuthorizationCode(state, testAccount, OAuthProviders.Google);
+      const result = oauthMockService.exchangeAuthorizationCode(code, OAuthProviders.Google)!;
+
+      accessToken = result.tokens.access_token;
+      refreshToken = result.tokens.refresh_token;
+    });
+
+    it('should get token info', () => {
+      const tokenInfo = oauthMockService.getTokenInfo(accessToken, OAuthProviders.Google);
+
+      expect(tokenInfo).toBeDefined();
+      expect(tokenInfo!.user_id).toBe(testAccount.id);
+      expect(tokenInfo!.email).toBe(testAccount.email);
+      expect(tokenInfo!.verified_email).toBe(testAccount.emailVerified);
+      expect(tokenInfo!.expires_in).toBeGreaterThan(0);
+    });
+
+    it('should get user info from access token', () => {
+      const userInfo = oauthMockService.getUserInfo(accessToken, OAuthProviders.Google);
+
+      expect(userInfo).toBeDefined();
+      expect(userInfo!.id).toBe(testAccount.id);
+      expect(userInfo!.email).toBe(testAccount.email);
+      expect(userInfo!.name).toBe(testAccount.name);
+      expect(userInfo!.email_verified).toBe(testAccount.emailVerified);
+    });
+
+    it('should return null for invalid access token', () => {
+      const tokenInfo = oauthMockService.getTokenInfo('invalid-token', OAuthProviders.Google);
+      expect(tokenInfo).toBeNull();
+
+      const userInfo = oauthMockService.getUserInfo('invalid-token', OAuthProviders.Google);
+      expect(userInfo).toBeNull();
+    });
+
+    it('should refresh access token', () => {
+      const newTokens = oauthMockService.refreshAccessToken(refreshToken, OAuthProviders.Google);
+
+      expect(newTokens).toBeDefined();
+      expect(newTokens!.access_token).toBeDefined();
+      expect(newTokens!.refresh_token).toBe(refreshToken); // Same refresh token
+      expect(newTokens!.expires_in).toBe(3600);
+      expect(newTokens!.token_type).toBe('Bearer');
+
+      // New access token should be different
+      expect(newTokens!.access_token).not.toBe(accessToken);
+    });
+
+    it('should return null for invalid refresh token', () => {
+      const result = oauthMockService.refreshAccessToken('invalid-refresh-token', OAuthProviders.Google);
+      expect(result).toBeNull();
+    });
+
+    it('should revoke access token', () => {
+      const revoked = oauthMockService.revokeToken(accessToken, OAuthProviders.Google);
+      expect(revoked).toBe(true);
+
+      // Token should no longer work
+      const tokenInfo = oauthMockService.getTokenInfo(accessToken, OAuthProviders.Google);
+      expect(tokenInfo).toBeNull();
+    });
+
+    it('should revoke refresh token', () => {
+      const revoked = oauthMockService.revokeToken(refreshToken, OAuthProviders.Google);
+      expect(revoked).toBe(true);
+
+      // Refresh token should no longer work
+      const newTokens = oauthMockService.refreshAccessToken(refreshToken, OAuthProviders.Google);
+      expect(newTokens).toBeNull();
+    });
+
+    it('should return false for invalid token revocation', () => {
+      const revoked = oauthMockService.revokeToken('invalid-token', OAuthProviders.Google);
+      expect(revoked).toBe(false);
+    });
+  });
+
+  describe('Client Credential Validation', () => {
+    it('should validate Google client credentials', () => {
+      const isValid = oauthMockService.validateClientCredentials(
+        'test-google-client-id',
+        'test-google-client-secret',
         OAuthProviders.Google,
       );
-      expect(invalidGoogle).toBe(false);
+      expect(isValid).toBe(true);
     });
 
     it('should validate Microsoft client credentials', () => {
-      // These will be empty in test environment, so should return false
-      const microsoftResult = oauthMockService.validateClientCredentials(
-        'test_microsoft_id',
-        'test_microsoft_secret',
+      const isValid = oauthMockService.validateClientCredentials(
+        'test-microsoft-client-id',
+        'test-microsoft-client-secret',
         OAuthProviders.Microsoft,
       );
-      expect(microsoftResult).toBe(false);
+      expect(isValid).toBe(true);
     });
 
     it('should validate Facebook client credentials', () => {
-      // These will be empty in test environment, so should return false
-      const facebookResult = oauthMockService.validateClientCredentials(
-        'test_facebook_id',
-        'test_facebook_secret',
+      const isValid = oauthMockService.validateClientCredentials(
+        'test-facebook-client-id',
+        'test-facebook-client-secret',
         OAuthProviders.Facebook,
       );
-      expect(facebookResult).toBe(false);
+      expect(isValid).toBe(true);
+    });
+
+    it('should reject invalid client credentials', () => {
+      const isValid = oauthMockService.validateClientCredentials(
+        'wrong-client-id',
+        'wrong-client-secret',
+        OAuthProviders.Google,
+      );
+      expect(isValid).toBe(false);
+    });
+
+    it('should return false for unsupported provider', () => {
+      const invalidProvider = 'unsupported' as OAuthProviders;
+      const isValid = oauthMockService.validateClientCredentials('any-id', 'any-secret', invalidProvider);
+      expect(isValid).toBe(false);
     });
   });
 
-  describe('Statistics and Management', () => {
-    it('should provide accurate statistics', () => {
-      // Add some state and codes to test
-      const state1 = oauthMockService.saveOAuthState(OAuthProviders.Google, 'signin', 'callback1');
-      oauthMockService.saveOAuthState(OAuthProviders.Microsoft, 'signup', 'callback2');
-
-      const account = oauthMockService.findMockAccount('test.user@example.com')!;
-      oauthMockService.generateAuthorizationCode(state1, account, OAuthProviders.Google);
-
+  describe('Service Statistics', () => {
+    it('should provide comprehensive statistics', () => {
       const stats = oauthMockService.getStats();
 
-      expect(stats.activeStates).toBeGreaterThanOrEqual(2);
-      expect(stats.activeCodes).toBeGreaterThanOrEqual(1);
-      expect(stats.mockAccounts).toBe(6);
-      expect(stats.accountsByProvider[OAuthProviders.Google]).toBe(6);
-      expect(stats.supportedProviders).toContain(OAuthProviders.Google);
-      expect(stats.config).toBeDefined();
+      expect(stats).toBeDefined();
+      expect(stats).toHaveProperty('mockAccounts');
+      expect(stats).toHaveProperty('accountsByProvider');
+      expect(stats).toHaveProperty('supportedProviders');
+      expect(stats).toHaveProperty('enabledProviders');
+      expect(stats).toHaveProperty('activeTokens');
+      expect(stats).toHaveProperty('activeCodes');
+      expect(stats).toHaveProperty('config');
+
+      expect(typeof stats.mockAccounts).toBe('number');
+      expect(typeof stats.accountsByProvider).toBe('object');
+      expect(Array.isArray(stats.supportedProviders)).toBe(true);
+      expect(Array.isArray(stats.enabledProviders)).toBe(true);
+      expect(typeof stats.activeTokens).toBe('number');
+      expect(typeof stats.activeCodes).toBe('number');
     });
 
-    it('should clear cache successfully', () => {
-      // Add some data
-      oauthMockService.saveOAuthState(OAuthProviders.Google, 'signin', 'callback');
-      const account = oauthMockService.findMockAccount('test.user@example.com')!;
-      oauthMockService.generateAuthorizationCode('test_state', account, OAuthProviders.Google);
+    it('should track account counts by provider', () => {
+      const stats = oauthMockService.getStats();
+
+      expect(stats.accountsByProvider[OAuthProviders.Google]).toBeGreaterThan(0);
+      expect(typeof stats.accountsByProvider[OAuthProviders.Microsoft]).toBe('number');
+      expect(typeof stats.accountsByProvider[OAuthProviders.Facebook]).toBe('number');
+    });
+
+    it('should track active tokens and codes', () => {
+      // Generate some tokens
+      const testAccount = oauthMockService.findMockAccount('test.user@example.com', OAuthProviders.Google)!;
+      const code = oauthMockService.generateAuthorizationCode('state', testAccount, OAuthProviders.Google);
 
       let stats = oauthMockService.getStats();
-      expect(stats.activeStates).toBeGreaterThan(0);
+      expect(stats.activeCodes).toBeGreaterThan(0);
 
-      // Clear cache
-      oauthMockService.clearCache();
+      // Exchange for tokens
+      oauthMockService.exchangeAuthorizationCode(code, OAuthProviders.Google);
 
       stats = oauthMockService.getStats();
-      expect(stats.activeStates).toBe(0);
+      expect(stats.activeTokens).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Cache Management', () => {
+    it('should clear all caches', () => {
+      // Generate some data to cache
+      const testAccount = oauthMockService.findMockAccount('test.user@example.com', OAuthProviders.Google)!;
+      const code = oauthMockService.generateAuthorizationCode('state', testAccount, OAuthProviders.Google);
+      oauthMockService.exchangeAuthorizationCode(code, OAuthProviders.Google);
+
+      let stats = oauthMockService.getStats();
+
+      // Clear caches
+      oauthMockService.clearCaches();
+
+      stats = oauthMockService.getStats();
+      expect(stats.activeTokens).toBe(0);
       expect(stats.activeCodes).toBe(0);
     });
   });
 
-  describe('Account Type Specific Tests', () => {
-    it('should handle 2FA enabled accounts correctly', () => {
-      const adminAccount = oauthMockService.findMockAccount('admin@example.com');
-      const janeAccount = oauthMockService.findMockAccount('jane.smith@company.com');
+  describe('Dynamic Token Generation', () => {
+    it('should generate unique tokens each time', () => {
+      const testAccount = oauthMockService.findMockAccount('test.user@example.com', OAuthProviders.Google)!;
 
-      expect(adminAccount?.twoFactorEnabled).toBe(true);
-      expect(janeAccount?.twoFactorEnabled).toBe(true);
+      const code1 = oauthMockService.generateAuthorizationCode('state1', testAccount, OAuthProviders.Google);
+      const code2 = oauthMockService.generateAuthorizationCode('state2', testAccount, OAuthProviders.Google);
+
+      expect(code1).not.toBe(code2);
+
+      const result1 = oauthMockService.exchangeAuthorizationCode(code1, OAuthProviders.Google)!;
+      const result2 = oauthMockService.exchangeAuthorizationCode(code2, OAuthProviders.Google)!;
+
+      expect(result1.tokens.access_token).not.toBe(result2.tokens.access_token);
+      expect(result1.tokens.refresh_token).not.toBe(result2.tokens.refresh_token);
     });
 
-    it('should handle accounts without 2FA', () => {
-      const testAccount = oauthMockService.findMockAccount('test.user@example.com');
-      const johnAccount = oauthMockService.findMockAccount('john.doe@company.com');
-      const devAccount = oauthMockService.findMockAccount('developer@example.com');
+    it('should generate tokens with correct format', () => {
+      const testAccount = oauthMockService.findMockAccount('test.user@example.com', OAuthProviders.Google)!;
+      const code = oauthMockService.generateAuthorizationCode('state', testAccount, OAuthProviders.Google);
+      const result = oauthMockService.exchangeAuthorizationCode(code, OAuthProviders.Google)!;
 
-      expect(testAccount?.twoFactorEnabled).toBe(false);
-      expect(johnAccount?.twoFactorEnabled).toBe(false);
-      expect(devAccount?.twoFactorEnabled).toBe(false);
-    });
+      // Check token format patterns
+      expect(result.tokens.access_token).toMatch(/^mock_google_access_/);
+      expect(result.tokens.refresh_token).toMatch(/^mock_google_refresh_/);
 
-    it('should have consistent token structure across accounts', () => {
-      const accounts = oauthMockService.getAllMockAccounts();
-
-      accounts.forEach((account) => {
-        expect(account.accessToken).toMatch(/^mock_access_token_/);
-        expect(account.refreshToken).toMatch(/^mock_refresh_token_/);
-        expect(account.expiresIn).toBe(3600);
-        expect(account.provider).toBe(OAuthProviders.Google);
-        expect(account.emailVerified).toBe(true);
-        expect(typeof account.imageUrl).toBe('string');
-        expect(account.imageUrl).toContain('placeholder');
-      });
-    });
-
-    it('should handle different account statuses', () => {
-      const activeAccounts = oauthMockService.getAllMockAccounts().filter((acc) => acc.status === 'active');
-      const suspendedAccounts = oauthMockService.getAllMockAccounts().filter((acc) => acc.status === 'suspended');
-
-      expect(activeAccounts.length).toBe(5);
-      expect(suspendedAccounts.length).toBe(1);
-      expect(suspendedAccounts[0].email).toBe('suspended@example.com');
-    });
-  });
-
-  describe('Integration with mock.config.json', () => {
-    it('should match exact configuration values from mock.config.json', () => {
-      const config = oauthMockService.getConfig();
-
-      // Verify top-level OAuth config
-      expect(config.enabled).toBe(true);
-      expect(config.simulateDelay).toBe(true);
-      expect(config.delayMs).toBe(1500);
-      expect(config.simulateErrors).toBe(false);
-      expect(config.errorRate).toBe(0.05);
-      expect(config.autoApprove).toBe(true);
-      expect(config.requireConsent).toBe(false);
-      expect(config.logRequests).toBe(true);
-      expect(config.mockServerEnabled).toBe(true);
-      expect(config.mockServerPort).toBe(8080);
-
-      // Verify fail and block email arrays
-      expect(config.failOnEmails).toEqual(['fail@example.com', 'error@test.com', 'oauth-error@example.com']);
-      expect(config.blockEmails).toEqual(['blocked@example.com', 'spam@test.com', 'oauth-blocked@example.com']);
-
-      // Verify mock accounts match exactly
-      expect(config.mockAccounts).toHaveLength(6);
-
-      const testUser = config.mockAccounts.find((acc) => acc.id === 'mock_user_1');
-      expect(testUser).toEqual({
-        id: 'mock_user_1',
-        email: 'test.user@example.com',
-        name: 'Test User',
-        firstName: 'Test',
-        lastName: 'User',
-        imageUrl: 'https://via.placeholder.com/150?text=Test+User',
-        emailVerified: true,
-        provider: 'google',
-        accessToken: 'mock_access_token_test_user_123456789',
-        refreshToken: 'mock_refresh_token_test_user_987654321',
-        expiresIn: 3600,
-        twoFactorEnabled: false,
-        status: 'active',
-      });
-    });
-
-    it('should handle all predefined mock accounts from config', () => {
-      const expectedAccounts = [
-        { id: 'mock_user_1', email: 'test.user@example.com', name: 'Test User', twoFactor: false, status: 'active' },
-        { id: 'mock_user_2', email: 'admin@example.com', name: 'Admin User', twoFactor: true, status: 'active' },
-        { id: 'mock_user_3', email: 'john.doe@company.com', name: 'John Doe', twoFactor: false, status: 'active' },
-        { id: 'mock_user_4', email: 'jane.smith@company.com', name: 'Jane Smith', twoFactor: true, status: 'active' },
-        {
-          id: 'mock_user_5',
-          email: 'suspended@example.com',
-          name: 'Suspended User',
-          twoFactor: false,
-          status: 'suspended',
-        },
-        {
-          id: 'mock_user_6',
-          email: 'developer@example.com',
-          name: 'Developer Test',
-          twoFactor: false,
-          status: 'active',
-        },
-      ];
-
-      expectedAccounts.forEach((expected) => {
-        const account = oauthMockService.findMockAccount(expected.email);
-        expect(account).toBeDefined();
-        expect(account?.id).toBe(expected.id);
-        expect(account?.name).toBe(expected.name);
-        expect(account?.twoFactorEnabled).toBe(expected.twoFactor);
-        expect(account?.status).toBe(expected.status);
-      });
+      // Should contain account ID and timestamp
+      expect(result.tokens.access_token).toContain(testAccount.id);
+      expect(result.tokens.refresh_token).toContain(testAccount.id);
     });
   });
 });

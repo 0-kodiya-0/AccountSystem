@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { envConfig } from '../env.config';
 import {
+  envConfig,
+  REQUIRED_ENV_VARS,
+  OPTIONAL_ENV_VARS,
   getJwtSecret,
   getSessionSecret,
   getPort,
@@ -55,10 +57,8 @@ describe('env.config', () => {
       expect(instance1).toBe(instance2);
     });
 
-    it('should initialize automatically on import', () => {
+    it('should be initialized on import', () => {
       expect(envConfig).toBeDefined();
-      expect(typeof envConfig.get).toBe('function');
-      expect(typeof envConfig.initialize).toBe('function');
     });
   });
 
@@ -80,25 +80,8 @@ describe('env.config', () => {
     });
 
     it('should validate all required environment variables are checked', () => {
-      const requiredVars = [
-        'JWT_SECRET',
-        'SESSION_SECRET',
-        'GOOGLE_CLIENT_ID',
-        'GOOGLE_CLIENT_SECRET',
-        'BASE_URL',
-        'APP_NAME',
-        'SMTP_HOST',
-        'SMTP_PORT',
-        'SMTP_SECURE',
-        'SMTP_APP_PASSWORD',
-        'SENDER_EMAIL',
-        'SENDER_NAME',
-        'MONGODB_USERNAME',
-        'MONGODB_PASSWORD',
-      ];
-
-      // Set all required vars to valid values
-      requiredVars.forEach((varName) => {
+      // Set all required vars to valid values using the exported constant
+      REQUIRED_ENV_VARS.forEach((varName) => {
         process.env[varName] = 'test-value';
       });
 
@@ -108,7 +91,12 @@ describe('env.config', () => {
 
   describe('Environment Variable Getters', () => {
     beforeEach(() => {
-      // Set up test environment variables
+      // Set all required variables using exported constants
+      REQUIRED_ENV_VARS.forEach((varName) => {
+        process.env[varName] = 'test-value';
+      });
+
+      // Set up test environment variables with specific values
       process.env.JWT_SECRET = 'test-jwt-secret';
       process.env.SESSION_SECRET = 'test-session-secret';
       process.env.PORT = '3001';
@@ -227,7 +215,12 @@ describe('env.config', () => {
 
   describe('Default Values', () => {
     beforeEach(() => {
-      // Set only required variables, leave optional ones undefined
+      // Set only required variables using exported constant
+      REQUIRED_ENV_VARS.forEach((varName) => {
+        process.env[varName] = 'test-value';
+      });
+
+      // Set specific required vars to proper values
       process.env.JWT_SECRET = 'test-jwt-secret';
       process.env.SESSION_SECRET = 'test-session-secret';
       process.env.GOOGLE_CLIENT_ID = 'test-google-client-id';
@@ -243,13 +236,10 @@ describe('env.config', () => {
       process.env.MONGODB_USERNAME = 'test-username';
       process.env.MONGODB_PASSWORD = 'test-password';
 
-      // Clear optional variables
-      delete process.env.PORT;
-      delete process.env.NODE_ENV;
-      delete process.env.PROXY_URL;
-      delete process.env.MICROSOFT_CLIENT_ID;
-      delete process.env.FACEBOOK_CLIENT_ID;
-      delete process.env.MOCK_ENABLED;
+      // Clear optional variables to test defaults
+      Object.keys(OPTIONAL_ENV_VARS).forEach((varName) => {
+        delete process.env[varName];
+      });
 
       envConfig.initialize();
     });
@@ -314,6 +304,11 @@ describe('env.config', () => {
 
   describe('Config Object Methods', () => {
     beforeEach(() => {
+      // Set all required variables using exported constant
+      REQUIRED_ENV_VARS.forEach((varName) => {
+        process.env[varName] = 'test-value';
+      });
+
       process.env.JWT_SECRET = 'test-jwt-secret';
       process.env.SESSION_SECRET = 'test-session-secret';
       process.env.GOOGLE_CLIENT_ID = 'test-google-client-id';

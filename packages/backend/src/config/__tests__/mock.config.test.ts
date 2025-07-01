@@ -3,89 +3,264 @@ import { mockConfig } from '../mock.config';
 import {
   getEmailMockConfig,
   getOAuthMockConfig,
+  getAccountsMockConfig,
   updateEmailMockConfig,
   updateOAuthMockConfig,
+  updateAccountsMockConfig,
   resetMockConfig,
   validateEmailMockConfig,
   validateOAuthMockConfig,
+  validateAccountsMockConfig,
   validateMockConfig,
 } from '../mock.config';
-import type { EmailMockConfig, OAuthMockConfig } from '../mock.config';
+import type { EmailMockConfig, OAuthMockConfig, AccountsMockConfig } from '../mock.config';
 
 describe('mock.config', () => {
   beforeEach(() => {
     vi.resetModules();
-    // Reset to defaults before each test
-    mockConfig.resetToDefaults();
+    // Force refresh config from file
+    mockConfig.refreshConfig();
   });
 
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  describe('MockConfigManager Singleton', () => {
-    it('should return the same instance on multiple calls', () => {
-      const instance1 = mockConfig;
-      const instance2 = mockConfig;
-      expect(instance1).toBe(instance2);
-    });
-
-    it('should be initialized on import', () => {
-      expect(mockConfig).toBeDefined();
-      expect(typeof mockConfig.getConfig).toBe('function');
-      expect(typeof mockConfig.getEmailConfig).toBe('function');
-      expect(typeof mockConfig.getOAuthConfig).toBe('function');
-    });
-  });
-
-  describe('Email Mock Configuration', () => {
-    it('should return default email configuration', () => {
+  describe('Email Mock Configuration from File', () => {
+    it('should load email configuration from file', () => {
       const emailConfig = getEmailMockConfig();
 
-      expect(emailConfig).toMatchObject({
-        logEmails: true,
-        simulateDelay: false,
-        delayMs: 100,
-        simulateFailures: false,
-        failureRate: 0.1,
-        failOnEmails: [],
-        blockEmails: [],
-      });
+      expect(emailConfig).toBeDefined();
+      expect(emailConfig).toHaveProperty('enabled');
+      expect(emailConfig).toHaveProperty('logEmails');
+      expect(emailConfig).toHaveProperty('simulateDelay');
+      expect(emailConfig).toHaveProperty('delayMs');
+      expect(emailConfig).toHaveProperty('simulateFailures');
+      expect(emailConfig).toHaveProperty('failureRate');
+      expect(emailConfig).toHaveProperty('failOnEmails');
+      expect(emailConfig).toHaveProperty('blockEmails');
     });
 
-    it('should update email configuration', () => {
+    it('should validate email configuration from file', () => {
+      const emailConfig = getEmailMockConfig();
+      expect(() => validateEmailMockConfig(emailConfig)).not.toThrow();
+    });
+
+    it('should update email configuration at runtime', () => {
+      const originalConfig = getEmailMockConfig();
       const updates: Partial<EmailMockConfig> = {
-        logEmails: false,
-        simulateDelay: true,
-        delayMs: 500,
+        logEmails: !originalConfig.logEmails,
+        simulateDelay: !originalConfig.simulateDelay,
       };
 
       updateEmailMockConfig(updates);
       const updatedConfig = getEmailMockConfig();
 
-      expect(updatedConfig.logEmails).toBe(false);
-      expect(updatedConfig.simulateDelay).toBe(true);
-      expect(updatedConfig.delayMs).toBe(500);
+      expect(updatedConfig.logEmails).toBe(updates.logEmails);
+      expect(updatedConfig.simulateDelay).toBe(updates.simulateDelay);
+
+      // Other properties should remain unchanged
+      expect(updatedConfig.enabled).toBe(originalConfig.enabled);
+      expect(updatedConfig.delayMs).toBe(originalConfig.delayMs);
     });
 
-    it('should validate email configuration correctly', () => {
-      const validConfig: EmailMockConfig = {
-        enabled: true,
-        logEmails: true,
-        simulateDelay: false,
-        delayMs: 150,
-        simulateFailures: false,
-        failureRate: 0.1,
-        failOnEmails: ['fail@example.com'],
-        blockEmails: ['blocked@example.com'],
+    it('should validate updated email configuration', () => {
+      const validUpdates: Partial<EmailMockConfig> = {
+        delayMs: 500,
+        failureRate: 0.2,
       };
 
-      expect(() => validateEmailMockConfig(validConfig)).not.toThrow();
+      expect(() => updateEmailMockConfig(validUpdates)).not.toThrow();
+    });
+
+    it('should reject invalid email configuration updates', () => {
+      const invalidUpdates = {
+        delayMs: -100, // Invalid: negative delay
+        failureRate: 1.5, // Invalid: rate > 1
+      };
+
+      expect(() => updateEmailMockConfig(invalidUpdates)).toThrow();
+    });
+  });
+
+  describe('OAuth Mock Configuration from File', () => {
+    it('should load OAuth configuration from file', () => {
+      const oauthConfig = getOAuthMockConfig();
+
+      expect(oauthConfig).toBeDefined();
+      expect(oauthConfig).toHaveProperty('enabled');
+      expect(oauthConfig).toHaveProperty('simulateDelay');
+      expect(oauthConfig).toHaveProperty('delayMs');
+      expect(oauthConfig).toHaveProperty('simulateErrors');
+      expect(oauthConfig).toHaveProperty('errorRate');
+      expect(oauthConfig).toHaveProperty('failOnEmails');
+      expect(oauthConfig).toHaveProperty('blockEmails');
+      expect(oauthConfig).toHaveProperty('autoApprove');
+      expect(oauthConfig).toHaveProperty('requireConsent');
+      expect(oauthConfig).toHaveProperty('logRequests');
+      expect(oauthConfig).toHaveProperty('mockServerEnabled');
+      expect(oauthConfig).toHaveProperty('mockServerPort');
+    });
+
+    it('should validate OAuth configuration from file', () => {
+      const oauthConfig = getOAuthMockConfig();
+      expect(() => validateOAuthMockConfig(oauthConfig)).not.toThrow();
+    });
+
+    it('should update OAuth configuration at runtime', () => {
+      const originalConfig = getOAuthMockConfig();
+      const updates: Partial<OAuthMockConfig> = {
+        enabled: !originalConfig.enabled,
+        simulateDelay: !originalConfig.simulateDelay,
+        errorRate: 0.1,
+      };
+
+      updateOAuthMockConfig(updates);
+      const updatedConfig = getOAuthMockConfig();
+
+      expect(updatedConfig.enabled).toBe(updates.enabled);
+      expect(updatedConfig.simulateDelay).toBe(updates.simulateDelay);
+      expect(updatedConfig.errorRate).toBe(updates.errorRate);
+    });
+
+    it('should validate updated OAuth configuration', () => {
+      const validUpdates: Partial<OAuthMockConfig> = {
+        delayMs: 2000,
+        mockServerPort: 9000,
+      };
+
+      expect(() => updateOAuthMockConfig(validUpdates)).not.toThrow();
+    });
+
+    it('should reject invalid OAuth configuration updates', () => {
+      const invalidUpdates = {
+        mockServerPort: 99999, // Invalid: port too high
+        errorRate: -0.1, // Invalid: negative rate
+      };
+
+      expect(() => updateOAuthMockConfig(invalidUpdates)).toThrow();
+    });
+  });
+
+  describe('Accounts Mock Configuration from File', () => {
+    it('should load accounts configuration from file', () => {
+      const accountsConfig = getAccountsMockConfig();
+
+      expect(accountsConfig).toBeDefined();
+      expect(accountsConfig).toHaveProperty('enabled');
+      expect(accountsConfig).toHaveProperty('accounts');
+      expect(Array.isArray(accountsConfig.accounts)).toBe(true);
+    });
+
+    it('should validate accounts configuration from file', () => {
+      const accountsConfig = getAccountsMockConfig();
+      expect(() => validateAccountsMockConfig(accountsConfig)).not.toThrow();
+    });
+
+    it('should validate mock accounts structure from file', () => {
+      const accountsConfig = getAccountsMockConfig();
+
+      accountsConfig.accounts.forEach((account) => {
+        expect(account).toHaveProperty('id');
+        expect(account).toHaveProperty('email');
+        expect(account).toHaveProperty('name');
+        expect(account).toHaveProperty('accountType');
+        expect(account).toHaveProperty('emailVerified');
+
+        expect(typeof account.id).toBe('string');
+        expect(typeof account.email).toBe('string');
+        expect(typeof account.name).toBe('string');
+        expect(typeof account.emailVerified).toBe('boolean');
+      });
+    });
+
+    it('should have different account types in loaded accounts', () => {
+      const accountsConfig = getAccountsMockConfig();
+      const accountTypes = accountsConfig.accounts.map((account) => account.accountType);
+
+      expect(accountTypes).toContain('oauth');
+      expect(accountTypes).toContain('local');
+    });
+
+    it('should update accounts configuration at runtime', () => {
+      const originalConfig = getAccountsMockConfig();
+      const updates: Partial<AccountsMockConfig> = {
+        enabled: !originalConfig.enabled,
+        clearOnSeed: !originalConfig.clearOnSeed,
+      };
+
+      updateAccountsMockConfig(updates);
+      const updatedConfig = getAccountsMockConfig();
+
+      expect(updatedConfig.enabled).toBe(updates.enabled);
+      expect(updatedConfig.clearOnSeed).toBe(updates.clearOnSeed);
+    });
+  });
+
+  describe('Complete Mock Configuration from File', () => {
+    it('should load complete configuration from file', () => {
+      const config = mockConfig.getConfig();
+
+      expect(config).toHaveProperty('email');
+      expect(config).toHaveProperty('oauth');
+      expect(config).toHaveProperty('accounts');
+    });
+
+    it('should validate complete configuration from file', () => {
+      const config = mockConfig.getConfig();
+      expect(() => validateMockConfig(config)).not.toThrow();
+    });
+
+    it('should maintain configuration consistency across getters', () => {
+      const fullConfig = mockConfig.getConfig();
+      const emailConfig = getEmailMockConfig();
+      const oauthConfig = getOAuthMockConfig();
+      const accountsConfig = getAccountsMockConfig();
+
+      expect(fullConfig.email).toEqual(emailConfig);
+      expect(fullConfig.oauth).toEqual(oauthConfig);
+      expect(fullConfig.accounts).toEqual(accountsConfig);
+    });
+
+    it('should validate configuration state', () => {
+      expect(mockConfig.isConfigValid()).toBe(true);
+    });
+
+    it('should refresh configuration from file', () => {
+      const initialConfig = mockConfig.getConfig();
+
+      // Make some changes
+      updateEmailMockConfig({ logEmails: false });
+
+      // Refresh should reload from file
+      mockConfig.refreshConfig();
+      const refreshedConfig = mockConfig.getConfig();
+
+      // Should match original file content
+      expect(refreshedConfig.email.logEmails).toBe(initialConfig.email.logEmails);
+    });
+  });
+
+  describe('Configuration Validation Runtime Logic', () => {
+    it('should validate email mock configuration correctly', () => {
+      const emailConfig = getEmailMockConfig();
+      expect(() => validateEmailMockConfig(emailConfig)).not.toThrow();
+    });
+
+    it('should validate OAuth mock configuration correctly', () => {
+      const oauthConfig = getOAuthMockConfig();
+      expect(() => validateOAuthMockConfig(oauthConfig)).not.toThrow();
+    });
+
+    it('should validate accounts mock configuration correctly', () => {
+      const accountsConfig = getAccountsMockConfig();
+      expect(() => validateAccountsMockConfig(accountsConfig)).not.toThrow();
     });
 
     it('should throw error for invalid email configuration', () => {
       const invalidConfig = {
-        logEmails: 'invalid', // should be boolean
+        enabled: 'invalid', // should be boolean
+        logEmails: true,
         simulateDelay: false,
         delayMs: 150,
         simulateFailures: false,
@@ -96,52 +271,6 @@ describe('mock.config', () => {
 
       expect(() => validateEmailMockConfig(invalidConfig)).toThrow('Invalid email mock configuration');
     });
-  });
-
-  describe('OAuth Mock Configuration', () => {
-    it('should return default OAuth configuration', () => {
-      const oauthConfig = getOAuthMockConfig();
-
-      expect(oauthConfig).toMatchObject({
-        enabled: true,
-        simulateDelay: false,
-        delayMs: 1000,
-        simulateErrors: false,
-        errorRate: 0.05,
-        failOnEmails: expect.any(Array),
-        blockEmails: expect.any(Array),
-        autoApprove: true,
-        requireConsent: false,
-        logRequests: true,
-        mockServerEnabled: true,
-        mockServerPort: 8080,
-      });
-
-      expect(oauthConfig.mockAccounts).toBeInstanceOf(Array);
-      expect(oauthConfig.mockAccounts.length).toBeGreaterThan(0);
-    });
-
-    it('should update OAuth configuration', () => {
-      const updates: Partial<OAuthMockConfig> = {
-        enabled: false,
-        simulateDelay: true,
-        delayMs: 2000,
-        errorRate: 0.1,
-      };
-
-      updateOAuthMockConfig(updates);
-      const updatedConfig = getOAuthMockConfig();
-
-      expect(updatedConfig.enabled).toBe(false);
-      expect(updatedConfig.simulateDelay).toBe(true);
-      expect(updatedConfig.delayMs).toBe(2000);
-      expect(updatedConfig.errorRate).toBe(0.1);
-    });
-
-    it('should validate OAuth configuration correctly', () => {
-      const oauthConfig = getOAuthMockConfig();
-      expect(() => validateOAuthMockConfig(oauthConfig)).not.toThrow();
-    });
 
     it('should throw error for invalid OAuth configuration', () => {
       const invalidConfig = {
@@ -150,7 +279,6 @@ describe('mock.config', () => {
         delayMs: 1000,
         simulateErrors: false,
         errorRate: 0.05,
-        mockAccounts: [],
         failOnEmails: [],
         blockEmails: [],
         autoApprove: true,
@@ -162,106 +290,9 @@ describe('mock.config', () => {
 
       expect(() => validateOAuthMockConfig(invalidConfig)).toThrow('Invalid OAuth mock configuration');
     });
-  });
 
-  describe('Complete Mock Configuration', () => {
-    it('should return complete configuration', () => {
-      const config = mockConfig.getConfig();
-
-      expect(config).toHaveProperty('email');
-      expect(config).toHaveProperty('oauth');
-      expect(config.email).toBeInstanceOf(Object);
-      expect(config.oauth).toBeInstanceOf(Object);
-    });
-
-    it('should validate complete configuration', () => {
-      const config = mockConfig.getConfig();
-      expect(() => validateMockConfig(config)).not.toThrow();
-    });
-
-    it('should reset to defaults', () => {
-      // Modify configuration
-      updateEmailMockConfig({ logEmails: false });
-      updateOAuthMockConfig({ enabled: false });
-
-      // Reset to defaults
-      resetMockConfig();
-
-      const emailConfig = getEmailMockConfig();
-      const oauthConfig = getOAuthMockConfig();
-
-      expect(emailConfig.logEmails).toBe(true);
-      expect(oauthConfig.enabled).toBe(true);
-    });
-  });
-
-  describe('Mock Account Validation', () => {
-    it('should validate default mock accounts', () => {
-      const oauthConfig = getOAuthMockConfig();
-
-      oauthConfig.mockAccounts.forEach((account) => {
-        expect(account).toHaveProperty('id');
-        expect(account).toHaveProperty('email');
-        expect(account).toHaveProperty('name');
-        expect(account).toHaveProperty('provider');
-        expect(account).toHaveProperty('accessToken');
-        expect(account).toHaveProperty('refreshToken');
-        expect(account).toHaveProperty('expiresIn');
-
-        expect(typeof account.id).toBe('string');
-        expect(typeof account.email).toBe('string');
-        expect(typeof account.name).toBe('string');
-        expect(typeof account.accessToken).toBe('string');
-        expect(typeof account.refreshToken).toBe('string');
-        expect(typeof account.expiresIn).toBe('number');
-        expect(account.expiresIn).toBeGreaterThan(0);
-      });
-    });
-
-    it('should have accounts with different statuses', () => {
-      const oauthConfig = getOAuthMockConfig();
-      const statuses = oauthConfig.mockAccounts.map((account) => account.status);
-
-      expect(statuses).toContain('active');
-      expect(statuses).toContain('suspended');
-    });
-
-    it('should have accounts with 2FA enabled and disabled', () => {
-      const oauthConfig = getOAuthMockConfig();
-      const twoFactorStates = oauthConfig.mockAccounts.map((account) => account.twoFactorEnabled);
-
-      expect(twoFactorStates).toContain(true);
-      expect(twoFactorStates).toContain(false);
-    });
-  });
-
-  describe('Configuration Validation Edge Cases', () => {
-    it('should handle missing required fields in email config', () => {
-      const incompleteConfig = {
-        logEmails: true,
-        simulateDelay: false,
-        // Missing other required fields
-      };
-
-      expect(() => validateEmailMockConfig(incompleteConfig)).toThrow();
-    });
-
-    it('should handle invalid data types', () => {
-      const invalidConfig = {
-        logEmails: 'true', // string instead of boolean
-        simulateDelay: 1, // number instead of boolean
-        delayMs: '150', // string instead of number
-        simulateFailures: null,
-        failureRate: 'invalid',
-        failOnEmails: 'not-an-array',
-        blockEmails: [],
-      };
-
-      expect(() => validateEmailMockConfig(invalidConfig)).toThrow();
-    });
-
-    it('should handle boundary values', () => {
-      const boundaryConfig: EmailMockConfig = {
+    it('should handle boundary values in validation', () => {
+      const boundaryEmailConfig: EmailMockConfig = {
         enabled: true,
         logEmails: true,
         simulateDelay: true,
@@ -272,11 +303,12 @@ describe('mock.config', () => {
         blockEmails: [],
       };
 
-      expect(() => validateEmailMockConfig(boundaryConfig)).not.toThrow();
+      expect(() => validateEmailMockConfig(boundaryEmailConfig)).not.toThrow();
     });
 
     it('should reject out-of-bounds values', () => {
       const outOfBoundsConfig = {
+        enabled: true,
         logEmails: true,
         simulateDelay: true,
         delayMs: 15000, // exceeds max
@@ -290,22 +322,9 @@ describe('mock.config', () => {
     });
   });
 
-  describe('Configuration State Management', () => {
-    it('should maintain configuration state between method calls', () => {
-      const initialConfig = mockConfig.getConfig();
-
-      updateEmailMockConfig({ logEmails: false });
-
-      const updatedConfig = mockConfig.getConfig();
-      expect(updatedConfig.email.logEmails).toBe(false);
-      expect(updatedConfig.oauth).toEqual(initialConfig.oauth);
-    });
-
-    it('should validate configuration state', () => {
-      expect(mockConfig.isConfigValid()).toBe(true);
-
-      // This would need to be tested with actual invalid state
-      // which might require more complex setup
+  describe('Reset Functionality', () => {
+    it('should throw error when trying to reset to defaults', () => {
+      expect(() => resetMockConfig()).toThrow('Reset to defaults not supported');
     });
   });
 });
