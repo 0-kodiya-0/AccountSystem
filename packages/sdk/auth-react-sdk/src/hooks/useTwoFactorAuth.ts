@@ -3,9 +3,9 @@ import { useSession } from './useSession';
 import { useAppStore } from '../store/useAppStore';
 import { useAuthService } from '../context/ServicesProvider';
 import {
-  UnifiedTwoFactorSetupRequest,
-  UnifiedTwoFactorSetupResponse,
-  UnifiedTwoFactorVerifySetupResponse,
+  TwoFactorSetupRequest,
+  TwoFactorSetupResponse,
+  TwoFactorVerifySetupResponse,
   BackupCodesRequest,
   BackupCodesResponse,
   TwoFactorStatusResponse,
@@ -28,7 +28,7 @@ interface TwoFactorState {
   loading: boolean;
   error: string | null;
   // Setup data
-  setupData: UnifiedTwoFactorSetupResponse | null;
+  setupData: TwoFactorSetupResponse | null;
   // Status data
   statusData: TwoFactorStatusResponse | null;
   // Backup codes
@@ -67,7 +67,7 @@ interface TwoFactorReturn {
   lastSetupDate: string | null;
 
   // Setup data
-  setupData: UnifiedTwoFactorSetupResponse | null;
+  setupData: TwoFactorSetupResponse | null;
   qrCode: string | null;
   secret: string | null;
   backupCodes: string[] | null;
@@ -75,8 +75,8 @@ interface TwoFactorReturn {
 
   // Operations
   checkStatus: () => Promise<TwoFactorStatusResponse | null>;
-  setup: (data: UnifiedTwoFactorSetupRequest) => Promise<UnifiedTwoFactorSetupResponse | null>;
-  verifySetup: (token: string) => Promise<UnifiedTwoFactorVerifySetupResponse | null>; // UPDATED
+  setup: (data: TwoFactorSetupRequest) => Promise<TwoFactorSetupResponse | null>;
+  verifySetup: (token: string) => Promise<TwoFactorVerifySetupResponse | null>; // UPDATED
   generateBackupCodes: (data: BackupCodesRequest) => Promise<BackupCodesResponse | null>;
   disable: (password?: string) => Promise<{ success: boolean; message?: string }>;
 
@@ -163,7 +163,7 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
   }, [accountId, authService, handleError, safeSetState]);
 
   const setup = useCallback(
-    async (data: UnifiedTwoFactorSetupRequest) => {
+    async (data: TwoFactorSetupRequest) => {
       if (!accountId || !accountType) return null;
 
       try {

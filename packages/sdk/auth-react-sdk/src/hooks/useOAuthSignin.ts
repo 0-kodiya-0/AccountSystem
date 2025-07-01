@@ -1,5 +1,4 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { useAppStore } from '../store/useAppStore';
 import { useAuthService } from '../context/ServicesProvider';
 import { OAuthProviders, CallbackCode, CallbackData } from '../types';
 import { parseApiError } from '../utils';

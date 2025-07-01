@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useAppStore } from '../store/useAppStore';
 import { useAuthService } from '../context/ServicesProvider';
 import { RequestEmailVerificationRequest, CompleteProfileRequest } from '../types';
 import { parseApiError } from '../utils';

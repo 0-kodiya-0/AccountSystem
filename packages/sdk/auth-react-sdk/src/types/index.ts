@@ -65,8 +65,15 @@ export interface SessionAccount {
   provider?: OAuthProviders;
 }
 
+export interface AccountSessionInfo {
+  hasSession: boolean;
+  accountIds: string[];
+  currentAccountId: string | null;
+  isValid: boolean;
+}
+
 // ============================================================================
-// Account Update Types (UPDATED - Direct Fields)
+// Request Types
 // ============================================================================
 
 export interface AccountUpdateRequest {
@@ -78,48 +85,10 @@ export interface AccountUpdateRequest {
   username?: string;
 }
 
-// ============================================================================
-// Session Management
-// ============================================================================
-
-export interface AccountSessionInfo {
-  hasSession: boolean;
-  accountIds: string[];
-  currentAccountId: string | null;
-  isValid: boolean;
-}
-
-export interface GetAccountSessionResponse {
-  session: AccountSessionInfo;
-}
-
-export type GetAccountSessionDataResponse = SessionAccount[];
-
-export interface SessionUpdateResponse {
-  message: string;
-  currentAccountId?: string | null;
-  accountId?: string;
-}
-
-// ============================================================================
-// Two-Step Signup Flow (UPDATED - Callback URLs)
-// ============================================================================
-
+// Two-Step Signup Flow
 export interface RequestEmailVerificationRequest {
   email: string;
-  callbackUrl: string; // NEW: Required callback URL
-}
-
-export interface RequestEmailVerificationResponse {
-  message: string;
-  email: string;
-  callbackUrl: string; // NEW: Returned for reference
-}
-
-export interface VerifyEmailSignupResponse {
-  message: string;
-  profileToken: string;
-  email: string;
+  callbackUrl: string;
 }
 
 export interface CompleteProfileRequest {
@@ -130,6 +99,125 @@ export interface CompleteProfileRequest {
   confirmPassword: string;
   birthdate?: string;
   agreeToTerms: boolean;
+}
+
+export interface CancelSignupRequest {
+  email: string;
+}
+
+// Local Authentication
+export interface LocalLoginRequest {
+  email?: string;
+  username?: string;
+  password: string;
+  rememberMe?: boolean;
+}
+
+export interface PasswordResetRequest {
+  email: string;
+  callbackUrl: string;
+}
+
+export interface PasswordResetVerificationRequest {
+  token: string;
+}
+
+export interface ResetPasswordRequest {
+  password: string;
+  confirmPassword: string;
+}
+
+export interface PasswordChangeRequest {
+  oldPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+// OAuth Authentication
+export interface OAuthUrlRequest {
+  callbackUrl: string;
+}
+
+export interface PermissionUrlRequest {
+  accountId: string;
+  scopeNames: string[];
+  callbackUrl: string;
+}
+
+export interface ReauthorizeUrlRequest {
+  accountId: string;
+  callbackUrl: string;
+}
+
+// Two-Factor Authentication
+export interface TwoFactorSetupRequest {
+  enableTwoFactor: boolean;
+  password?: string;
+}
+
+export interface TwoFactorVerifyRequest {
+  token: string;
+  tempToken: string;
+}
+
+export interface BackupCodesRequest {
+  password?: string;
+}
+
+// Token Management
+export interface TokenValidationRequest {
+  token: string;
+  tokenType?: 'access' | 'refresh';
+}
+
+// ============================================================================
+// Response Types (Data Only - No Wrapper)
+// ============================================================================
+
+// Account Responses
+export interface SearchAccountResponse {
+  accountId: string | null;
+}
+
+export interface GetAccountEmailResponse {
+  email: string;
+}
+
+export interface LogoutResponse {
+  message: string;
+  accountId: string;
+  clearClientAccountState: boolean;
+}
+
+// Session Responses
+export interface GetAccountSessionResponse {
+  session: AccountSessionInfo;
+}
+
+export type GetAccountSessionDataResponse = SessionAccount[];
+
+export interface SessionUpdateResponse {
+  message: string;
+  currentAccountId?: string;
+  accountId?: string;
+}
+
+// Local Auth Responses
+export interface RequestEmailVerificationResponse {
+  message: string;
+  email: string;
+  callbackUrl: string;
+  mock?: {
+    verificationToken: string;
+    verifyUrl: string;
+    note: string;
+  };
+}
+
+export interface VerifyEmailSignupResponse {
+  message: string;
+  profileToken: string;
+  email: string;
 }
 
 export interface CompleteProfileResponse {
@@ -147,23 +235,8 @@ export interface SignupStatusResponse {
   message?: string;
 }
 
-export interface CancelSignupRequest {
-  email: string;
-}
-
 export interface CancelSignupResponse {
   message: string;
-}
-
-// ============================================================================
-// Local Authentication (UPDATED - Callback URLs)
-// ============================================================================
-
-export interface LocalLoginRequest {
-  email?: string;
-  username?: string;
-  password: string;
-  rememberMe?: boolean;
 }
 
 export interface LocalLoginResponse {
@@ -174,53 +247,38 @@ export interface LocalLoginResponse {
   message?: string;
 }
 
-export interface PasswordResetRequest {
-  email: string;
-  callbackUrl: string; // NEW: Required callback URL
-}
-
-export interface ResetPasswordRequest {
-  password: string;
-  confirmPassword: string;
-}
-
-export interface PasswordResetVerificationRequest {
-  token: string;
+export interface PasswordResetRequestResponse {
+  message: string;
+  callbackUrl: string;
+  mock?: {
+    resetToken: string | null;
+    resetUrl: string | null;
+    note: string;
+  };
 }
 
 export interface PasswordResetVerificationResponse {
   success: boolean;
   message: string;
-  resetToken: string; // New token for the actual password reset
-  expiresAt: string; // Timestamp when the reset token expires
+  resetToken: string;
+  expiresAt: string;
 }
 
-export interface PasswordChangeRequest {
-  oldPassword: string;
-  newPassword: string;
-  confirmPassword: string;
+export interface ResetPasswordResponse {
+  message: string;
 }
 
-// ============================================================================
-// OAuth Authentication (UPDATED - Callback URLs)
-// ============================================================================
-
-export interface OAuthUrlRequest {
-  callbackUrl: string; // NEW: Required callback URL
+export interface PasswordChangeResponse {
+  message: string;
 }
 
+// OAuth Responses
 export interface OAuthUrlResponse {
   authorizationUrl: string;
   state: string;
-  provider: string;
-  authType: string;
-  callbackUrl: string; // NEW: Returned for reference
-}
-
-export interface PermissionUrlRequest {
-  accountId: string;
-  scopeNames: string[];
-  callbackUrl: string; // NEW: Required callback URL
+  provider: OAuthProviders;
+  authType: 'signup' | 'signin';
+  callbackUrl: string;
 }
 
 export interface PermissionUrlResponse {
@@ -229,73 +287,61 @@ export interface PermissionUrlResponse {
   scopes: string[];
   accountId: string;
   userEmail: string;
-  callbackUrl: string; // NEW: Returned for reference
-}
-
-export interface ReauthorizeUrlRequest {
-  accountId: string;
-  callbackUrl: string; // NEW: Required callback URL
+  callbackUrl: string;
 }
 
 export interface ReauthorizeUrlResponse {
+  message?: string;
   authorizationUrl: string | null;
   state?: string;
   scopes?: string[];
   accountId: string;
   userEmail?: string;
-  message?: string;
-  callbackUrl?: string; // NEW: Returned for reference
+  callbackUrl: string;
 }
 
-// ============================================================================
-// UNIFIED Two-Factor Authentication (UPDATED)
-// ============================================================================
-
+// Two-Factor Authentication Responses
 export interface TwoFactorStatusResponse {
   enabled: boolean;
-  backupCodesCount?: number;
+  backupCodesCount: number;
   lastSetupDate?: string;
 }
 
-export interface UnifiedTwoFactorSetupRequest {
-  enableTwoFactor: boolean;
-  password?: string; // Required for local accounts, not needed for OAuth
-}
-
-export interface UnifiedTwoFactorSetupResponse {
+export interface TwoFactorSetupResponse {
   message: string;
   secret?: string;
-  qrCode?: string;
   qrCodeUrl?: string;
+  qrCode?: string;
   backupCodes?: string[];
-  setupToken?: string; // NEW: Setup token for verification step
+  setupToken?: string;
+  mock?: {
+    setupToken: string;
+    secret: string;
+    nextStep: string;
+    note: string;
+  };
 }
 
-export interface UnifiedTwoFactorVerifySetupRequest {
-  token: string; // 6-digit TOTP code
-  setupToken: string; // NEW: Setup token from setup step
-}
-
-export interface UnifiedTwoFactorVerifySetupResponse {
+export interface TwoFactorVerifySetupResponse {
   message: string;
 }
 
-export interface UnifiedTwoFactorVerifyRequest {
-  token: string;
-  tempToken: string;
-}
-
-export interface UnifiedTwoFactorVerifyResponse {
+export interface TwoFactorVerifyResponse {
   accountId: string;
   name: string;
   message: string;
-  // OAuth specific fields (optional)
   needsAdditionalScopes?: boolean;
   missingScopes?: string[];
-}
-
-export interface BackupCodesRequest {
-  password?: string; // Required for local accounts, not needed for OAuth
+  mock?: {
+    tempTokenData: {
+      accountId: string;
+      email: string;
+      accountType: string;
+      expiresAt: string;
+    } | null;
+    loginCompleted: boolean;
+    note: string;
+  };
 }
 
 export interface BackupCodesResponse {
@@ -303,10 +349,7 @@ export interface BackupCodesResponse {
   backupCodes: string[];
 }
 
-// ============================================================================
-// UNIFIED Token Management (NEW)
-// ============================================================================
-
+// Token Responses
 export interface TokenInfo {
   isExpired: boolean;
   isValid: boolean;
@@ -319,83 +362,27 @@ export interface TokenInfo {
 
 export interface TokenInfoResponse extends TokenInfo {}
 
-export interface TokenRevocationResponse {
-  totalTokens: number;
-  successfulRevocations: number;
-  failedRevocations: number;
-  errors?: string[];
-  message?: string;
-}
-
-export interface TokenValidationRequest {
-  token: string;
-  tokenType?: 'access' | 'refresh';
-}
-
 export interface TokenValidationResponse extends TokenInfo {
   isOwner: boolean;
   belongsToAccount: boolean;
 }
 
-// ============================================================================
-// Standard Response Types (UPDATED)
-// ============================================================================
-
-export interface PasswordResetRequestResponse {
-  message: string;
-  callbackUrl: string; // NEW: Returned for reference
-}
-
-export interface ResetPasswordResponse {
+export interface TokenRevocationResponse {
+  totalTokens: number;
+  successfulRevocations: number;
+  failedRevocations: number;
+  errors?: string[];
   message: string;
 }
 
-export interface PasswordChangeResponse {
-  message: string;
-}
-
-export interface BackupCodesResponse {
-  message: string;
-  backupCodes: string[];
-}
-
-export interface EmailVerificationResponse {
-  message: string;
-  profileToken?: string;
-  email?: string;
-}
-
-export interface LogoutResponse {
-  message: string;
-  accountId: string;
-  clearClientAccountState: boolean;
-}
-
+// Logout Responses
 export interface LogoutAllResponse {
   message?: string;
 }
 
 // ============================================================================
-// SDK Configuration & Error Handling
+// Error Handling
 // ============================================================================
-
-export interface SDKConfig {
-  backendUrl: string;
-  backendProxyUrl?: string;
-  frontendProxyUrl?: string;
-  timeout?: number;
-  withCredentials?: boolean;
-  enableLogging?: boolean;
-}
-
-export interface ApiResponse<T = unknown> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-  };
-}
 
 export enum ApiErrorCode {
   // Network & Connection Errors
@@ -423,6 +410,8 @@ export enum ApiErrorCode {
   INVALID_PASSWORD = 'INVALID_PASSWORD',
   PASSWORD_TOO_WEAK = 'PASSWORD_TOO_WEAK',
   PASSWORDS_DONT_MATCH = 'PASSWORDS_DONT_MATCH',
+  INVALID_REQUEST = 'INVALID_REQUEST',
+  INVALID_PARAMETERS = 'INVALID_PARAMETERS',
 
   // User/Account Errors
   USER_NOT_FOUND = 'USER_NOT_FOUND',
@@ -430,6 +419,8 @@ export enum ApiErrorCode {
   ACCOUNT_NOT_FOUND = 'ACCOUNT_NOT_FOUND',
   EMAIL_NOT_VERIFIED = 'EMAIL_NOT_VERIFIED',
   EMAIL_ALREADY_VERIFIED = 'EMAIL_ALREADY_VERIFIED',
+  MISSING_DATA = 'MISSING_DATA',
+  MISSING_EMAIL = 'MISSING_EMAIL',
 
   // Two-Factor Authentication Errors
   TWO_FACTOR_REQUIRED = 'TWO_FACTOR_REQUIRED',
@@ -443,6 +434,8 @@ export enum ApiErrorCode {
   OAUTH_TOKEN_INVALID = 'OAUTH_TOKEN_INVALID',
   OAUTH_SCOPE_INSUFFICIENT = 'OAUTH_SCOPE_INSUFFICIENT',
   OAUTH_PROVIDER_ERROR = 'OAUTH_PROVIDER_ERROR',
+  INVALID_PROVIDER = 'INVALID_PROVIDER',
+  INVALID_STATE = 'INVALID_STATE',
 
   // Resource Errors
   RESOURCE_NOT_FOUND = 'RESOURCE_NOT_FOUND',
@@ -458,12 +451,6 @@ export enum ApiErrorCode {
   SERVER_ERROR = 'SERVER_ERROR',
   SERVICE_UNAVAILABLE = 'SERVICE_UNAVAILABLE',
   MAINTENANCE_MODE = 'MAINTENANCE_MODE',
-
-  // Client Errors
-  BAD_REQUEST = 'BAD_REQUEST',
-  MISSING_DATA = 'MISSING_DATA',
-  INVALID_FORMAT = 'INVALID_FORMAT',
-  UNSUPPORTED_OPERATION = 'UNSUPPORTED_OPERATION',
 
   // Email/Password Reset Errors
   EMAIL_SEND_FAILED = 'EMAIL_SEND_FAILED',
@@ -481,15 +468,11 @@ export enum ApiErrorCode {
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }
 
-// ============================================================================
-// Error Response Interface
-// ============================================================================
-
 export interface ApiError {
   code: ApiErrorCode;
   message: string;
   statusCode?: number;
-  field?: string; // For validation errors
+  field?: string;
   timestamp?: string;
   requestId?: string;
   details?: Record<string, any>;
@@ -523,9 +506,6 @@ export class AuthSDKError extends Error {
     this.details = options.details;
   }
 
-  /**
-   * Create error from API response
-   */
   static fromApiResponse(response: any, statusCode?: number): AuthSDKError {
     const code = response?.error?.code || response?.code || ApiErrorCode.UNKNOWN_ERROR;
     const message = response?.error?.message || response?.message || 'Unknown error occurred';
@@ -537,16 +517,10 @@ export class AuthSDKError extends Error {
     });
   }
 
-  /**
-   * Check if error is of specific type
-   */
   is(code: ApiErrorCode): boolean {
     return this.code === code;
   }
 
-  /**
-   * Check if error is authentication related
-   */
   isAuthError(): boolean {
     return [
       ApiErrorCode.AUTH_FAILED,
@@ -558,9 +532,6 @@ export class AuthSDKError extends Error {
     ].includes(this.code);
   }
 
-  /**
-   * Check if error is validation related
-   */
   isValidationError(): boolean {
     return [
       ApiErrorCode.VALIDATION_ERROR,
@@ -571,9 +542,6 @@ export class AuthSDKError extends Error {
     ].includes(this.code);
   }
 
-  /**
-   * Check if error is retryable
-   */
   isRetryable(): boolean {
     return [
       ApiErrorCode.NETWORK_ERROR,
@@ -584,9 +552,6 @@ export class AuthSDKError extends Error {
     ].includes(this.code);
   }
 
-  /**
-   * Get user-friendly error message
-   */
   getUserMessage(): string {
     switch (this.code) {
       case ApiErrorCode.NETWORK_ERROR:
@@ -610,9 +575,6 @@ export class AuthSDKError extends Error {
     }
   }
 
-  /**
-   * Convert to JSON for logging
-   */
   toJSON() {
     return {
       name: this.name,
@@ -627,16 +589,15 @@ export class AuthSDKError extends Error {
   }
 }
 
+// ============================================================================
+// Callback & State Management
+// ============================================================================
+
 export enum CallbackCode {
-  // OAuth success codes
   OAUTH_SIGNIN_SUCCESS = 'oauth_signin_success',
   OAUTH_SIGNUP_SUCCESS = 'oauth_signup_success',
   OAUTH_PERMISSION_SUCCESS = 'oauth_permission_success',
-
-  // Two-factor authentication required codes
   OAUTH_SIGNIN_REQUIRES_2FA = 'oauth_signin_requires_2fa',
-
-  // Error codes
   OAUTH_ERROR = 'oauth_error',
   OAUTH_PERMISSION_ERROR = 'oauth_permission_error',
 }
@@ -652,16 +613,14 @@ export interface CallbackData {
   message?: string;
   needsAdditionalScopes?: boolean;
   missingScopes?: string[];
-  // Two-factor authentication fields
   requiresTwoFactor?: boolean;
   tempToken?: string;
-  // Additional context data
   [key: string]: any;
 }
 
 export type LoadingState = 'idle' | 'loading' | 'updating' | 'switching' | 'saving' | 'deleting' | 'error' | 'success';
 
-// Session state structure
+// State Management Interfaces
 export interface SessionState {
   data: AccountSessionInfo | null;
   status: LoadingState;
@@ -670,7 +629,6 @@ export interface SessionState {
   lastLoaded: number | null;
 }
 
-// Account state structure
 export interface AccountState {
   data: Account | null;
   status: LoadingState;
@@ -685,4 +643,30 @@ export interface SessionAccountsState {
   currentOperation: string | null;
   error: string | null;
   lastLoaded: number | null;
+}
+
+// ============================================================================
+// SDK Configuration
+// ============================================================================
+
+export interface SDKConfig {
+  backendUrl: string;
+  backendProxyUrl?: string;
+  frontendProxyUrl?: string;
+  timeout?: number;
+  withCredentials?: boolean;
+  enableLogging?: boolean;
+}
+
+// ============================================================================
+// Legacy Support Interface (For API Response structure)
+// ============================================================================
+
+export interface ApiResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
+  };
 }

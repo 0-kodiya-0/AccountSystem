@@ -1,8 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useSession } from './useSession';
 import { useAppStore } from '../store/useAppStore';
 import { useAuthService } from '../context/ServicesProvider';
-import { OAuthProviders, LoadingState, CallbackCode, CallbackData } from '../types';
+import { OAuthProviders, CallbackCode, CallbackData } from '../types';
 import { parseApiError } from '../utils';
 
 // OAuth permissions phases

@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, vi, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useTwoFactorAuth } from '../useTwoFactorAuth';
 import { useAppStore } from '../../store/useAppStore';
-import { AccountType, UnifiedTwoFactorSetupResponse, TwoFactorStatusResponse } from '../../types';
+import { AccountType, TwoFactorSetupResponse, TwoFactorStatusResponse } from '../../types';
 
 // Mock AuthService
 const mockAuthService = {
@@ -191,7 +191,7 @@ describe('useTwoFactorAuth', () => {
 
   describe('2FA Setup Flow', () => {
     test('should handle successful setup for local account', async () => {
-      const mockSetupResponse: UnifiedTwoFactorSetupResponse = {
+      const mockSetupResponse: TwoFactorSetupResponse = {
         message: '2FA setup initiated',
         secret: 'JBSWY3DPEHPK3PXP',
         qrCode: 'data:image/png;base64,iVBORw0KGgoAAAANSU...',
@@ -231,7 +231,7 @@ describe('useTwoFactorAuth', () => {
         },
       });
 
-      const mockSetupResponse: UnifiedTwoFactorSetupResponse = {
+      const mockSetupResponse: TwoFactorSetupResponse = {
         message: '2FA setup initiated',
         secret: 'JBSWY3DPEHPK3PXP',
         qrCode: 'data:image/png;base64,iVBORw0KGgoAAAANSU...',

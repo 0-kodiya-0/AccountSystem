@@ -29,19 +29,19 @@ import {
   SignupStatusResponse,
   CancelSignupRequest,
   CancelSignupResponse,
-  UnifiedTwoFactorVerifyResponse,
-  UnifiedTwoFactorVerifyRequest,
+  TwoFactorVerifyResponse,
+  TwoFactorVerifyRequest,
+  TwoFactorVerifySetupResponse,
   BackupCodesRequest,
-  UnifiedTwoFactorSetupResponse,
+  TwoFactorSetupResponse,
   TwoFactorStatusResponse,
-  UnifiedTwoFactorSetupRequest,
+  TwoFactorSetupRequest,
   TokenInfoResponse,
   TokenValidationRequest,
   TokenValidationResponse,
   PasswordResetVerificationRequest,
   PasswordResetVerificationResponse,
   AccountType,
-  UnifiedTwoFactorVerifySetupResponse,
 } from '../types';
 import { HttpClient } from '../client/HttpClient';
 
@@ -410,8 +410,8 @@ export class AuthService {
   async setupTwoFactor(
     accountId: string,
     accountType: AccountType,
-    data: UnifiedTwoFactorSetupRequest,
-  ): Promise<UnifiedTwoFactorSetupResponse> {
+    data: TwoFactorSetupRequest,
+  ): Promise<TwoFactorSetupResponse> {
     validateAccountId(accountId, '2FA setup');
 
     if (typeof data?.enableTwoFactor !== 'boolean') {
@@ -434,7 +434,7 @@ export class AuthService {
     accountId: string,
     token: string,
     setupToken: string,
-  ): Promise<UnifiedTwoFactorVerifySetupResponse> {
+  ): Promise<TwoFactorVerifySetupResponse> {
     validateAccountId(accountId, '2FA setup verification');
     validateRequired(token, '2FA verification token', '2FA setup verification');
     validateRequired(setupToken, 'setup token', '2FA setup verification');
@@ -457,7 +457,7 @@ export class AuthService {
     return this.httpClient.post(`/${accountId}/twofa/backup-codes`, data);
   }
 
-  async verifyTwoFactorLogin(data: UnifiedTwoFactorVerifyRequest): Promise<UnifiedTwoFactorVerifyResponse> {
+  async verifyTwoFactorLogin(data: TwoFactorVerifyRequest): Promise<TwoFactorVerifyResponse> {
     validateRequired(data, '2FA verification data', '2FA verification');
     validateRequired(data.token, '2FA token', '2FA verification');
     validateRequired(data.tempToken, 'temporary token', '2FA verification');
@@ -465,12 +465,12 @@ export class AuthService {
     return this.httpClient.post('/twofa/verify-login', data);
   }
 
-  async redirectToTwoFactorVerify(data: UnifiedTwoFactorVerifyRequest, redirectUrl?: string): Promise<void> {
+  async redirectToTwoFactorVerify(data: TwoFactorVerifyRequest, redirectUrl?: string): Promise<void> {
     validateRequired(data, '2FA verification data', '2FA verification');
     validateRequired(data.token, '2FA token', '2FA verification');
     validateRequired(data.tempToken, 'temporary token', '2FA verification');
 
-    const result = await this.httpClient.post<UnifiedTwoFactorVerifyResponse>('/twofa/verify-login', data);
+    const result = await this.httpClient.post<TwoFactorVerifyResponse>('/twofa/verify-login', data);
 
     if (result.needsAdditionalScopes && result.missingScopes && result.missingScopes.length > 0) {
       // OAuth account needs additional scopes - could redirect to permission request
