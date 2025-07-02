@@ -1,36 +1,328 @@
-import db from '../../config/db';
+import { Request, Response } from 'express';
+import { ApiErrorCode, BadRequestError, NotFoundError, CallbackCode, CallbackData } from '../../types/response.types';
 import { Account, AccountType, AccountStatus, OAuthProviders } from '../account/Account.types';
-import { ApiErrorCode, BadRequestError } from '../../types/response.types';
-import { AuthType, OAuthState, ProviderResponse, SignInState } from './OAuth.types';
+import { AuthType, OAuthState, PermissionState } from './OAuth.types';
 import { validateAccount } from '../account/Account.validation';
 import { findUserByEmail, findUserById } from '../account';
 import { createOAuthAccessToken, createOAuthRefreshToken } from '../tokens';
-
-// Import centralized Google token services instead of duplicating logic
 import {
+  exchangeGoogleCode,
   getGoogleTokenInfo,
   updateAccountScopes,
   getGoogleAccountScopes,
   checkForAdditionalGoogleScopes,
+  verifyGoogleTokenOwnership,
 } from '../google/services/tokenInfo/tokenInfo.services';
 import { saveTwoFactorTempToken } from '../twofa/TwoFA.cache';
+import { setupCompleteAccountSession } from '../session/session.utils';
+import {
+  buildGoogleSignupUrl,
+  buildGoogleSigninUrl,
+  buildGooglePermissionUrl,
+  buildGoogleReauthorizeUrl,
+  buildGoogleScopeUrls,
+  validateScopeNames,
+} from '../google/config';
+import { saveOAuthState, savePermissionState } from './OAuth.cache';
+import { getBaseUrl, getProxyUrl } from '../../config/env.config';
+import db from '../../config/db';
+import { validateUserForAuthType } from './OAuth.validation';
 
 /**
- * Process sign up with OAuth provider
+ * Generate OAuth signup URL
  */
-export async function processSignup(stateDetails: SignInState, provider: OAuthProviders) {
-  if (!stateDetails || !stateDetails.oAuthResponse.email) {
-    throw new BadRequestError('Invalid or missing state details', 400, ApiErrorCode.INVALID_STATE);
+export async function generateSignupUrl(provider: OAuthProviders, callbackUrl: string) {
+  const state = saveOAuthState(provider, AuthType.SIGN_UP, callbackUrl);
+  const authorizationUrl = buildGoogleSignupUrl(state);
+
+  return {
+    authorizationUrl,
+    state,
+    provider,
+    authType: 'signup',
+    callbackUrl,
+  };
+}
+
+/**
+ * Generate OAuth signin URL
+ */
+export async function generateSigninUrl(provider: OAuthProviders, callbackUrl: string) {
+  const state = saveOAuthState(provider, AuthType.SIGN_IN, callbackUrl);
+  const authorizationUrl = buildGoogleSigninUrl(state);
+
+  return {
+    authorizationUrl,
+    state,
+    provider,
+    authType: 'signin',
+    callbackUrl,
+  };
+}
+
+/**
+ * Generate permission request URL
+ */
+export async function generatePermissionUrl(
+  provider: OAuthProviders,
+  accountId: string,
+  callbackUrl: string,
+  requestedScopeNames: string,
+) {
+  const account = await getUserAccount(accountId);
+
+  if (!account || !account.userDetails.email) {
+    throw new NotFoundError('Account not found or missing email', 404, ApiErrorCode.USER_NOT_FOUND);
   }
 
-  const oauthAccessToken = stateDetails.oAuthResponse.tokenDetails.accessToken;
-  const oauthRefreshToken = stateDetails.oAuthResponse.tokenDetails.refreshToken;
-
-  // Validate refresh token exists
-  if (!oauthRefreshToken) {
-    throw new BadRequestError('Missing refresh token from OAuth provider', 400, ApiErrorCode.TOKEN_INVALID);
+  // Parse scope names
+  let scopeNames: string[];
+  try {
+    scopeNames = JSON.parse(requestedScopeNames);
+    if (!Array.isArray(scopeNames)) {
+      throw new Error('Not an array');
+    }
+  } catch {
+    scopeNames = requestedScopeNames.split(',').map((name) => name.trim());
   }
 
+  const validation = validateScopeNames(scopeNames);
+  if (!validation.valid) {
+    throw new BadRequestError(`Invalid scope name format: ${validation.errors.join(', ')}`);
+  }
+
+  if (scopeNames.length === 0) {
+    throw new BadRequestError('At least one scope name is required');
+  }
+
+  const scopes = buildGoogleScopeUrls(scopeNames);
+  const state = savePermissionState(provider, accountId, 'custom', requestedScopeNames, callbackUrl);
+  const authorizationUrl = buildGooglePermissionUrl(state, scopes, account.userDetails.email);
+
+  return {
+    authorizationUrl,
+    state,
+    scopes: scopeNames,
+    accountId,
+    userEmail: account.userDetails.email,
+    callbackUrl,
+  };
+}
+
+/**
+ * Generate reauthorization URL
+ */
+export async function generateReauthorizeUrl(provider: OAuthProviders, accountId: string, callbackUrl: string) {
+  const account = await getUserAccount(accountId);
+
+  if (!account || !account.userDetails.email) {
+    throw new NotFoundError('Account not found or missing email', 404, ApiErrorCode.USER_NOT_FOUND);
+  }
+
+  const storedScopes = await getAccountScopes(accountId);
+
+  if (!storedScopes || storedScopes.length === 0) {
+    return {
+      authorizationUrl: null,
+      accountId,
+      callbackUrl,
+    };
+  }
+
+  const state = savePermissionState(provider, accountId, 'reauthorize', 'all', callbackUrl);
+  const authorizationUrl = buildGoogleReauthorizeUrl(state, storedScopes, account.userDetails.email);
+
+  return {
+    authorizationUrl,
+    state,
+    scopes: storedScopes,
+    accountId,
+    userEmail: account.userDetails.email,
+    callbackUrl,
+  };
+}
+
+/**
+ * Process OAuth callback
+ */
+export async function processOAuthCallback(
+  req: Request,
+  res: Response,
+  provider: OAuthProviders,
+  code: string,
+  stateDetails: OAuthState,
+) {
+  // Exchange code for tokens
+  const { tokens, userInfo } = await exchangeGoogleCode(code, `${getProxyUrl()}${getBaseUrl()}/oauth/callback/google`);
+
+  const providerResponse = {
+    email: userInfo.email || '',
+    name: userInfo.name || '',
+    imageUrl: userInfo.imageUrl || '',
+    tokenDetails: tokens,
+    provider,
+  };
+
+  // Validate user existence based on auth type
+  await validateUserForAuthType(providerResponse.email, stateDetails.authType);
+
+  if (stateDetails.authType === AuthType.SIGN_UP) {
+    const signupResult = await processSignup(providerResponse, provider);
+
+    if (signupResult.accessTokenInfo && signupResult.accessTokenInfo.expires_in) {
+      setupCompleteAccountSession(
+        req,
+        res,
+        signupResult.accountId,
+        signupResult.accessToken,
+        signupResult.accessTokenInfo.expires_in * 1000,
+        signupResult.refreshToken,
+        true,
+      );
+    }
+
+    const callbackData: CallbackData = {
+      code: CallbackCode.OAUTH_SIGNUP_SUCCESS,
+      accountId: signupResult.accountId,
+      name: signupResult.name,
+      provider,
+    };
+
+    return {
+      callbackData,
+      callbackUrl: stateDetails.callbackUrl,
+    };
+  } else {
+    const signinResult = await processSignIn(providerResponse);
+
+    if ('requiresTwoFactor' in signinResult && signinResult.requiresTwoFactor) {
+      const callbackData: CallbackData = {
+        code: CallbackCode.OAUTH_SIGNIN_REQUIRES_2FA,
+        accountId: signinResult.accountId,
+        tempToken: signinResult.tempToken,
+        provider,
+        requiresTwoFactor: true,
+        message: 'Please complete two-factor authentication to continue.',
+      };
+
+      return {
+        callbackData,
+        callbackUrl: stateDetails.callbackUrl,
+      };
+    }
+
+    if (signinResult.accessTokenInfo && signinResult.accessTokenInfo.expires_in) {
+      setupCompleteAccountSession(
+        req,
+        res,
+        signinResult.accountId,
+        signinResult.accessToken as string,
+        signinResult.accessTokenInfo.expires_in * 1000,
+        signinResult.refreshToken as string,
+        true,
+      );
+    }
+
+    const callbackData: CallbackData = {
+      code: CallbackCode.OAUTH_SIGNIN_SUCCESS,
+      accountId: signinResult.accountId,
+      name: signinResult.userName,
+      provider,
+      needsAdditionalScopes: signinResult.needsAdditionalScopes,
+      missingScopes: signinResult.missingScopes,
+    };
+
+    return {
+      callbackData,
+      callbackUrl: stateDetails.callbackUrl,
+    };
+  }
+}
+
+/**
+ * Process permission callback
+ */
+export async function processPermissionCallback(
+  req: Request,
+  res: Response,
+  code: string,
+  permissionDetails: PermissionState,
+) {
+  const { accountId, service, scopeLevel } = permissionDetails;
+  const callbackUrl = permissionDetails.callbackUrl || `${getProxyUrl()}/auth/callback`;
+
+  // Exchange code for tokens
+  const redirectUri = `${getProxyUrl()}${getBaseUrl()}/oauth/permission/callback/google`;
+  const { tokens } = await exchangeGoogleCode(code, redirectUri);
+
+  // Verify user exists
+  const exists = await checkUserExists(accountId);
+  if (!exists) {
+    throw new NotFoundError('User record not found in database', 404, ApiErrorCode.USER_NOT_FOUND);
+  }
+
+  if (!tokens.accessToken) {
+    throw new BadRequestError('Missing access token from OAuth response', 400, ApiErrorCode.TOKEN_INVALID);
+  }
+
+  // Verify token ownership
+  const tokenVerification = await verifyGoogleTokenOwnership(tokens.accessToken, accountId);
+  if (!tokenVerification.isValid) {
+    throw new BadRequestError(
+      'Permission was granted with an incorrect account. Please try again and ensure you use the correct Google account.',
+      400,
+      ApiErrorCode.AUTH_FAILED,
+    );
+  }
+
+  // Get token info
+  const accessTokenInfo = await getGoogleTokenInfo(tokens.accessToken);
+  if (!accessTokenInfo.expires_in) {
+    throw new BadRequestError('Failed to fetch token information', 400, ApiErrorCode.TOKEN_INVALID);
+  }
+
+  // Update tokens and scopes
+  await updateAccountScopes(accountId, tokens.accessToken);
+
+  // Create JWT tokens
+  const jwtAccessToken = createOAuthAccessToken(accountId, tokens.accessToken, accessTokenInfo.expires_in);
+
+  if (!tokens.refreshToken) {
+    throw new BadRequestError('Missing refresh token from OAuth response', 400, ApiErrorCode.TOKEN_INVALID);
+  }
+
+  const jwtRefreshToken = createOAuthRefreshToken(accountId, tokens.refreshToken);
+
+  // Set up session
+  setupCompleteAccountSession(
+    req,
+    res,
+    accountId,
+    jwtAccessToken,
+    accessTokenInfo.expires_in * 1000,
+    jwtRefreshToken,
+    false,
+  );
+
+  const callbackData: CallbackData = {
+    code: CallbackCode.OAUTH_PERMISSION_SUCCESS,
+    accountId,
+    service,
+    scopeLevel,
+    provider: OAuthProviders.Google,
+    message: `Successfully granted ${service} ${scopeLevel} permissions`,
+  };
+
+  return {
+    callbackData,
+    callbackUrl,
+  };
+}
+
+/**
+ * Process signup
+ */
+export async function processSignup(providerResponse: any, provider: OAuthProviders) {
   const models = await db.getModels();
 
   const newAccount: Omit<Account, 'id'> = {
@@ -40,10 +332,10 @@ export async function processSignup(stateDetails: SignInState, provider: OAuthPr
     status: AccountStatus.Active,
     provider,
     userDetails: {
-      name: stateDetails.oAuthResponse.name,
-      email: stateDetails.oAuthResponse.email,
-      imageUrl: stateDetails.oAuthResponse.imageUrl || '',
-      emailVerified: true, // OAuth emails are pre-verified
+      name: providerResponse.name,
+      email: providerResponse.email,
+      imageUrl: providerResponse.imageUrl || '',
+      emailVerified: true,
     },
     security: {
       twoFactorEnabled: false,
@@ -60,19 +352,16 @@ export async function processSignup(stateDetails: SignInState, provider: OAuthPr
   const newAccountDoc = await models.accounts.Account.create(newAccount);
   const accountId = newAccountDoc.id || newAccountDoc._id.toHexString();
 
-  // Update Google permissions if provider is Google - use centralized service
-  if (provider === OAuthProviders.Google) {
-    const accessToken = stateDetails.oAuthResponse.tokenDetails.accessToken;
-    await updateAccountScopes(accountId, accessToken);
-  }
+  // Update Google permissions
+  await updateAccountScopes(accountId, providerResponse.tokenDetails.accessToken);
 
-  // Get token info to determine expiration - use centralized service
-  const accessTokenInfo = await getGoogleTokenInfo(oauthAccessToken);
-  const expiresIn = accessTokenInfo.expires_in || 3600; // Default to 1 hour
+  // Get token info
+  const accessTokenInfo = await getGoogleTokenInfo(providerResponse.tokenDetails.accessToken);
+  const expiresIn = accessTokenInfo.expires_in || 3600;
 
-  // Create our JWT tokens that wrap the OAuth tokens
-  const accessToken = createOAuthAccessToken(accountId, oauthAccessToken, expiresIn);
-  const refreshToken = createOAuthRefreshToken(accountId, oauthRefreshToken);
+  // Create JWT tokens
+  const accessToken = createOAuthAccessToken(accountId, providerResponse.tokenDetails.accessToken, expiresIn);
+  const refreshToken = createOAuthRefreshToken(accountId, providerResponse.tokenDetails.refreshToken);
 
   return {
     accountId,
@@ -84,42 +373,28 @@ export async function processSignup(stateDetails: SignInState, provider: OAuthPr
 }
 
 /**
- * Process sign in with OAuth provider
+ * Process signin
  */
-export async function processSignIn(stateDetails: SignInState) {
-  if (!stateDetails || !stateDetails.oAuthResponse.email) {
-    throw new BadRequestError('Invalid or missing state details', 400, ApiErrorCode.INVALID_STATE);
-  }
-
-  const user = await findUserByEmail(stateDetails.oAuthResponse.email);
+export async function processSignIn(providerResponse: any) {
+  const user = await findUserByEmail(providerResponse.email);
 
   if (!user) {
     throw new BadRequestError('User not found', 404, ApiErrorCode.USER_NOT_FOUND);
   }
 
-  // Ensure this is an OAuth account
   if (user.accountType !== AccountType.OAuth) {
     throw new BadRequestError('Account exists but is not an OAuth account', 400, ApiErrorCode.AUTH_FAILED);
   }
 
-  const oauthAccessToken = stateDetails.oAuthResponse.tokenDetails.accessToken;
-  const oauthRefreshToken = stateDetails.oAuthResponse.tokenDetails.refreshToken;
-
-  // Validate refresh token exists
-  if (!oauthRefreshToken) {
-    throw new BadRequestError('Missing refresh token from OAuth provider', 400, ApiErrorCode.TOKEN_INVALID);
-  }
-
-  // Check if 2FA is enabled for this OAuth account
+  // Check for 2FA
   const models = await db.getModels();
   const account = await models.accounts.Account.findById(user.id);
 
   if (account?.security.twoFactorEnabled) {
-    // Use unified 2FA service to store OAuth tokens and generate temp token
     const tempToken = saveTwoFactorTempToken(user.id, user.userDetails.email as string, AccountType.OAuth, {
-      accessToken: oauthAccessToken,
-      refreshToken: oauthRefreshToken,
-      userInfo: stateDetails.oAuthResponse,
+      accessToken: providerResponse.tokenDetails.accessToken,
+      refreshToken: providerResponse.tokenDetails.refreshToken,
+      userInfo: providerResponse,
     });
 
     return {
@@ -129,22 +404,19 @@ export async function processSignIn(stateDetails: SignInState) {
     };
   }
 
-  // Continue with normal OAuth signin process if no 2FA...
-  // Update Google permissions if provider is Google
-  if (user.provider === OAuthProviders.Google) {
-    await updateAccountScopes(user.id, oauthAccessToken);
-  }
+  // Normal signin
+  await updateAccountScopes(user.id, providerResponse.tokenDetails.accessToken);
 
-  // Get token info to determine expiration
-  const accessTokenInfo = await getGoogleTokenInfo(oauthAccessToken);
+  const accessTokenInfo = await getGoogleTokenInfo(providerResponse.tokenDetails.accessToken);
   const expiresIn = accessTokenInfo.expires_in || 3600;
 
-  // Create our JWT tokens that wrap the OAuth tokens
-  const accessToken = createOAuthAccessToken(user.id, oauthAccessToken, expiresIn);
-  const refreshToken = createOAuthRefreshToken(user.id, oauthRefreshToken);
+  const accessToken = createOAuthAccessToken(user.id, providerResponse.tokenDetails.accessToken, expiresIn);
+  const refreshToken = createOAuthRefreshToken(user.id, providerResponse.tokenDetails.refreshToken);
 
-  // Check for additional scopes from GooglePermissions
-  const needsAdditionalScopes = await checkForAdditionalGoogleScopes(user.id, oauthAccessToken);
+  const needsAdditionalScopes = await checkForAdditionalGoogleScopes(
+    user.id,
+    providerResponse.tokenDetails.accessToken,
+  );
 
   return {
     accountId: user.id,
@@ -154,32 +426,6 @@ export async function processSignIn(stateDetails: SignInState) {
     accessTokenInfo,
     needsAdditionalScopes: needsAdditionalScopes.needsAdditionalScopes,
     missingScopes: needsAdditionalScopes.missingScopes,
-  };
-}
-
-/**
- * Process callback from OAuth provider
- */
-export async function processSignInSignupCallback(userData: ProviderResponse, stateDetails: OAuthState) {
-  const userEmail = userData.email;
-  if (!userEmail) {
-    throw new BadRequestError('Missing email parameter', 400, ApiErrorCode.MISSING_EMAIL);
-  }
-
-  const user = await findUserByEmail(userEmail);
-
-  if (stateDetails.authType === AuthType.SIGN_UP) {
-    if (user) {
-      throw new BadRequestError('User already exists', 409, ApiErrorCode.USER_EXISTS);
-    }
-  } else {
-    if (!user) {
-      throw new BadRequestError('User not found', 404, ApiErrorCode.USER_NOT_FOUND);
-    }
-  }
-
-  return {
-    authType: stateDetails.authType,
   };
 }
 
@@ -199,17 +445,8 @@ export async function getUserAccount(id: string) {
 }
 
 /**
- * Get all scopes for an account from GooglePermissions - use centralized service
+ * Get account scopes
  */
 export async function getAccountScopes(accountId: string): Promise<string[]> {
-  // Delegate to centralized Google token service
   return getGoogleAccountScopes(accountId);
-}
-
-/**
- * Update tokens and scopes for a user - use centralized service
- */
-export async function updateTokensAndScopes(accountId: string, accessToken: string) {
-  // Delegate to centralized Google token service
-  await updateAccountScopes(accountId, accessToken);
 }
