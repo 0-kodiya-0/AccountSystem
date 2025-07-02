@@ -360,6 +360,24 @@ export async function verifyGoogleTokenOwnership(
   accountId: string,
 ): Promise<{ isValid: boolean; reason?: string }> {
   try {
+    if (shouldUseMock()) {
+      // Use mock service
+      const userInfo = oauthMockService.getUserInfo(accessToken, OAuthProviders.Google);
+
+      if (!userInfo) {
+        return { isValid: false, reason: 'Could not get user info from mock token' };
+      }
+
+      if (userInfo.id !== accountId) {
+        return {
+          isValid: false,
+          reason: `Mock token id (${userInfo.id}) does not match account email (${accountId})`,
+        };
+      }
+
+      return { isValid: true };
+    }
+
     const models = await db.getModels();
 
     const account = await models.accounts.Account.findOne({ _id: accountId });
@@ -372,24 +390,6 @@ export async function verifyGoogleTokenOwnership(
 
     if (!expectedEmail) {
       return { isValid: false, reason: 'Account missing email' };
-    }
-
-    if (shouldUseMock()) {
-      // Use mock service
-      const userInfo = oauthMockService.getUserInfo(accessToken, OAuthProviders.Google);
-
-      if (!userInfo) {
-        return { isValid: false, reason: 'Could not get user info from mock token' };
-      }
-
-      if (userInfo.email.toLowerCase() !== expectedEmail.toLowerCase()) {
-        return {
-          isValid: false,
-          reason: `Mock token email (${userInfo.email}) does not match account email (${expectedEmail})`,
-        };
-      }
-
-      return { isValid: true };
     }
 
     // Use real Google API

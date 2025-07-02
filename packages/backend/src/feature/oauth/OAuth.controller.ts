@@ -11,7 +11,6 @@ import * as AuthService from './OAuth.service';
 import { AuthType, OAuthState, PermissionState } from './OAuth.types';
 import { OAuthProviders } from '../account/Account.types';
 import { validateOAuthState, validatePermissionState, validateState } from './OAuth.validation';
-import { generateOAuthState, generatePermissionState } from './OAuth.utils';
 import {
   exchangeGoogleCode,
   getGoogleTokenInfo,
@@ -30,7 +29,7 @@ import {
   buildGooglePermissionUrl,
   buildGoogleReauthorizeUrl,
 } from '../google/config';
-import { getAllOAuthStates, getAllPermissionStates } from './OAuth.cache';
+import { getAllOAuthStates, getAllPermissionStates, saveOAuthState, savePermissionState } from './OAuth.cache';
 
 /**
  * Generate OAuth signup URL
@@ -52,7 +51,7 @@ export const generateSignupUrl = asyncHandler(async (req, res, next) => {
   }
 
   // Generate state for signup with callback URL
-  const state = await generateOAuthState(provider, AuthType.SIGN_UP, callbackUrl as string);
+  const state = await saveOAuthState(provider, AuthType.SIGN_UP, callbackUrl as string);
 
   let authorizationUrl: string;
 
@@ -99,7 +98,7 @@ export const generateSigninUrl = asyncHandler(async (req, res, next) => {
   }
 
   // Generate state for signin with callback URL
-  const state = await generateOAuthState(provider, AuthType.SIGN_IN, callbackUrl as string);
+  const state = await saveOAuthState(provider, AuthType.SIGN_IN, callbackUrl as string);
 
   let authorizationUrl: string;
 
@@ -439,7 +438,7 @@ export const generatePermissionUrl = asyncHandler(async (req, res, next) => {
   const scopes = buildGoogleScopeUrls(scopeNames);
 
   // Generate state and save permission state with callback URL
-  const state = await generatePermissionState(
+  const state = await savePermissionState(
     provider,
     accountId as string,
     'custom',
@@ -509,13 +508,7 @@ export const generateReauthorizeUrl = asyncHandler(async (req, res, next) => {
   }
 
   // Generate a unique state for this re-authorization with callback URL
-  const state = await generatePermissionState(
-    provider,
-    accountId as string,
-    'reauthorize',
-    'all',
-    callbackUrl as string,
-  );
+  const state = await savePermissionState(provider, accountId as string, 'reauthorize', 'all', callbackUrl as string);
 
   // Use utility to build authorization URL
   const authorizationUrl = buildGoogleReauthorizeUrl(state, storedScopes, account.userDetails.email);

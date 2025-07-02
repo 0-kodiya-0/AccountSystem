@@ -1,6 +1,7 @@
 import { LRUCache } from 'lru-cache';
 import { AuthType, OAuthState, PermissionState } from './OAuth.types';
 import { OAuthProviders } from '../account/Account.types';
+import crypto from 'crypto';
 
 // Cache options with TTL (time to live) of 10 minutes (600,000 ms)
 const options = {
@@ -15,12 +16,9 @@ const oAuthStateCache = new LRUCache<string, OAuthState>(options);
 const permissionStateCache = new LRUCache<string, PermissionState>(options);
 
 // OAuthState methods
-export const saveOAuthState = (
-  state: string,
-  provider: OAuthProviders,
-  authType: AuthType,
-  callbackUrl: string,
-): void => {
+export const saveOAuthState = (provider: OAuthProviders, authType: AuthType, callbackUrl: string): string => {
+  const state = crypto.randomBytes(32).toString('hex');
+
   const expiresAt = new Date(Date.now() + options.ttl);
 
   const stateData: OAuthState = {
@@ -32,6 +30,8 @@ export const saveOAuthState = (
   };
 
   oAuthStateCache.set(state, stateData);
+
+  return state;
 };
 
 export const getOAuthState = (state: string, provider: OAuthProviders): OAuthState | null => {
@@ -56,13 +56,14 @@ export const removeOAuthState = (state: string): void => {
 
 // Methods for permission state
 export const savePermissionState = (
-  state: string,
   provider: OAuthProviders,
   accountId: string,
   service: string,
   scopeLevel: string,
   callbackUrl: string,
-): void => {
+): string => {
+  const state = crypto.randomBytes(32).toString('hex');
+
   const expiresAt = new Date(Date.now() + options.ttl);
 
   const stateData: PermissionState = {
@@ -77,6 +78,8 @@ export const savePermissionState = (
   };
 
   permissionStateCache.set(state, stateData);
+
+  return state;
 };
 
 export const getPermissionState = (state: string, provider: OAuthProviders): PermissionState | null => {
