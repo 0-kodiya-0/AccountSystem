@@ -47,14 +47,6 @@ export interface PasswordResetToken {
   expiresAt: string;
 }
 
-// Email verification token interface
-export interface EmailVerificationToken {
-  token: string;
-  accountId: string;
-  email: string;
-  expiresAt: string;
-}
-
 /**
  * JWT payload interface for local auth tokens
  */

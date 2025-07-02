@@ -15,6 +15,7 @@ import {
   getAllEmailVerificationTokens,
 } from './LocalAuth.cache';
 import { getNodeEnv, isMockEnabled } from '../../config/env.config';
+import { logger } from '../../utils/logger';
 
 const isMock = getNodeEnv() !== 'production' && isMockEnabled();
 

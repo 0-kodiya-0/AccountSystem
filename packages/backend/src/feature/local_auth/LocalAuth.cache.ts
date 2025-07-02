@@ -1,11 +1,6 @@
 import { LRUCache } from 'lru-cache';
 import crypto from 'crypto';
-import {
-  PasswordResetToken,
-  EmailVerificationToken,
-  EmailVerificationData,
-  ProfileCompletionData,
-} from './LocalAuth.types';
+import { PasswordResetToken, EmailVerificationData, ProfileCompletionData } from './LocalAuth.types';
 
 // Cache options with TTL (time to live)
 const options = {
@@ -13,13 +8,6 @@ const options = {
   ttl: 1000 * 60 * 10, // 10 minutes in milliseconds for password reset
   updateAgeOnGet: false, // Don't reset TTL when reading an item
   allowStale: false, // Don't allow expired items to be returned
-};
-
-const verificationOptions = {
-  max: 1000, // Maximum number of items in cache
-  ttl: 1000 * 60 * 60 * 24, // 24 hours in milliseconds for email verification
-  updateAgeOnGet: false,
-  allowStale: false,
 };
 
 const emailVerificationStepOptions = {
@@ -39,7 +27,6 @@ const profileCompletionOptions = {
 
 const emailVerificationStepCache = new LRUCache<string, EmailVerificationData>(emailVerificationStepOptions);
 const passwordResetCache = new LRUCache<string, PasswordResetToken>(options);
-const emailVerificationCache = new LRUCache<string, EmailVerificationToken>(verificationOptions);
 const profileCompletionCache = new LRUCache<string, ProfileCompletionData>(profileCompletionOptions);
 
 // Password Reset Token methods
@@ -84,10 +71,6 @@ export const getCacheStats = () => {
     passwordReset: {
       size: passwordResetCache.size,
       max: passwordResetCache.max,
-    },
-    emailVerification: {
-      size: emailVerificationCache.size,
-      max: emailVerificationCache.max,
     },
   };
 };
@@ -279,4 +262,21 @@ export const cleanupSignupData = (email: string): void => {
       profileCompletionCache.delete(token);
     }
   }
+};
+
+export const clearUpPasswordResetDataByEmail = (email: string): void => {
+  for (const [token, data] of passwordResetCache.entries()) {
+    if (data.email === email) {
+      passwordResetCache.delete(token);
+    }
+  }
+};
+
+/**
+ * Clear all caches - useful for testing
+ */
+export const clearAllCaches = (): void => {
+  emailVerificationStepCache.clear();
+  profileCompletionCache.clear();
+  passwordResetCache.clear();
 };

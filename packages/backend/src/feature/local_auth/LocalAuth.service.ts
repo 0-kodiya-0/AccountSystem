@@ -98,7 +98,6 @@ export async function requestEmailVerification(email: string, callbackUrl: strin
  */
 export async function verifyEmailAndProceedToProfile(token: string): Promise<{ profileToken: string; email: string }> {
   ValidationUtils.validateRequiredFields({ token }, ['token']);
-  ValidationUtils.validateStringLength(token, 'Verification token', 10, 200);
 
   // Get email verification data by token
   const emailData = getEmailVerificationDataByToken(token);
@@ -435,7 +434,6 @@ export async function resetPassword(token: string, newPassword: string): Promise
   const models = await db.getModels();
 
   ValidationUtils.validateRequiredFields({ token, newPassword }, ['token', 'newPassword']);
-  ValidationUtils.validateStringLength(token, 'Reset token', 10, 200);
   ValidationUtils.validatePasswordStrength(newPassword);
 
   // Get token from cache
