@@ -14,7 +14,7 @@ import { logger } from '../../../utils/logger';
 
 /**
  * Get session mock status and information
- * GET /session-mock/status
+ * GET /mock/session/status
  */
 export const getSessionMockStatus = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const currentSession = getAccountSessionFromCookies(req);
@@ -33,7 +33,7 @@ export const getSessionMockStatus = asyncHandler(async (req: Request, res: Respo
 
 /**
  * Create a mock session token
- * POST /session-mock/create
+ * POST /mock/session/create
  */
 export const createMockSessionToken = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { accountIds, currentAccountId } = req.body;
@@ -76,7 +76,7 @@ export const createMockSessionToken = asyncHandler(async (req: Request, res: Res
 
 /**
  * Update session token (add/remove accounts, change current account)
- * PUT /session-mock/update
+ * PUT /mock/session/update
  */
 export const updateMockSessionToken = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { action, accountId, currentAccountId } = req.body;
@@ -161,7 +161,7 @@ export const updateMockSessionToken = asyncHandler(async (req: Request, res: Res
 
 /**
  * Validate session token
- * POST /session-mock/validate
+ * POST /mock/session/validate
  */
 export const validateMockSessionToken = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { token } = req.body;
@@ -183,7 +183,7 @@ export const validateMockSessionToken = asyncHandler(async (req: Request, res: R
 
 /**
  * Clear session (remove session cookie)
- * DELETE /session-mock/clear
+ * DELETE /mock/session/clear
  */
 export const clearMockSession = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   clearAccountSession(req, res);
@@ -200,7 +200,7 @@ export const clearMockSession = asyncHandler(async (req: Request, res: Response,
 
 /**
  * Generate multiple mock sessions for testing
- * POST /session-mock/generate
+ * POST /mock/session/generate
  */
 export const generateMockSessions = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { count = 5, accountsPerSession = 3 } = req.body;
@@ -241,7 +241,7 @@ export const generateMockSessions = asyncHandler(async (req: Request, res: Respo
 
 /**
  * Simulate session corruption/invalid states
- * POST /session-mock/corrupt
+ * POST /mock/session/corrupt
  */
 export const corruptMockSession = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { type = 'malformed' } = req.body;
@@ -293,7 +293,7 @@ export const corruptMockSession = asyncHandler(async (req: Request, res: Respons
 
 /**
  * Get session statistics and information
- * GET /session-mock/info
+ * GET /mock/session/info
  */
 export const getSessionMockInfo = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const currentSession = getAccountSessionFromCookies(req);

@@ -49,7 +49,7 @@ export class MockService {
    */
   async getSessionStatus(): Promise<MockSessionStatus> {
     try {
-      return await this.httpClient.get<MockSessionStatus>('/session-mock/status');
+      return await this.httpClient.get<MockSessionStatus>('/mock/session/status');
     } catch (error) {
       throw this.handleError(error, 'Failed to get session status');
     }
@@ -60,7 +60,7 @@ export class MockService {
    */
   async getSessionInfo(): Promise<MockSessionInfo> {
     try {
-      return await this.httpClient.get<MockSessionInfo>('/session-mock/info');
+      return await this.httpClient.get<MockSessionInfo>('/mock/session/info');
     } catch (error) {
       throw this.handleError(error, 'Failed to get session info');
     }
@@ -72,7 +72,7 @@ export class MockService {
   async createSession(request: CreateSessionRequest): Promise<CreateSessionResponse> {
     try {
       this.validateCreateSessionRequest(request);
-      return await this.httpClient.post<CreateSessionResponse>('/session-mock/create', request);
+      return await this.httpClient.post<CreateSessionResponse>('/mock/session/create', request);
     } catch (error) {
       throw this.handleError(error, 'Failed to create session');
     }
@@ -84,7 +84,7 @@ export class MockService {
   async updateSession(request: UpdateSessionRequest): Promise<UpdateSessionResponse> {
     try {
       this.validateUpdateSessionRequest(request);
-      return await this.httpClient.put<UpdateSessionResponse>('/session-mock/update', request);
+      return await this.httpClient.put<UpdateSessionResponse>('/mock/session/update', request);
     } catch (error) {
       throw this.handleError(error, 'Failed to update session');
     }
@@ -98,7 +98,7 @@ export class MockService {
       if (!request.token) {
         throw new AuthSDKError('Token is required', ApiErrorCode.VALIDATION_ERROR);
       }
-      return await this.httpClient.post<ValidateSessionResponse>('/session-mock/validate', request);
+      return await this.httpClient.post<ValidateSessionResponse>('/mock/session/validate', request);
     } catch (error) {
       throw this.handleError(error, 'Failed to validate session');
     }
@@ -109,7 +109,7 @@ export class MockService {
    */
   async clearSession(): Promise<{ message: string; cleared: boolean }> {
     try {
-      return await this.httpClient.delete<{ message: string; cleared: boolean }>('/session-mock/clear');
+      return await this.httpClient.delete<{ message: string; cleared: boolean }>('/mock/session/clear');
     } catch (error) {
       throw this.handleError(error, 'Failed to clear session');
     }
@@ -123,7 +123,7 @@ export class MockService {
       if (request.count && request.count > 10) {
         throw new AuthSDKError('Cannot generate more than 10 sessions', ApiErrorCode.VALIDATION_ERROR);
       }
-      return await this.httpClient.post<GenerateSessionsResponse>('/session-mock/generate', request);
+      return await this.httpClient.post<GenerateSessionsResponse>('/mock/session/generate', request);
     } catch (error) {
       throw this.handleError(error, 'Failed to generate sessions');
     }
@@ -134,7 +134,7 @@ export class MockService {
    */
   async corruptSession(request: CorruptSessionRequest = {}): Promise<CorruptSessionResponse> {
     try {
-      return await this.httpClient.post<CorruptSessionResponse>('/session-mock/corrupt', request);
+      return await this.httpClient.post<CorruptSessionResponse>('/mock/session/corrupt', request);
     } catch (error) {
       throw this.handleError(error, 'Failed to corrupt session');
     }
@@ -149,7 +149,7 @@ export class MockService {
    */
   async getTokenStatus(): Promise<MockTokenStatus> {
     try {
-      return await this.httpClient.get<MockTokenStatus>('/token-mock/status');
+      return await this.httpClient.get<MockTokenStatus>('/mock/token/status');
     } catch (error) {
       throw this.handleError(error, 'Failed to get token status');
     }
@@ -161,7 +161,7 @@ export class MockService {
   async getTokenInfo(accountId: string): Promise<TokenInfo> {
     try {
       this.validateAccountId(accountId);
-      return await this.httpClient.get<TokenInfo>(`/token-mock/info/${accountId}`);
+      return await this.httpClient.get<TokenInfo>(`/mock/token/info/${accountId}`);
     } catch (error) {
       throw this.handleError(error, 'Failed to get token info');
     }
@@ -173,7 +173,7 @@ export class MockService {
   async createAccessToken(request: CreateTokenRequest): Promise<CreateTokenResponse> {
     try {
       this.validateCreateTokenRequest(request);
-      return await this.httpClient.post<CreateTokenResponse>('/token-mock/access/create', request);
+      return await this.httpClient.post<CreateTokenResponse>('/mock/token/access/create', request);
     } catch (error) {
       throw this.handleError(error, 'Failed to create access token');
     }
@@ -185,7 +185,7 @@ export class MockService {
   async createRefreshToken(request: CreateTokenRequest): Promise<CreateTokenResponse> {
     try {
       this.validateCreateTokenRequest(request);
-      return await this.httpClient.post<CreateTokenResponse>('/token-mock/refresh/create', request);
+      return await this.httpClient.post<CreateTokenResponse>('/mock/token/refresh/create', request);
     } catch (error) {
       throw this.handleError(error, 'Failed to create refresh token');
     }
@@ -197,7 +197,7 @@ export class MockService {
   async createTokenPair(request: CreateTokenPairRequest): Promise<CreateTokenPairResponse> {
     try {
       this.validateCreateTokenPairRequest(request);
-      return await this.httpClient.post<CreateTokenPairResponse>('/token-mock/pair/create', request);
+      return await this.httpClient.post<CreateTokenPairResponse>('/mock/token/pair/create', request);
     } catch (error) {
       throw this.handleError(error, 'Failed to create token pair');
     }
@@ -211,7 +211,7 @@ export class MockService {
       if (!request.token) {
         throw new AuthSDKError('Token is required', ApiErrorCode.VALIDATION_ERROR);
       }
-      return await this.httpClient.post<ValidateTokenResponse>('/token-mock/validate', request);
+      return await this.httpClient.post<ValidateTokenResponse>('/mock/token/validate', request);
     } catch (error) {
       throw this.handleError(error, 'Failed to validate token');
     }
@@ -226,7 +226,7 @@ export class MockService {
       if (!Object.values(AccountType).includes(request.accountType)) {
         throw new AuthSDKError('Invalid account type', ApiErrorCode.VALIDATION_ERROR);
       }
-      return await this.httpClient.post<CreateExpiredTokenResponse>('/token-mock/expired/create', request);
+      return await this.httpClient.post<CreateExpiredTokenResponse>('/mock/token/expired/create', request);
     } catch (error) {
       throw this.handleError(error, 'Failed to create expired token');
     }
@@ -237,7 +237,7 @@ export class MockService {
    */
   async createMalformedToken(request: CreateMalformedTokenRequest = {}): Promise<CreateMalformedTokenResponse> {
     try {
-      return await this.httpClient.post<CreateMalformedTokenResponse>('/token-mock/malformed/create', request);
+      return await this.httpClient.post<CreateMalformedTokenResponse>('/mock/token/malformed/create', request);
     } catch (error) {
       throw this.handleError(error, 'Failed to create malformed token');
     }
@@ -249,7 +249,7 @@ export class MockService {
   async batchCreateTokens(request: BatchCreateTokensRequest): Promise<BatchCreateTokensResponse> {
     try {
       this.validateBatchCreateTokensRequest(request);
-      return await this.httpClient.post<BatchCreateTokensResponse>('/token-mock/batch/create', request);
+      return await this.httpClient.post<BatchCreateTokensResponse>('/mock/token/batch/create', request);
     } catch (error) {
       throw this.handleError(error, 'Failed to batch create tokens');
     }
@@ -261,7 +261,7 @@ export class MockService {
   async clearTokens(accountId: string): Promise<ClearTokensResponse> {
     try {
       this.validateAccountId(accountId);
-      return await this.httpClient.delete<ClearTokensResponse>(`/token-mock/clear/${accountId}`);
+      return await this.httpClient.delete<ClearTokensResponse>(`/mock/token/clear/${accountId}`);
     } catch (error) {
       throw this.handleError(error, 'Failed to clear tokens');
     }

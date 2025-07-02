@@ -187,8 +187,8 @@ export async function startMainServer(): Promise<void> {
         logger.info('🧪 Mock services enabled:');
         logger.info('   📧 Email Mock: /mock/email/*');
         logger.info('   🔐 OAuth Mock: /mock/oauth/*');
-        logger.info('   🏷️ Session Mock: /session-mock/*');
-        logger.info('   🎫 Token Mock: /token-mock/*');
+        logger.info('   🏷️ Session Mock: /mock/session/*');
+        logger.info('   🎫 Token Mock: /mock/token/*');
       }
 
       resolve();

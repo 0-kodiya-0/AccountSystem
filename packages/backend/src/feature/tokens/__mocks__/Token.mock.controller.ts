@@ -18,7 +18,7 @@ import { getJwtSecret } from '../../../config/env.config';
 
 /**
  * Get token mock status and information
- * GET /token-mock/status
+ * GET /mock/token/status
  */
 export const getTokenMockStatus = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const cookies = req.cookies;
@@ -59,7 +59,7 @@ export const getTokenMockStatus = asyncHandler(async (req: Request, res: Respons
 
 /**
  * Create mock access token
- * POST /token-mock/access/create
+ * POST /mock/token/access/create
  */
 export const createMockAccessToken = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { accountId, accountType, expiresIn, oauthAccessToken, setCookie = false } = req.body;
@@ -106,7 +106,7 @@ export const createMockAccessToken = asyncHandler(async (req: Request, res: Resp
 
 /**
  * Create mock refresh token
- * POST /token-mock/refresh/create
+ * POST /mock/token/refresh/create
  */
 export const createMockRefreshToken = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { accountId, accountType, oauthRefreshToken, setCookie = false } = req.body;
@@ -151,7 +151,7 @@ export const createMockRefreshToken = asyncHandler(async (req: Request, res: Res
 
 /**
  * Validate any token
- * POST /token-mock/validate
+ * POST /mock/token/validate
  */
 export const validateMockToken = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { token } = req.body;
@@ -186,7 +186,7 @@ export const validateMockToken = asyncHandler(async (req: Request, res: Response
 
 /**
  * Create token pair (access + refresh)
- * POST /token-mock/pair/create
+ * POST /mock/token/pair/create
  */
 export const createMockTokenPair = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const {
@@ -248,7 +248,7 @@ export const createMockTokenPair = asyncHandler(async (req: Request, res: Respon
 
 /**
  * Generate expired token for testing
- * POST /token-mock/expired/create
+ * POST /mock/token/expired/create
  */
 export const createExpiredMockToken = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { accountId, accountType, tokenType = 'access', pastSeconds = 3600 } = req.body;
@@ -290,7 +290,7 @@ export const createExpiredMockToken = asyncHandler(async (req: Request, res: Res
 
 /**
  * Generate malformed token for testing
- * POST /token-mock/malformed/create
+ * POST /mock/token/malformed/create
  */
 export const createMalformedMockToken = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { type = 'invalid_signature' } = req.body;
@@ -336,7 +336,7 @@ export const createMalformedMockToken = asyncHandler(async (req: Request, res: R
 
 /**
  * Clear all token cookies for an account
- * DELETE /token-mock/clear/:accountId
+ * DELETE /mock/token/clear/:accountId
  */
 export const clearMockTokens = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { accountId } = req.params;
@@ -364,7 +364,7 @@ export const clearMockTokens = asyncHandler(async (req: Request, res: Response, 
 
 /**
  * Get detailed token information from cookies
- * GET /token-mock/info/:accountId
+ * GET /mock/token/info/:accountId
  */
 export const getMockTokenInfo = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { accountId } = req.params;
@@ -429,7 +429,7 @@ export const getMockTokenInfo = asyncHandler(async (req: Request, res: Response,
 
 /**
  * Batch create tokens for multiple accounts
- * POST /token-mock/batch/create
+ * POST /mock/token/batch/create
  */
 export const createBatchMockTokens = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { accounts, setCookies = false } = req.body;
