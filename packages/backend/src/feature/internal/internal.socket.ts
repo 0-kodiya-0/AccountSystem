@@ -1,5 +1,6 @@
 import { Server, Socket, Namespace } from 'socket.io';
 import { logger } from '../../utils/logger';
+import { getNodeEnv, getMockEnabled } from '../../config/env.config';
 
 // Import existing services
 import * as AccountService from '../account/Account.service';
@@ -33,6 +34,17 @@ export type InternalNamespace = Namespace<
   InternalSocketData
 >;
 
+/**
+ * Check if we should require strict authentication for sockets
+ */
+function shouldRequireStrictAuth(): boolean {
+  const nodeEnv = getNodeEnv();
+  const mockEnabled = getMockEnabled();
+
+  // Require strict auth in production only
+  return nodeEnv === 'production' && !mockEnabled;
+}
+
 export class InternalSocketHandler {
   private io: Server;
   private internalNamespace: InternalNamespace;
@@ -44,7 +56,9 @@ export class InternalSocketHandler {
   }
 
   private init(): void {
-    // Authentication middleware with proper typing
+    const requireStrictAuth = shouldRequireStrictAuth();
+
+    // Authentication middleware with environment-aware validation
     this.internalNamespace.use((socket: InternalSocket, next) => {
       try {
         const { auth, query } = socket.handshake;
@@ -52,12 +66,23 @@ export class InternalSocketHandler {
         const serviceName = (auth.serviceName || query.serviceName) as string;
         const serviceSecret = (auth.serviceSecret || query.serviceSecret) as string;
 
-        if (!serviceId || !serviceName) {
-          return next(new Error('Internal service identification required'));
+        // Basic service identification is always required
+        if (!serviceId) {
+          return next(new Error('Internal service ID required (serviceId in auth or query)'));
         }
 
-        if (!serviceSecret) {
-          logger.warn(`Internal socket connection without secret from ${serviceName}`);
+        // Default service name to service ID if not provided
+        const finalServiceName = serviceName || serviceId;
+
+        // In production mode, require service secret
+        // In development/mock mode, service secret is optional but recommended
+        if (requireStrictAuth && !serviceSecret) {
+          logger.warn(`Internal socket connection without secret from ${finalServiceName} in production mode`);
+          return next(new Error('Service secret required in production mode'));
+        }
+
+        if (!requireStrictAuth && !serviceSecret) {
+          logger.info(`Internal socket connection without secret from ${finalServiceName} (development mode)`);
         }
 
         const now = new Date().toISOString();
@@ -65,15 +90,22 @@ export class InternalSocketHandler {
         // Store service info in socket data with proper typing
         socket.data = {
           serviceId,
-          serviceName,
-          authenticated: !!serviceSecret,
+          serviceName: finalServiceName,
+          authenticated: !!serviceSecret || !requireStrictAuth,
           connectedAt: now,
           lastActivity: now,
         };
 
-        logger.info(`Internal service connected via socket: ${serviceName} (${serviceId})`);
+        const authMode = requireStrictAuth ? 'production' : 'development';
+        logger.info(`Internal service connected via socket: ${finalServiceName} (${serviceId})`, {
+          authMode,
+          hasSecret: !!serviceSecret,
+          strictAuth: requireStrictAuth,
+        });
+
         next();
-      } catch {
+      } catch (error) {
+        logger.error('Internal socket authentication error:', error);
         next(new Error('Internal authentication error'));
       }
     });
@@ -82,15 +114,27 @@ export class InternalSocketHandler {
     this.internalNamespace.on('connection', (socket: InternalSocket) => {
       this.handleInternalConnection(socket);
     });
+
+    logger.info('Internal Socket.IO namespace initialized', {
+      namespace: '/internal-socket',
+      strictAuth: requireStrictAuth,
+      mode: requireStrictAuth ? 'production' : 'development',
+    });
   }
 
   private handleInternalConnection(socket: InternalSocket): void {
     const { serviceId, serviceName, authenticated } = socket.data;
 
-    logger.info(`Internal socket connected: ${socket.id} for service ${serviceName} (auth: ${authenticated})`);
+    logger.info(`Internal socket connected: ${socket.id} for service ${serviceName}`, {
+      serviceId,
+      authenticated,
+      ip: socket.handshake.address,
+      userAgent: socket.handshake.headers['user-agent'],
+    });
 
-    // Join service-specific room
+    // Join service-specific room for targeted messaging
     socket.join(`service-${serviceId}`);
+    socket.join('all-services'); // Global room for broadcasts
 
     // Update last activity on any event
     this.setupActivityTracking(socket);

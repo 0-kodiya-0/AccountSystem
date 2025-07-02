@@ -1,20 +1,39 @@
 import express from 'express';
 import http from 'http';
+import https from 'https';
 import cors from 'cors';
 import { applyErrorHandlers, asyncHandler } from './utils/response';
 
 import { InternalSocketHandler, internalRouter } from './feature/internal';
 import { internalHealthRouter } from './feature/health';
+import { internalAuthentication } from './middleware/internal.middleware';
 
 import { ApiErrorCode, NotFoundError } from './types/response.types';
 import socketConfig from './config/socket.config';
 import { logger } from './utils/logger';
-import { getInternalServerEnabled, getInternalPort } from './config/env.config';
+import { getInternalServerEnabled, getInternalPort, getNodeEnv, getMockEnabled } from './config/env.config';
+import { loadInternalSSLCertificates } from './config/internal-server.config';
 
-let internalServer: http.Server | null = null;
+let internalServer: http.Server | https.Server | null = null;
 
 /**
- * Create the internal Express app (HTTP only for now)
+ * Determine if we should use HTTPS for internal server
+ */
+function shouldUseHttps(): boolean {
+  const nodeEnv = getNodeEnv();
+  const mockEnabled = getMockEnabled();
+
+  // Don't use HTTPS in development, test, or when mocks are enabled
+  if (nodeEnv === 'development' || nodeEnv === 'test' || mockEnabled) {
+    return false;
+  }
+
+  // Use HTTPS in production
+  return nodeEnv === 'production';
+}
+
+/**
+ * Create the internal Express app
  */
 function createInternalApp(): express.Application {
   const app = express();
@@ -45,32 +64,11 @@ function createInternalApp(): express.Application {
     });
   }
 
-  // Basic authentication for internal API with enhanced logging
-  app.use('/internal', (req, res, next) => {
-    const serviceId = req.get('X-Internal-Service-ID');
-    const serviceSecret = req.get('X-Internal-Service-Secret');
-
-    if (!serviceId || !serviceSecret) {
-      logger.warn('Internal API HTTP request without proper authentication headers', {
-        ip: req.ip,
-        userAgent: req.get('User-Agent'),
-        path: req.path,
-      });
-      // For now, just log and continue - in production you'd want proper validation
-    } else {
-      logger.info(`Internal API HTTP request from service: ${serviceId}`, {
-        path: req.path,
-        method: req.method,
-      });
-    }
-
-    next();
-  });
-
+  // Health routes (no authentication required)
   app.use('/health', internalHealthRouter);
 
-  // Internal API routes
-  app.use('/internal', internalRouter);
+  // Internal API routes (with authentication)
+  app.use('/internal', internalAuthentication, internalRouter);
 
   // Apply error handlers
   applyErrorHandlers(app);
@@ -86,7 +84,7 @@ function createInternalApp(): express.Application {
 }
 
 /**
- * Start the internal HTTP server
+ * Start the internal server (HTTP or HTTPS based on environment)
  */
 export async function startInternalServer(): Promise<void> {
   if (internalServer) {
@@ -102,65 +100,126 @@ export async function startInternalServer(): Promise<void> {
 
   // Create the Express app
   const app = createInternalApp();
-
-  // Create HTTP server
-  internalServer = http.createServer(app);
-
-  // Initialize Socket.IO for internal services with enhanced configuration
-  const io = socketConfig.initializeSocketIO(internalServer, 'internal');
-
-  // Initialize internal socket handler with best practices implementation
-  const socketHandler = new InternalSocketHandler(io);
-
-  // Store socket handler reference for health checks and management
-  app.set('internalSocketHandler', socketHandler);
-
-  // Error handling for the HTTP server
-  internalServer.on('error', (error: NodeJS.ErrnoException) => {
-    logger.error('Internal HTTP server error:', error);
-    if (error.code === 'EADDRINUSE') {
-      logger.error(`Port ${getInternalPort()} is already in use for internal server`);
-    }
-  });
-
-  internalServer.on('clientError', (error: Error, socket) => {
-    logger.error('Internal client error:', error);
-    try {
-      socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
-    } catch {
-      // Socket might already be closed
-    }
-  });
-
-  // Start the server
   const port = getInternalPort();
+  const useHttps = shouldUseHttps();
 
-  await new Promise<void>((resolve, reject) => {
-    internalServer!.listen(port, () => {
-      logger.info(`🔌 Internal HTTP API server running on port ${port}`);
-      logger.info('   ✅ HTTP REST API endpoints available');
-      logger.info('   ✅ Socket.IO real-time API available');
-      logger.info('   ✅ TypeScript type-safe event interfaces');
-      logger.info('   ✅ Token verification & user information services');
-      logger.info('   ✅ Session management & validation services');
-      logger.info('   ✅ Activity tracking & health monitoring');
-      logger.info(`   📡 Health check: http://localhost:${port}/health`);
-      logger.info(`   📡 HTTP API base: http://localhost:${port}/internal`);
-      logger.info(`   📡 Socket.IO namespace: /internal`);
-      logger.info('   🔐 Authentication: X-Internal-Service-ID and X-Internal-Service-Secret headers');
-      logger.info('   🔐 Socket auth: serviceId, serviceName, serviceSecret in handshake');
-      logger.info('   📊 Features: Notifications, Activity Tracking, Service Management');
-      resolve();
+  try {
+    // Create server based on environment
+    if (useHttps) {
+      // Production mode: Use HTTPS with certificates
+      logger.info('Starting internal HTTPS server with certificate authentication...');
+
+      const httpsOptions = loadInternalSSLCertificates();
+      internalServer = https.createServer(httpsOptions, app);
+
+      logger.info('Internal HTTPS server configured with mTLS authentication');
+    } else {
+      // Development/Mock mode: Use HTTP
+      logger.info('Starting internal HTTP server (development/mock mode)...');
+
+      internalServer = http.createServer(app);
+
+      logger.info('Internal HTTP server configured for development (no certificates required)');
+    }
+
+    // Initialize Socket.IO for internal services
+    const io = socketConfig.initializeSocketIO(internalServer, 'internal');
+
+    // Initialize internal socket handler
+    const socketHandler = new InternalSocketHandler(io);
+
+    // Store socket handler reference for health checks and management
+    app.set('internalSocketHandler', socketHandler);
+
+    // Error handling for the server
+    internalServer.on('error', (error: NodeJS.ErrnoException) => {
+      logger.error('Internal server error:', error);
+      if (error.code === 'EADDRINUSE') {
+        logger.error(`Port ${port} is already in use for internal server`);
+      } else if (error.code === 'ENOENT') {
+        logger.error('SSL certificate files not found. Please check certificate paths.');
+      }
     });
 
-    internalServer!.on('error', (error) => {
-      reject(error);
+    internalServer.on('clientError', (error: Error, socket) => {
+      logger.error('Internal client error:', error);
+      try {
+        const response = useHttps ? 'HTTP/1.1 400 Bad Request\r\n\r\n' : 'HTTP/1.1 400 Bad Request\r\n\r\n';
+        socket.end(response);
+      } catch {
+        // Socket might already be closed
+      }
     });
-  });
+
+    // HTTPS-specific events
+    if (useHttps && internalServer instanceof https.Server) {
+      internalServer.on('secureConnection', (tlsSocket) => {
+        logger.debug('Secure TLS connection established', {
+          authorized: tlsSocket.authorized,
+          authorizationError: tlsSocket.authorizationError,
+          peerCertificate: tlsSocket.getPeerCertificate() ? 'Available' : 'Not Available',
+        });
+      });
+
+      internalServer.on('tlsClientError', (err) => {
+        logger.warn('TLS client error:', {
+          error: err.message,
+          code: (err as NodeJS.ErrnoException).code || 'UNKNOWN',
+        });
+      });
+    }
+
+    // Start the server
+    await new Promise<void>((resolve, reject) => {
+      internalServer!.listen(port, () => {
+        const protocol = useHttps ? 'HTTPS' : 'HTTP';
+        const authMethod = useHttps ? 'mTLS certificates + service headers' : 'service headers only';
+
+        logger.info(`🔌 Internal ${protocol} server running on port ${port}`);
+        logger.info(`   ✅ ${protocol} REST API endpoints available`);
+        logger.info('   ✅ Socket.IO real-time API available');
+        logger.info('   ✅ TypeScript type-safe event interfaces');
+        logger.info('   ✅ Token verification & user information services');
+        logger.info('   ✅ Session management & validation services');
+        logger.info('   ✅ Activity tracking & health monitoring');
+        logger.info(`   📡 Health check: ${protocol.toLowerCase()}://localhost:${port}/health`);
+        logger.info(`   📡 ${protocol} API base: ${protocol.toLowerCase()}://localhost:${port}/internal`);
+        logger.info(`   📡 Socket.IO namespace: /internal-socket`);
+        logger.info(`   🔐 Authentication: ${authMethod}`);
+
+        if (useHttps) {
+          logger.info('   🔐 Client certificates: Required and validated');
+          logger.info('   🔐 Service headers: Required for identification');
+        } else {
+          logger.info('   🔐 Client certificates: Not required (development mode)');
+          logger.info('   🔐 Service headers: Required with secret validation');
+        }
+
+        logger.info('   📊 Features: Notifications, Activity Tracking, Service Management');
+
+        resolve();
+      });
+
+      internalServer!.on('error', (error) => {
+        reject(error);
+      });
+    });
+  } catch (error) {
+    logger.error('Failed to start internal server:', error);
+
+    if (useHttps && error instanceof Error && error.message.includes('certificate')) {
+      logger.error('Certificate loading failed. You can:');
+      logger.error('1. Set NODE_ENV=development to use HTTP mode');
+      logger.error('2. Set MOCK_ENABLED=true to use HTTP mode');
+      logger.error('3. Provide valid SSL certificates for production');
+    }
+
+    throw error;
+  }
 }
 
 /**
- * Stop the internal HTTP server
+ * Stop the internal server
  */
 export async function stopInternalServer(): Promise<void> {
   if (!internalServer) {
@@ -168,13 +227,38 @@ export async function stopInternalServer(): Promise<void> {
     return;
   }
 
-  logger.info('Stopping internal HTTP server...');
+  const protocol = internalServer instanceof https.Server ? 'HTTPS' : 'HTTP';
+  logger.info(`Stopping internal ${protocol} server...`);
 
   await new Promise<void>((resolve) => {
     internalServer!.close(() => {
-      logger.info('Internal HTTP server stopped');
+      logger.info(`Internal ${protocol} server stopped`);
       internalServer = null;
       resolve();
     });
   });
+}
+
+/**
+ * Get internal server status
+ */
+export function getInternalServerStatus(): {
+  running: boolean;
+  protocol: 'HTTP' | 'HTTPS' | null;
+  port: number;
+  authMode: 'production' | 'development';
+  requiresCertificates: boolean;
+} {
+  const isRunning = !!internalServer;
+  const protocol =
+    internalServer instanceof https.Server ? 'HTTPS' : internalServer instanceof http.Server ? 'HTTP' : null;
+  const useHttps = shouldUseHttps();
+
+  return {
+    running: isRunning,
+    protocol,
+    port: getInternalPort(),
+    authMode: useHttps ? 'production' : 'development',
+    requiresCertificates: useHttps,
+  };
 }
