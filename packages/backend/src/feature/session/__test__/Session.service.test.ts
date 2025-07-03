@@ -4,7 +4,7 @@ import * as SessionService from '../session.service';
 import * as sessionUtils from '../session.utils';
 import { AccountType, AccountStatus } from '../../account/Account.types';
 import { BadRequestError } from '../../../types/response.types';
-import db from '../../../config/db';
+import { getModels } from '../../../config/db.config';
 
 // Mock dependencies
 vi.mock('../session.utils', () => ({
@@ -15,10 +15,8 @@ vi.mock('../session.utils', () => ({
   clearAccountSession: vi.fn(),
 }));
 
-vi.mock('../../../config/db', () => ({
-  default: {
-    getModels: vi.fn(),
-  },
+vi.mock('../../../config/db.config', () => ({
+  getModels: vi.fn(),
 }));
 
 describe('Session Service', () => {
@@ -62,7 +60,7 @@ describe('Session Service', () => {
     };
 
     // Mock database models
-    vi.mocked(db.getModels).mockResolvedValue({
+    vi.mocked(getModels).mockResolvedValue({
       accounts: {
         Account: mockAccountModel,
       },

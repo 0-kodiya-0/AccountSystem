@@ -3,17 +3,15 @@ import * as TwoFAService from '../TwoFA.service';
 import * as googleServices from '../../google/services/tokenInfo/tokenInfo.services';
 import { AccountType, AccountStatus } from '../../account/Account.types';
 import { AuthError, BadRequestError, NotFoundError, ValidationError } from '../../../types/response.types';
-import db from '../../../config/db';
+import { getModels } from '../../../config/db.config';
 
 // Mock dependencies
 vi.mock('../../google/services/tokenInfo/tokenInfo.services', () => ({
   verifyGoogleTokenOwnership: vi.fn(),
 }));
 
-vi.mock('../../../config/db', () => ({
-  default: {
-    getModels: vi.fn(),
-  },
+vi.mock('../../../config/db.config', () => ({
+  getModels: vi.fn(),
 }));
 
 vi.mock('../../../config/env.config', () => ({
@@ -57,7 +55,7 @@ describe('TwoFA Service', () => {
     };
 
     // Mock database models
-    vi.mocked(db.getModels).mockResolvedValue({
+    vi.mocked(getModels).mockResolvedValue({
       accounts: {
         Account: mockAccountModel,
       },

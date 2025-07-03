@@ -6,6 +6,7 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { pathToFileURL } from 'url';
 import { logger } from './utils/logger';
+import processCleanup from './utils/processCleanup';
 
 const VERSION = '1.0.0';
 
@@ -423,39 +424,74 @@ async function main(): Promise<void> {
   // Apply environment overrides
   applyEnvironmentOverrides(options);
 
-  // Graceful shutdown handling
+  // Enhanced graceful shutdown handling with cleanup system
   const shutdown = async (signal: string) => {
     if (!options.quiet) {
-      logger.info(`\nReceived ${signal}, shutting down gracefully...`);
+      logger.info(`\n🛑 Received ${signal}, initiating graceful shutdown...`);
     }
+
     try {
+      // Stop the server first
       await stopServer();
+
       if (!options.quiet) {
-        logger.info('Backend server stopped');
+        logger.info('✅ Backend server stopped');
       }
+
+      // Let the cleanup system handle the rest
+      await processCleanup.cleanup(`CLI shutdown via ${signal}`);
+
+      if (!options.quiet) {
+        logger.info('✅ Cleanup completed');
+      }
+
       process.exit(0);
     } catch (error) {
-      logger.error(`Error during shutdown: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      logger.error(`❌ Error during shutdown: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+      // Force cleanup if normal cleanup fails
+      try {
+        processCleanup.forceCleanup();
+      } catch (forceError) {
+        logger.error('Force cleanup also failed:', forceError);
+      }
+
       process.exit(1);
     }
   };
 
+  // Register signal handlers - these will work with the cleanup system
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGQUIT', () => shutdown('SIGQUIT'));
+
+  // Windows-specific signal
+  if (process.platform === 'win32') {
+    process.on('SIGBREAK', () => shutdown('SIGBREAK'));
+  }
 
   // Start the server
-  logger.info(`Starting AccountSystem Backend Server v${VERSION}...`);
+  logger.info(`🚀 Starting AccountSystem Backend Server v${VERSION}...`);
 
   if (options.debug || options.logLevel === 'debug') {
-    logger.info('Debug mode enabled');
+    logger.info('🐛 Debug mode enabled');
   }
+
+  // Log cleanup system status
+  const cleanupStatus = processCleanup.getStatus();
+  logger.info(`🛡️  Process cleanup system active (${cleanupStatus.registeredResources} resources monitored)`);
 
   // Start the server
   try {
     await startServer();
+
+    if (!options.quiet) {
+      logger.info('🎉 Server started successfully');
+      logger.info('💡 Press Ctrl+C to gracefully shutdown');
+    }
   } catch (error) {
     // Always show critical errors, even in quiet mode
-    logger.error(`Failed to start backend server: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    logger.error(`❌ Failed to start backend server: ${error instanceof Error ? error.message : 'Unknown error'}`);
     process.exit(1);
   }
 }

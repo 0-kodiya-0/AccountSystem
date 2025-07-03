@@ -16,10 +16,8 @@ vi.mock('googleapis', () => ({
   },
 }));
 
-vi.mock('../../../../config/db', () => ({
-  default: {
-    getModels: vi.fn(),
-  },
+vi.mock('../../../../config/db.config', () => ({
+  getModels: vi.fn(),
 }));
 
 vi.mock('../../../../config/env.config', () => ({
@@ -62,7 +60,7 @@ vi.mock('../../../../mocks/oauth/OAuthMockService', () => ({
 
 // Import mocked modules
 import { google } from 'googleapis';
-import db from '../../../../config/db';
+import { getModels } from '../../../../config/db.config';
 import { getNodeEnv } from '../../../../config/env.config';
 import { getOAuthMockConfig } from '../../../../config/mock.config';
 import { ValidationUtils } from '../../../../utils/validation';
@@ -199,7 +197,7 @@ describe('Google Token Service', () => {
       vi.mocked(google.oauth2).mockReturnValue({
         tokeninfo: vi.fn().mockResolvedValue({ data: mockTokenInfo }),
       } as any);
-      vi.mocked(db.getModels).mockResolvedValue(mockModels as any);
+      vi.mocked(getModels).mockResolvedValue(mockModels as any);
 
       const result = await GoogleTokenService.updateAccountScopes('account123', 'access-token');
 
@@ -234,7 +232,7 @@ describe('Google Token Service', () => {
       vi.mocked(google.oauth2).mockReturnValue({
         tokeninfo: vi.fn().mockResolvedValue({ data: mockTokenInfo }),
       } as any);
-      vi.mocked(db.getModels).mockResolvedValue(mockModels as any);
+      vi.mocked(getModels).mockResolvedValue(mockModels as any);
 
       const result = await GoogleTokenService.updateAccountScopes('account123', 'access-token');
 
@@ -284,7 +282,7 @@ describe('Google Token Service', () => {
         },
       };
 
-      vi.mocked(db.getModels).mockResolvedValue(mockModels as any);
+      vi.mocked(getModels).mockResolvedValue(mockModels as any);
 
       const result = await GoogleTokenService.getGoogleAccountScopes('account123');
 
@@ -303,7 +301,7 @@ describe('Google Token Service', () => {
         },
       };
 
-      vi.mocked(db.getModels).mockResolvedValue(mockModels as any);
+      vi.mocked(getModels).mockResolvedValue(mockModels as any);
 
       const result = await GoogleTokenService.getGoogleAccountScopes('account123');
 
@@ -311,7 +309,7 @@ describe('Google Token Service', () => {
     });
 
     it('should return empty array on database error', async () => {
-      vi.mocked(db.getModels).mockRejectedValue(new Error('DB error'));
+      vi.mocked(getModels).mockRejectedValue(new Error('DB error'));
 
       const result = await GoogleTokenService.getGoogleAccountScopes('account123');
 
@@ -412,7 +410,7 @@ describe('Google Token Service', () => {
       vi.mocked(google.oauth2).mockReturnValue({
         tokeninfo: vi.fn().mockResolvedValue({ data: mockTokenInfo }),
       } as any);
-      vi.mocked(db.getModels).mockResolvedValue(mockModels as any);
+      vi.mocked(getModels).mockResolvedValue(mockModels as any);
 
       const result = await GoogleTokenService.checkForAdditionalGoogleScopes('account123', 'access-token');
 
@@ -439,7 +437,7 @@ describe('Google Token Service', () => {
       vi.mocked(google.oauth2).mockReturnValue({
         tokeninfo: vi.fn().mockResolvedValue({ data: mockTokenInfo }),
       } as any);
-      vi.mocked(db.getModels).mockResolvedValue(mockModels as any);
+      vi.mocked(getModels).mockResolvedValue(mockModels as any);
 
       const result = await GoogleTokenService.checkForAdditionalGoogleScopes('account123', 'access-token');
 
@@ -470,7 +468,7 @@ describe('Google Token Service', () => {
       vi.mocked(google.oauth2).mockReturnValue({
         tokeninfo: vi.fn().mockResolvedValue({ data: mockTokenInfo }),
       } as any);
-      vi.mocked(db.getModels).mockResolvedValue(mockModels as any);
+      vi.mocked(getModels).mockResolvedValue(mockModels as any);
 
       const result = await GoogleTokenService.checkForAdditionalGoogleScopes('account123', 'access-token');
 
@@ -510,7 +508,7 @@ describe('Google Token Service', () => {
       vi.mocked(getOAuthMockConfig).mockReturnValue({ enabled: false } as any);
       vi.mocked(google.auth.OAuth2).mockReturnValue(mockOAuth2Client as any);
       vi.mocked(google.oauth2).mockReturnValue(mockOauth2 as any);
-      vi.mocked(db.getModels).mockResolvedValue(mockModels as any);
+      vi.mocked(getModels).mockResolvedValue(mockModels as any);
 
       const result = await GoogleTokenService.verifyGoogleTokenOwnership('access-token', 'account123');
 
@@ -548,7 +546,7 @@ describe('Google Token Service', () => {
       vi.mocked(getOAuthMockConfig).mockReturnValue({ enabled: false } as any);
       vi.mocked(google.auth.OAuth2).mockReturnValue(mockOAuth2Client as any);
       vi.mocked(google.oauth2).mockReturnValue(mockOauth2 as any);
-      vi.mocked(db.getModels).mockResolvedValue(mockModels as any);
+      vi.mocked(getModels).mockResolvedValue(mockModels as any);
 
       const result = await GoogleTokenService.verifyGoogleTokenOwnership('access-token', 'account123');
 
@@ -566,7 +564,7 @@ describe('Google Token Service', () => {
       };
 
       vi.mocked(getOAuthMockConfig).mockReturnValue({ enabled: false } as any);
-      vi.mocked(db.getModels).mockResolvedValue(mockModels as any);
+      vi.mocked(getModels).mockResolvedValue(mockModels as any);
 
       const result = await GoogleTokenService.verifyGoogleTokenOwnership('access-token', 'account123');
 
@@ -576,7 +574,7 @@ describe('Google Token Service', () => {
 
     it('should handle verification errors gracefully', async () => {
       vi.mocked(getOAuthMockConfig).mockReturnValue({ enabled: false } as any);
-      vi.mocked(db.getModels).mockRejectedValue(new Error('Database error'));
+      vi.mocked(getModels).mockRejectedValue(new Error('Database error'));
 
       const result = await GoogleTokenService.verifyGoogleTokenOwnership('access-token', 'account123');
 

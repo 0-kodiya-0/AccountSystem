@@ -1,11 +1,13 @@
+// src/app.ts
 import { getPort } from './config/env.config';
 
 import http, { Server } from 'http';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 
-import db from './config/db';
+import { initializeDB } from './config/db.config';
 import socketConfig from './config/socket.config';
+import { registerServer, registerCustomCleanup } from './utils/processCleanup';
 
 import * as oauthRouter from './feature/oauth';
 import * as accountRouter from './feature/account';
@@ -154,7 +156,7 @@ export async function startMainServer(): Promise<void> {
   }
 
   // Initialize database connections and models
-  await db.initializeDB();
+  await initializeDB();
   logger.info('Database connections established and models initialized');
 
   // Create Express app
@@ -163,8 +165,18 @@ export async function startMainServer(): Promise<void> {
   // Create HTTP server
   httpServer = http.createServer(app);
 
+  // Register server for cleanup
+  registerServer('main-http-server', httpServer);
+
   // Initialize Socket.IO with the HTTP server
   const io = socketConfig.initializeSocketIO(httpServer, 'external');
+
+  // Register Socket.IO cleanup
+  registerCustomCleanup('main-socketio', async () => {
+    logger.info('Closing Socket.IO connections...');
+    io.close();
+    logger.info('Socket.IO connections closed');
+  });
 
   // Initialize socket handlers if notifications are enabled
   if (process.env.DISABLE_NOTIFICATIONS !== 'true') {
@@ -181,6 +193,7 @@ export async function startMainServer(): Promise<void> {
     httpServer!.listen(PORT, () => {
       logger.info(`🌐 Main HTTP server running on port ${PORT}`);
       logger.info(`📡 Socket.IO is listening on the same port`);
+      logger.info('🛡️  Process cleanup handlers are active');
 
       // Log enabled mock services
       if (process.env.NODE_ENV !== 'production' && process.env.MOCK_ENABLED === 'true') {

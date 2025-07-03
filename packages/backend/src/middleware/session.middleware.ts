@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ApiErrorCode, BadRequestError, NotFoundError, Redirect, ServerError } from '../types/response.types';
-import db from '../config/db';
+import { getModels } from '../config/db.config';
 import { asyncHandler } from '../utils/response';
 import { validateAccount } from '../feature/account/Account.validation';
 import { extractAccessToken, extractRefreshToken } from '../feature/session/session.utils';
@@ -30,7 +30,7 @@ export const authenticateSession = (req: Request, res: Response, next: NextFunct
 export const validateAccountAccess = asyncHandler(async (req, res, next) => {
   const accountId = req.params.accountId;
 
-  const models = await db.getModels();
+  const models = await getModels();
   const account = await models.accounts.Account.findOne({ _id: accountId });
 
   if (!account) {

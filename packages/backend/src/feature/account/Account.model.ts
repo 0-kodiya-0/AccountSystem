@@ -1,5 +1,4 @@
 import mongoose, { Document, Schema } from 'mongoose';
-import dbConfig from '../../config/db.config';
 import { AccountStatus, AccountType, Account, OAuthProviders } from './Account.types';
 import bcrypt from 'bcrypt';
 
@@ -142,9 +141,8 @@ AccountSchema.pre('save', function (next) {
 });
 
 // Initialize model with database connection
-const initAccountModel = async () => {
-  const accountsConnection = await dbConfig.connectAccountsDB();
-  return accountsConnection.model<AccountDocument>('Account', AccountSchema);
+const initAccountModel = async (connection: mongoose.Connection) => {
+  return connection.model<AccountDocument>('Account', AccountSchema);
 };
 
 export default initAccountModel;

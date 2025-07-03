@@ -9,7 +9,7 @@ import {
 import { GetAccountSessionDataResponse, GetAccountSessionResponse } from './session.types';
 import { ValidationUtils } from '../../utils/validation';
 import { BadRequestError, ApiErrorCode } from '../../types/response.types';
-import db from '../../config/db';
+import { getModels } from '../../config/db.config';
 import { toSafeSessionAccount } from '../../feature/account/Account.utils';
 import { logger } from '../../utils/logger';
 
@@ -34,7 +34,7 @@ export async function getAccountSession(req: Request): Promise<GetAccountSession
 
   try {
     // Only validate that account IDs still exist in database (no account data fetching)
-    const models = await db.getModels();
+    const models = await getModels();
     const existingAccountIds = await models.accounts.Account.find(
       { _id: { $in: session.accountIds } },
       { _id: 1 }, // Only fetch _id field for validation
@@ -109,7 +109,7 @@ export async function getSessionAccountsData(
   }
 
   try {
-    const models = await db.getModels();
+    const models = await getModels();
     const accountDocs = await models.accounts.Account.find({
       _id: { $in: accountIds },
     });
@@ -136,7 +136,7 @@ export async function addAccountToSession(
   ValidationUtils.validateObjectId(accountId, 'Account ID');
 
   // Verify account exists
-  const models = await db.getModels();
+  const models = await getModels();
   const account = await models.accounts.Account.findById(accountId);
 
   if (!account) {

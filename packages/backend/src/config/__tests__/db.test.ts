@@ -1,15 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach, vi, beforeAll, afterAll } from 'vitest';
 import {
-  connectAccountsDB,
-  connectAllDatabases,
+  getModels,
   closeAllConnections,
   clearDatabase,
-  seedTestDatabase,
-  cleanupSeededTestData,
-  getSeededAccountStats,
+  connectAuthDB,
+  getAuthConnectionStatus,
   getDatabaseStats,
+  seedTestDatabase,
+  getSeededAccountStats,
+  cleanupSeededTestData,
+  initializeDB,
 } from '../db.config';
-import db from '../db';
 import { getNodeEnv } from '../env.config';
 import { getAccountsMockConfig } from '../mock.config';
 
@@ -62,17 +63,19 @@ describe('Database Configuration', () => {
   });
 
   describe('Database Connection', () => {
+    beforeAll(async () => {
+      await connectAuthDB();
+    });
+
     it('should connect to accounts database', async () => {
-      const connection = await connectAccountsDB();
+      const connection = getAuthConnectionStatus();
 
       expect(connection).toBeDefined();
       expect(connection.readyState).toBe(1); // Connected state
     });
 
     it('should connect to all databases', async () => {
-      await connectAllDatabases();
-
-      const models = await db.getModels();
+      const models = await getModels();
       expect(models).toBeDefined();
       expect(models.accounts).toBeDefined();
       expect(models.notifications).toBeDefined();
@@ -80,8 +83,6 @@ describe('Database Configuration', () => {
     });
 
     it('should get database statistics', async () => {
-      await connectAllDatabases();
-
       const stats = await getDatabaseStats();
       expect(stats).toBeDefined();
       expect(stats).toHaveProperty('type');
@@ -91,14 +92,16 @@ describe('Database Configuration', () => {
 
       // Should be memory type in test environment
       expect(stats.type).toBe('memory');
-      expect(stats.connected).toBe(true);
     });
   });
 
   describe('Database Operations (Test Environment Only)', () => {
     beforeEach(async () => {
       // Ensure clean database state
-      await connectAllDatabases();
+      await connectAuthDB();
+    });
+
+    afterEach(async () => {
       await clearDatabase();
     });
 
@@ -198,10 +201,13 @@ describe('Database Configuration', () => {
     });
   });
 
-  describe('Database Initialization (db.ts)', () => {
-    it('should initialize database models', async () => {
-      const models = await db.initializeDB();
+  describe('Database Initialization (ts)', () => {
+    beforeAll(async () => {
+      await initializeDB();
+    });
 
+    it('should initialize database models', async () => {
+      const models = await getModels();
       expect(models).toBeDefined();
       expect(models.accounts).toBeDefined();
       expect(models.accounts.Account).toBeDefined();
@@ -212,35 +218,37 @@ describe('Database Configuration', () => {
     });
 
     it('should get models after initialization', async () => {
-      await db.initializeDB();
-
-      const models = await db.getModels();
+      const models = await getModels();
       expect(models).toBeDefined();
       expect(models.accounts.Account).toBeDefined();
     });
 
     it('should handle multiple getModels calls', async () => {
-      await db.initializeDB();
-
-      const models1 = await db.getModels();
-      const models2 = await db.getModels();
+      const models1 = await getModels();
+      const models2 = await getModels();
 
       expect(models1).toBe(models2); // Should return same instance
     });
 
     it('should close database connections', async () => {
-      await db.initializeDB();
-      await db.close();
+      await closeAllConnections();
 
       // After closing, should be able to reinitialize
-      const models = await db.getModels();
+      const models = await getModels();
       expect(models).toBeDefined();
     });
   });
 
   describe('Account Seeding Validation', () => {
+    beforeAll(async () => {
+      await connectAuthDB();
+    });
+
     beforeEach(async () => {
-      await connectAllDatabases();
+      await cleanupSeededTestData();
+    });
+
+    afterAll(async () => {
       await clearDatabase();
     });
 
@@ -295,27 +303,29 @@ describe('Database Configuration', () => {
   describe('Memory Server Management', () => {
     it('should start and stop memory server properly', async () => {
       // Connect (starts memory server)
-      await connectAccountsDB();
+      await connectAuthDB();
 
       let stats = await getDatabaseStats();
+      let connectionStates = getAuthConnectionStatus();
       expect(stats.type).toBe('memory');
-      expect(stats.connected).toBe(true);
+      expect(connectionStates.connected).toBe(true);
 
       // Close (stops memory server)
       await closeAllConnections();
 
       stats = await getDatabaseStats();
-      expect(stats.connected).toBe(false);
+      connectionStates = getAuthConnectionStatus();
+      expect(connectionStates.connected).toBe(false);
     });
   });
 
   describe('Error Handling', () => {
     it('should handle getModels call before initialization', async () => {
       // Close any existing connections
-      await db.close();
+      await closeAllConnections();
 
       // This should initialize automatically
-      const models = await db.getModels();
+      const models = await getModels();
       expect(models).toBeDefined();
     });
 

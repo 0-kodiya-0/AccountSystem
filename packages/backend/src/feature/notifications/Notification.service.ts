@@ -1,4 +1,4 @@
-import db from '../../config/db';
+import { getModels } from '../../config/db.config';
 import {
   Notification,
   CreateNotificationRequest,
@@ -15,7 +15,7 @@ import { logger } from '../../utils/logger';
  */
 export async function addUserNotification(data: CreateNotificationRequest): Promise<Notification> {
   try {
-    const models = await db.getModels();
+    const models = await getModels();
 
     // Add current timestamp if not provided
     const timestamp = Date.now();
@@ -60,7 +60,7 @@ export async function getUserNotifications(params: GetNotificationsParams): Prom
   unreadCount: number;
 }> {
   try {
-    const models = await db.getModels();
+    const models = await getModels();
 
     // Build query based on parameters
     const query: Record<string, any> = { accountId: params.accountId };
@@ -110,7 +110,7 @@ export async function getUserNotifications(params: GetNotificationsParams): Prom
  */
 export async function markNotificationAsRead(accountId: string, notificationId: string): Promise<Notification> {
   try {
-    const models = await db.getModels();
+    const models = await getModels();
 
     // Find and update the notification
     const notification = await models.notifications.Notification.findOneAndUpdate(
@@ -149,7 +149,7 @@ export async function markNotificationAsRead(accountId: string, notificationId: 
  */
 export async function markAllNotificationsAsRead(accountId: string): Promise<number> {
   try {
-    const models = await db.getModels();
+    const models = await getModels();
 
     // Update all unread notifications for the user
     const result = await models.notifications.Notification.updateMany({ accountId, read: false }, { read: true });
@@ -178,7 +178,7 @@ export async function updateNotification(
   updates: UpdateNotificationRequest,
 ): Promise<Notification> {
   try {
-    const models = await db.getModels();
+    const models = await getModels();
 
     // Find and update the notification
     const notification = await models.notifications.Notification.findOneAndUpdate(
@@ -217,7 +217,7 @@ export async function updateNotification(
  */
 export async function deleteNotification(accountId: string, notificationId: string): Promise<boolean> {
   try {
-    const models = await db.getModels();
+    const models = await getModels();
 
     // Find and delete the notification
     const result = await models.notifications.Notification.deleteOne({
@@ -252,7 +252,7 @@ export async function deleteNotification(accountId: string, notificationId: stri
  */
 export async function deleteAllNotifications(accountId: string): Promise<number> {
   try {
-    const models = await db.getModels();
+    const models = await getModels();
 
     // Delete all notifications for the user
     const result = await models.notifications.Notification.deleteMany({

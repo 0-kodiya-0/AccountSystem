@@ -3,6 +3,7 @@ import http from 'http';
 import https from 'https';
 import cors from 'cors';
 import { applyErrorHandlers, asyncHandler } from './utils/response';
+import { registerServer, registerCustomCleanup } from './utils/processCleanup';
 
 import { InternalSocketHandler, internalRouter } from './feature/internal';
 import { internalHealthRouter } from './feature/health';
@@ -15,6 +16,7 @@ import { getInternalServerEnabled, getInternalPort, getNodeEnv, getMockEnabled }
 import { loadInternalSSLCertificates } from './config/internal-server.config';
 
 let internalServer: http.Server | https.Server | null = null;
+let internalSocketHandler: InternalSocketHandler | null = null;
 
 /**
  * Determine if we should use HTTPS for internal server
@@ -122,14 +124,25 @@ export async function startInternalServer(): Promise<void> {
       logger.info('Internal HTTP server configured for development (no certificates required)');
     }
 
+    // Register internal server for cleanup
+    registerServer('internal-server', internalServer);
+
     // Initialize Socket.IO for internal services
     const io = socketConfig.initializeSocketIO(internalServer, 'internal');
 
     // Initialize internal socket handler
-    const socketHandler = new InternalSocketHandler(io);
+    internalSocketHandler = new InternalSocketHandler(io);
 
     // Store socket handler reference for health checks and management
-    app.set('internalSocketHandler', socketHandler);
+    app.set('internalSocketHandler', internalSocketHandler);
+
+    // Register Socket.IO cleanup for internal server
+    registerCustomCleanup('internal-socketio', async () => {
+      logger.info('Closing internal Socket.IO connections...');
+      io.close();
+      internalSocketHandler = null;
+      logger.info('Internal Socket.IO connections closed');
+    });
 
     // Error handling for the server
     internalServer.on('error', (error: NodeJS.ErrnoException) => {
@@ -186,6 +199,7 @@ export async function startInternalServer(): Promise<void> {
         logger.info(`   📡 ${protocol} API base: ${protocol.toLowerCase()}://localhost:${port}/internal`);
         logger.info(`   📡 Socket.IO namespace: /internal-socket`);
         logger.info(`   🔐 Authentication: ${authMethod}`);
+        logger.info('   🛡️  Process cleanup handlers are active');
 
         if (useHttps) {
           logger.info('   🔐 Client certificates: Required and validated');
@@ -234,6 +248,7 @@ export async function stopInternalServer(): Promise<void> {
     internalServer!.close(() => {
       logger.info(`Internal ${protocol} server stopped`);
       internalServer = null;
+      internalSocketHandler = null;
       resolve();
     });
   });

@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import { HealthChecker, HealthCheckResult, HealthStatus } from '../Health.types';
-import db from '../../../config/db';
+import { getAuthConnectionStatus, getModels } from '../../../config/db.config';
 
 export class DatabaseHealthChecker implements HealthChecker {
   name = 'database';
@@ -11,23 +11,21 @@ export class DatabaseHealthChecker implements HealthChecker {
 
     try {
       // Check if database connections are ready
-      const models = await db.getModels();
+      const models = await getModels();
 
       // Test a simple query to ensure database is responsive
       await models.accounts.Account.findOne().limit(1);
 
       const responseTime = Date.now() - start;
 
-      // Check connection states
-      const connections = db.connections;
-      const accountsState = connections.accounts?.readyState;
+      const connectionState = getAuthConnectionStatus().readyState;
 
-      if (accountsState !== mongoose.ConnectionStates.connected) {
+      if (connectionState !== mongoose.ConnectionStates.connected) {
         return {
           status: HealthStatus.UNHEALTHY,
           message: 'Database connection not established',
           details: {
-            accounts_state: accountsState,
+            accounts_state: connectionState,
             connection_states: mongoose.ConnectionStates,
           },
           timestamp: new Date().toISOString(),

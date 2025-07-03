@@ -2,7 +2,7 @@ import { ApiErrorCode, BadRequestError, ValidationError } from '../../types/resp
 import { toSafeAccount } from './Account.utils';
 import { AccountDocument } from './Account.model';
 import { Account, AllowedAccountUpdates } from './Account.types';
-import db from '../../config/db';
+import { getModels } from '../../config/db.config';
 import { ValidationUtils } from '../../utils/validation';
 
 /**
@@ -11,7 +11,7 @@ import { ValidationUtils } from '../../utils/validation';
 export async function searchAccountByEmail(email: string) {
   ValidationUtils.validateEmail(email);
 
-  const models = await db.getModels();
+  const models = await getModels();
   const account = await models.accounts.Account.findOne({
     'userDetails.email': email,
   });
@@ -95,7 +95,7 @@ export async function updateAccount(account: AccountDocument, updates: any): Pro
       ValidationUtils.validateStringLength(updates.username, 'Username', 3, 30);
 
       // Check if username is already taken by another account
-      const models = await db.getModels();
+      const models = await getModels();
       const existingAccount = await models.accounts.Account.findOne({
         'userDetails.username': updates.username,
         _id: { $ne: account._id },
@@ -141,7 +141,7 @@ export function getAccountEmail(account: AccountDocument): string {
  * Find user by email (unified search)
  */
 export const findUserByEmail = async (email: string): Promise<Account | null> => {
-  const models = await db.getModels();
+  const models = await getModels();
 
   const accountDoc = await models.accounts.Account.findOne({
     'userDetails.email': email,
@@ -158,7 +158,7 @@ export const findUserByEmail = async (email: string): Promise<Account | null> =>
  * Find user by ID (unified search)
  */
 export const findUserById = async (id: string): Promise<Account | null> => {
-  const models = await db.getModels();
+  const models = await getModels();
 
   try {
     const accountDoc = await models.accounts.Account.findById(id);

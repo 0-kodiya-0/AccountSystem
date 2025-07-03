@@ -69,10 +69,8 @@ vi.mock('../../../config/env.config', () => ({
   getProxyUrl: vi.fn(() => 'http://localhost:3000'),
 }));
 
-vi.mock('../../../config/db', () => ({
-  default: {
-    getModels: vi.fn(),
-  },
+vi.mock('../../../config/db.config', () => ({
+  getModels: vi.fn(),
 }));
 
 // Import mocked modules
@@ -87,7 +85,7 @@ import {
   checkForAdditionalGoogleScopes,
 } from '../../google/services/tokenInfo/tokenInfo.services';
 import { saveTwoFactorTempToken } from '../../twofa/TwoFA.cache';
-import db from '../../../config/db';
+import { getModels } from '../../../config/db.config';
 
 describe('OAuth Service', () => {
   beforeEach(() => {
@@ -314,7 +312,7 @@ describe('OAuth Service', () => {
       const mockTokenInfo = { expires_in: 3600 };
 
       vi.mocked(validateAccount).mockReturnValue(true);
-      vi.mocked(db.getModels).mockResolvedValue({
+      vi.mocked(getModels).mockResolvedValue({
         accounts: {
           Account: {
             create: vi.fn().mockResolvedValue(mockAccount),
@@ -383,7 +381,7 @@ describe('OAuth Service', () => {
       };
 
       vi.mocked(findUserByEmail).mockResolvedValue(mockUser as any);
-      vi.mocked(db.getModels).mockResolvedValue({
+      vi.mocked(getModels).mockResolvedValue({
         accounts: {
           Account: {
             findById: vi.fn().mockResolvedValue(mockAccount),
@@ -433,7 +431,7 @@ describe('OAuth Service', () => {
       };
 
       vi.mocked(findUserByEmail).mockResolvedValue(mockUser as any);
-      vi.mocked(db.getModels).mockResolvedValue({
+      vi.mocked(getModels).mockResolvedValue({
         accounts: {
           Account: {
             findById: vi.fn().mockResolvedValue(mockAccount),

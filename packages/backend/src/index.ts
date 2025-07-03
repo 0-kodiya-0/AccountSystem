@@ -1,113 +1,92 @@
-import { envConfig } from './config/env.config';
-
-envConfig.initialize();
-
-import { logger } from './utils/logger';
 import { startMainServer, stopMainServer } from './app';
 import { startInternalServer, stopInternalServer } from './app-internal';
-import db from './config/db';
+import { logger } from './utils/logger';
+import { processCleanup, registerCustomCleanup } from './utils/processCleanup';
+import { closeAllConnections } from './config/db.config';
 
 /**
- * Start both servers with proper error handling
+ * Start both main and internal servers
  */
 export async function startServer(): Promise<void> {
   try {
-    logger.info('Starting AccountSystem Backend Server...');
+    logger.info('🚀 Starting AccountSystem Backend Server...');
 
-    // Start main HTTP server
+    // Initialize cleanup system status logging
+    const initialStatus = processCleanup.getStatus();
+    logger.info(`🛡️  Process cleanup system initialized (${initialStatus.registeredResources} resources monitored)`);
+
+    // Start main server
     await startMainServer();
-    logger.info('Main HTTP server started successfully');
+    logger.info('✅ Main server started successfully');
 
-    // Start internal HTTPS server (if enabled and configured)
-    try {
-      await startInternalServer();
-      logger.info('Internal HTTPS server started successfully');
-    } catch (error) {
-      logger.warn('Failed to start internal HTTPS server:', error);
-      logger.info('Continuing without internal server...');
-      // Don't throw here - internal server failure shouldn't crash the main server
-    }
+    // Start internal server (if enabled)
+    await startInternalServer();
+    logger.info('✅ Internal server started successfully');
 
-    logger.info('🚀 AccountSystem Backend Server started successfully');
+    // Register database cleanup
+    registerCustomCleanup('database-cleanup', async () => {
+      logger.info('Closing all database connections...');
+      await closeAllConnections();
+      logger.info('All database connections closed');
+    });
 
-    // Log enabled features
-    const features = [];
-    if (process.env.DISABLE_OAUTH !== 'true') features.push('OAuth');
-    if (process.env.DISABLE_LOCAL_AUTH !== 'true') features.push('Local Auth');
-    if (process.env.DISABLE_NOTIFICATIONS !== 'true') features.push('Notifications');
-    // Check if internal server is actually enabled
-    if (
-      process.env.INTERNAL_SERVER_ENABLED !== 'false' &&
-      process.env.INTERNAL_SERVER_KEY_PATH &&
-      process.env.INTERNAL_SERVER_CERT_PATH &&
-      process.env.INTERNAL_CA_CERT_PATH
-    ) {
-      features.push('Internal Server');
-    }
+    // Log final cleanup status
+    const finalStatus = processCleanup.getStatus();
+    logger.info(`🛡️  All servers started with ${finalStatus.registeredResources} resources monitored for cleanup`);
 
-    logger.info(`Enabled features: ${features.join(', ')}`);
+    logger.info('🎉 Backend server startup completed successfully!');
+    logger.info('💡 Use Ctrl+C to gracefully shutdown all services');
   } catch (error) {
-    logger.error('Failed to start servers:', error);
+    logger.error('❌ Failed to start backend server:', error);
+
+    // Attempt cleanup on startup failure
+    try {
+      await processCleanup.cleanup('Startup failure');
+    } catch (cleanupError) {
+      logger.error('Cleanup after startup failure also failed:', cleanupError);
+    }
+
     throw error;
   }
 }
 
 /**
- * Stop all servers
+ * Stop both main and internal servers
  */
 export async function stopServer(): Promise<void> {
-  logger.info('Stopping backend servers...');
+  try {
+    logger.info('🛑 Stopping AccountSystem Backend Server...');
 
-  const shutdownPromises = [];
+    // Stop internal server first (less critical)
+    try {
+      await stopInternalServer();
+      logger.info('✅ Internal server stopped');
+    } catch (error) {
+      logger.error('❌ Error stopping internal server:', error);
+    }
 
-  // Stop main server
-  shutdownPromises.push(
-    stopMainServer().catch((error) => {
-      logger.error('Error stopping main server:', error);
-    }),
-  );
+    // Stop main server
+    try {
+      await stopMainServer();
+      logger.info('✅ Main server stopped');
+    } catch (error) {
+      logger.error('❌ Error stopping main server:', error);
+    }
 
-  // Stop internal server
-  shutdownPromises.push(
-    stopInternalServer().catch((error) => {
-      logger.error('Error stopping internal server:', error);
-    }),
-  );
+    // Close database connections
+    try {
+      await closeAllConnections();
+      logger.info('✅ Database connections closed');
+    } catch (error) {
+      logger.error('❌ Error closing database connections:', error);
+    }
 
-  // Close database connections
-  shutdownPromises.push(
-    db
-      .close()
-      .then(() => {
-        logger.info('Database connections closed');
-      })
-      .catch((error) => {
-        logger.error('Error closing database connections:', error);
-      }),
-  );
-
-  await Promise.all(shutdownPromises);
+    logger.info('✅ Backend server shutdown completed');
+  } catch (error) {
+    logger.error('❌ Error during server shutdown:', error);
+    throw error;
+  }
 }
 
-// Graceful shutdown handling when used as a module
-process.on('SIGTERM', async () => {
-  logger.info('Received SIGTERM, shutting down gracefully');
-  try {
-    await stopServer();
-    process.exit(0);
-  } catch (error) {
-    logger.error('Error during graceful shutdown:', error);
-    process.exit(1);
-  }
-});
-
-process.on('SIGINT', async () => {
-  logger.info('Received SIGINT, shutting down gracefully');
-  try {
-    await stopServer();
-    process.exit(0);
-  } catch (error) {
-    logger.error('Error during graceful shutdown:', error);
-    process.exit(1);
-  }
-});
+// Export server functions
+export { startMainServer, stopMainServer, startInternalServer, stopInternalServer };

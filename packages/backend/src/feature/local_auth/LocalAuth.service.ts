@@ -1,6 +1,6 @@
 import bcrypt from 'bcrypt';
 import { AccountStatus, AccountType, Account } from '../account/Account.types';
-import db from '../../config/db';
+import { getModels } from '../../config/db.config';
 import { BadRequestError, NotFoundError, ValidationError, ApiErrorCode, ServerError } from '../../types/response.types';
 import { toSafeAccount } from '../account/Account.utils';
 import {
@@ -39,7 +39,7 @@ export async function requestEmailVerification(email: string, callbackUrl: strin
   ValidationUtils.validateUrl(callbackUrl, 'Callback URL');
 
   // Check if email already exists in database
-  const models = await db.getModels();
+  const models = await getModels();
   const existingAccount = await models.accounts.Account.findOne({
     'userDetails.email': email,
   });
@@ -123,7 +123,7 @@ export async function completeProfileAndCreateAccount(
   profileToken: string,
   profileData: CompleteProfileRequest,
 ): Promise<Account> {
-  const models = await db.getModels();
+  const models = await getModels();
 
   ValidationUtils.validateRequiredFields(profileData, ['firstName', 'lastName', 'password', 'confirmPassword']);
 
@@ -225,7 +225,7 @@ export async function cancelEmailVerification(email: string): Promise<boolean> {
 export async function authenticateLocalUser(
   authData: LocalAuthRequest,
 ): Promise<Account | { requiresTwoFactor: true; tempToken: string; accountId: string }> {
-  const models = await db.getModels();
+  const models = await getModels();
 
   // Use ValidationUtils for validation
   if (!authData.email && !authData.username) {
@@ -335,7 +335,7 @@ export async function authenticateLocalUser(
  * Request a password reset with callback URL
  */
 export async function requestPasswordReset(data: PasswordResetRequest) {
-  const models = await db.getModels();
+  const models = await getModels();
 
   ValidationUtils.validateRequiredFields(data, ['email', 'callbackUrl']);
   ValidationUtils.validateEmail(data.email);
@@ -431,7 +431,7 @@ export async function verifyPasswordResetRequest(
  * Reset password with cached token
  */
 export async function resetPassword(token: string, newPassword: string): Promise<boolean> {
-  const models = await db.getModels();
+  const models = await getModels();
 
   ValidationUtils.validateRequiredFields({ token, newPassword }, ['token', 'newPassword']);
   ValidationUtils.validatePasswordStrength(newPassword);
@@ -510,7 +510,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
  * Change password - now handles notification email failures properly
  */
 export async function changePassword(accountId: string, data: PasswordChangeRequest): Promise<boolean> {
-  const models = await db.getModels();
+  const models = await getModels();
 
   ValidationUtils.validateObjectId(accountId, 'Account ID');
   ValidationUtils.validateRequiredFields(data, ['oldPassword', 'newPassword']);

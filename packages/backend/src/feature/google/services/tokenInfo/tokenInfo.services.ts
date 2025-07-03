@@ -1,7 +1,7 @@
 import { google } from 'googleapis';
 import { ApiErrorCode, ProviderValidationError } from '../../../../types/response.types';
 import { OAuthProviders } from '../../../account/Account.types';
-import db from '../../../../config/db';
+import { getModels } from '../../../../config/db.config';
 import { getGoogleClientId, getGoogleClientSecret, getNodeEnv } from '../../../../config/env.config';
 import { getOAuthMockConfig } from '../../../../config/mock.config';
 import { logger } from '../../../../utils/logger';
@@ -112,7 +112,7 @@ export async function updateAccountScopes(accountId: string, accessToken: string
     }
 
     // Get database models
-    const models = await db.getModels();
+    const models = await getModels();
 
     // Check if permissions already exist
     const existingPermissions = await models.google.GooglePermissions.findOne({
@@ -154,7 +154,7 @@ export async function updateAccountScopes(accountId: string, accessToken: string
  */
 export async function getGoogleAccountScopes(accountId: string): Promise<string[]> {
   try {
-    const models = await db.getModels();
+    const models = await getModels();
 
     const permissions = await models.google.GooglePermissions.findOne({
       accountId,
@@ -378,7 +378,7 @@ export async function verifyGoogleTokenOwnership(
       return { isValid: true };
     }
 
-    const models = await db.getModels();
+    const models = await getModels();
 
     const account = await models.accounts.Account.findOne({ _id: accountId });
 

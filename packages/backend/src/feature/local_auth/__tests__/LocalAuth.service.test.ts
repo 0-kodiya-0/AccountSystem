@@ -7,7 +7,7 @@ import * as EmailService from '../../email/Email.service';
 import * as EmailUtils from '../../email/Email.utils';
 import { AccountType, AccountStatus } from '../../account/Account.types';
 import { BadRequestError, NotFoundError, ValidationError, ServerError } from '../../../types/response.types';
-import db from '../../../config/db';
+import { getModels } from '../../../config/db.config';
 
 // Mock dependencies
 vi.mock('bcrypt', () => ({
@@ -16,10 +16,8 @@ vi.mock('bcrypt', () => ({
   },
 }));
 
-vi.mock('../../../config/db', () => ({
-  default: {
-    getModels: vi.fn(),
-  },
+vi.mock('../../../config/db.config', () => ({
+  getModels: vi.fn(),
 }));
 
 vi.mock('../LocalAuth.cache', () => ({
@@ -101,7 +99,7 @@ describe('Local Auth Service', () => {
     };
 
     // Mock database models
-    vi.mocked(db.getModels).mockResolvedValue({
+    vi.mocked(getModels).mockResolvedValue({
       accounts: {
         Account: mockAccountModel,
       },
@@ -825,7 +823,7 @@ describe('Local Auth Service', () => {
 
   describe('Error Handling and Edge Cases', () => {
     it('should handle database connection errors', async () => {
-      vi.mocked(db.getModels).mockRejectedValue(new Error('Database connection failed'));
+      vi.mocked(getModels).mockRejectedValue(new Error('Database connection failed'));
 
       await expect(LocalAuthService.requestEmailVerification(mockEmail, mockCallbackUrl)).rejects.toThrow(
         'Database connection failed',

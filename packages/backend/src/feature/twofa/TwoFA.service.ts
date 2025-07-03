@@ -7,7 +7,7 @@ import { AccountType } from '../account/Account.types';
 import { getAppName } from '../../config/env.config';
 import { verifyGoogleTokenOwnership } from '../google/services/tokenInfo/tokenInfo.services';
 import { AccountDocument } from '../account/Account.model';
-import db from '../../config/db';
+import { getModels } from '../../config/db.config';
 import {
   SetupTwoFactorRequest,
   VerifySetupTwoFactorRequest,
@@ -33,7 +33,7 @@ import { logger } from '../../utils/logger';
 export async function getTwoFactorStatus(accountId: string): Promise<TwoFactorStatusResponse> {
   ValidationUtils.validateObjectId(accountId, 'Account ID');
 
-  const models = await db.getModels();
+  const models = await getModels();
   const account = await models.accounts.Account.findById(accountId);
 
   if (!account) {
@@ -59,7 +59,7 @@ export async function setupTwoFactor(
   ValidationUtils.validateObjectId(accountId, 'Account ID');
   ValidationUtils.validateRequiredFields(data, ['enableTwoFactor']);
 
-  const models = await db.getModels();
+  const models = await getModels();
   const account = await models.accounts.Account.findById(accountId);
 
   if (!account) {
@@ -98,7 +98,7 @@ export async function verifyAndEnableTwoFactor(
     throw new ValidationError('Setup token does not belong to this account', 401, ApiErrorCode.TOKEN_INVALID);
   }
 
-  const models = await db.getModels();
+  const models = await getModels();
   const account = await models.accounts.Account.findById(accountId);
 
   if (!account) {
@@ -140,7 +140,7 @@ export async function generateBackupCodes(
 ): Promise<BackupCodesResponse> {
   ValidationUtils.validateObjectId(accountId, 'Account ID');
 
-  const models = await db.getModels();
+  const models = await getModels();
   const account = await models.accounts.Account.findById(accountId);
 
   if (!account) {
@@ -195,7 +195,7 @@ export async function verifyTwoFactorLogin(data: VerifyTwoFactorLoginRequest): P
 
   const { accountId, email, accountType } = tempTokenData;
 
-  const models = await db.getModels();
+  const models = await getModels();
   const account = await models.accounts.Account.findById(accountId);
 
   if (!account || !account.security.twoFactorEnabled || !account.security.twoFactorSecret) {

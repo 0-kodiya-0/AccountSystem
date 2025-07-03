@@ -25,7 +25,7 @@ import {
 } from '../google/config';
 import { saveOAuthState, savePermissionState } from './OAuth.cache';
 import { getBaseUrl, getProxyUrl } from '../../config/env.config';
-import db from '../../config/db';
+import { getModels } from '../../config/db.config';
 import { validateUserForAuthType } from './OAuth.validation';
 
 /**
@@ -323,7 +323,7 @@ export async function processPermissionCallback(
  * Process signup
  */
 export async function processSignup(providerResponse: any, provider: OAuthProviders) {
-  const models = await db.getModels();
+  const models = await getModels();
 
   const newAccount: Omit<Account, 'id'> = {
     created: new Date().toISOString(),
@@ -387,7 +387,7 @@ export async function processSignIn(providerResponse: any) {
   }
 
   // Check for 2FA
-  const models = await db.getModels();
+  const models = await getModels();
   const account = await models.accounts.Account.findById(user.id);
 
   if (account?.security.twoFactorEnabled) {

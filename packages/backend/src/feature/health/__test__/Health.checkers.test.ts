@@ -6,7 +6,7 @@ import { SocketHealthChecker } from '../checkers/SocketHealthChecker';
 import { MockServicesHealthChecker } from '../checkers/MockServicesHealthChecker';
 import { InternalApiHealthChecker } from '../checkers/InternalApiHealthChecker';
 import { HealthStatus } from '../Health.types';
-import db from '../../../config/db';
+import { closeAllConnections, getModels } from '../../../config/db.config';
 import socketConfig from '../../../config/socket.config';
 import {
   envConfig,
@@ -22,13 +22,8 @@ import { oauthMockService } from '../../../mocks/oauth/OAuthMockService';
 import { emailMock } from '../../../mocks/email/EmailServiceMock';
 
 // Mock dependencies
-vi.mock('../../../config/db', () => ({
-  default: {
-    getModels: vi.fn(),
-    connections: {
-      accounts: null,
-    },
-  },
+vi.mock('../../../config/db.config', () => ({
+  getModels: vi.fn(),
 }));
 
 vi.mock('../../../config/socket.config', () => ({
@@ -104,11 +99,9 @@ describe('Health Checkers', () => {
         findOne: vi.fn().mockResolvedValue({}),
       };
 
-      vi.mocked(db.getModels).mockResolvedValue({
+      vi.mocked(getModels).mockResolvedValue({
         accounts: { Account: mockAccountModel },
       } as any);
-
-      db.connections.accounts = { readyState: mongoose.ConnectionStates.connected } as any;
 
       const result = await checker.check();
 
@@ -123,11 +116,9 @@ describe('Health Checkers', () => {
     });
 
     it('should return unhealthy status when database is not connected', async () => {
-      vi.mocked(db.getModels).mockResolvedValue({
+      vi.mocked(getModels).mockResolvedValue({
         accounts: { Account: {} },
       } as any);
-
-      db.connections.accounts = { readyState: mongoose.ConnectionStates.disconnected } as any;
 
       const result = await checker.check();
 
@@ -144,7 +135,7 @@ describe('Health Checkers', () => {
         findOne: vi.fn().mockRejectedValue(new Error('Connection timeout')),
       };
 
-      vi.mocked(db.getModels).mockResolvedValue({
+      vi.mocked(getModels).mockResolvedValue({
         accounts: { Account: mockAccountModel },
       } as any);
 
@@ -159,11 +150,11 @@ describe('Health Checkers', () => {
     });
 
     it('should handle null database connection', async () => {
-      vi.mocked(db.getModels).mockResolvedValue({
+      vi.mocked(getModels).mockResolvedValue({
         accounts: { Account: {} },
       } as any);
 
-      db.connections.accounts = null;
+      closeAllConnections();
 
       const result = await checker.check();
 
@@ -172,7 +163,7 @@ describe('Health Checkers', () => {
     });
 
     it('should handle getModels failure', async () => {
-      vi.mocked(db.getModels).mockRejectedValue(new Error('Models not initialized'));
+      vi.mocked(getModels).mockRejectedValue(new Error('Models not initialized'));
 
       const result = await checker.check();
 
@@ -586,10 +577,9 @@ describe('Health Checkers', () => {
       ];
 
       // Setup mocks for successful checks
-      vi.mocked(db.getModels).mockResolvedValue({
+      vi.mocked(getModels).mockResolvedValue({
         accounts: { Account: { findOne: vi.fn().mockResolvedValue({}) } },
       } as any);
-      db.connections.accounts = { readyState: mongoose.ConnectionStates.connected } as any;
       vi.mocked(envConfig.getAll).mockReturnValue({
         JWT_SECRET: 'test',
         SESSION_SECRET: 'test',
@@ -615,16 +605,15 @@ describe('Health Checkers', () => {
       const checker = new DatabaseHealthChecker();
 
       // First call fails
-      vi.mocked(db.getModels).mockRejectedValueOnce(new Error('Temporary failure'));
+      vi.mocked(getModels).mockRejectedValueOnce(new Error('Temporary failure'));
 
       let result = await checker.check();
       expect(result.status).toBe(HealthStatus.UNHEALTHY);
 
       // Second call succeeds
-      vi.mocked(db.getModels).mockResolvedValue({
+      vi.mocked(getModels).mockResolvedValue({
         accounts: { Account: { findOne: vi.fn().mockResolvedValue({}) } },
       } as any);
-      db.connections.accounts = { readyState: mongoose.ConnectionStates.connected } as any;
 
       result = await checker.check();
       expect(result.status).toBe(HealthStatus.HEALTHY);
