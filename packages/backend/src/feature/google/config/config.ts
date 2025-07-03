@@ -25,11 +25,11 @@ export function getGoogleOAuthEndpoints() {
     // Use mock endpoints for development/testing
     const mockBaseUrl = `${getProxyUrl()}${getApiBasePATH()}`;
     return {
-      authorizationEndpoint: `${mockBaseUrl}/mock/oauth/authorize`,
-      tokenEndpoint: `${mockBaseUrl}/mock/oauth/token`,
-      userinfoEndpoint: `${mockBaseUrl}/mock/oauth/userinfo`,
-      tokeninfoEndpoint: `${mockBaseUrl}/mock/oauth/tokeninfo`,
-      revokeEndpoint: `${mockBaseUrl}/mock/oauth/revoke`,
+      authorizationEndpoint: `${mockBaseUrl}/mock/oauth/google/authorize`,
+      tokenEndpoint: `${mockBaseUrl}/mock/oauth/google/token`,
+      userinfoEndpoint: `${mockBaseUrl}/mock/oauth/google/userinfo`,
+      tokeninfoEndpoint: `${mockBaseUrl}/mock/oauth/google/tokeninfo`,
+      revokeEndpoint: `${mockBaseUrl}/mock/oauth/google/revoke`,
       isMock: true,
     };
   } else {
