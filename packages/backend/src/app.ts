@@ -2,7 +2,7 @@
 import { getPort } from './config/env.config';
 
 import http, { Server } from 'http';
-import express from 'express';
+import express, { Express } from 'express';
 import cookieParser from 'cookie-parser';
 
 import { initializeDB } from './config/db.config';
@@ -32,11 +32,12 @@ import { logger } from './utils/logger';
 import { applyErrorHandlers, asyncHandler } from './utils/response';
 
 let httpServer: Server | null = null;
+let app: Express | null = null;
 
 /**
  * Create the main Express app
  */
-function createMainApp(): express.Application {
+function createMainApp(): Express {
   const app = express();
 
   app.set('trust proxy', true);
@@ -149,10 +150,13 @@ function createMainApp(): express.Application {
 /**
  * Start the main HTTP server
  */
-export async function startMainServer(): Promise<void> {
+export async function startMainServer() {
   if (httpServer) {
-    logger.warn('Main server is already running');
-    return;
+    if (app) {
+      logger.warn('Main server is already running');
+      return app;
+    }
+    throw new Error('Server error');
   }
 
   // Initialize database connections and models
@@ -160,7 +164,7 @@ export async function startMainServer(): Promise<void> {
   logger.info('Database connections established and models initialized');
 
   // Create Express app
-  const app = createMainApp();
+  app = createMainApp();
 
   // Create HTTP server
   httpServer = http.createServer(app);
@@ -212,6 +216,8 @@ export async function startMainServer(): Promise<void> {
       reject(error);
     });
   });
+
+  return app;
 }
 
 /**
