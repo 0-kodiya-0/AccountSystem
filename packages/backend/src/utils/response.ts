@@ -31,13 +31,28 @@ export const createSuccessResponse = <T>(data: T): ApiResponse<T> => ({
   data,
 });
 
-export const createErrorResponse = <T>(code: ApiErrorCode, message: T): ApiResponse => ({
-  success: false,
-  error: {
-    code,
-    message,
-  },
-});
+export const createErrorResponse = <T>(code: ApiErrorCode, message: T): ApiResponse => {
+  // If message is an object, spread it directly into the error object
+  if (typeof message === 'object' && message !== null) {
+    return {
+      success: false,
+      error: {
+        code,
+        message: '',
+        ...message,
+      },
+    };
+  }
+
+  // For primitive types (string, number, etc.), wrap in message field
+  return {
+    success: false,
+    error: {
+      code,
+      message,
+    },
+  };
+};
 
 export const sendSuccess = <T>(res: Response, status: number, data: T): void => {
   res.status(status).send(createSuccessResponse(data));
