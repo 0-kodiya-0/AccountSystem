@@ -7,7 +7,7 @@ import {
   getSessionSecret,
   getPort,
   getNodeEnv,
-  getBaseUrl,
+  getApiBasePATH,
   getProxyUrl,
   getAppName,
   getAccountsDbUri,
@@ -101,7 +101,7 @@ describe('env.config', () => {
       process.env.SESSION_SECRET = 'test-session-secret';
       process.env.PORT = '3001';
       process.env.NODE_ENV = 'test';
-      process.env.BASE_URL = '/test-api';
+      process.env.API_BASE_PATH = '/test-api';
       process.env.PROXY_URL = 'http://test-proxy:8000';
       process.env.APP_NAME = 'TestApp';
       process.env.ACCOUNTS_DB_URI = 'mongodb://test-db/accounts';
@@ -149,7 +149,7 @@ describe('env.config', () => {
     });
 
     it('should return correct base URL', () => {
-      expect(getBaseUrl()).toBe('/test-api');
+      expect(getApiBasePATH()).toBe('/test-api');
     });
 
     it('should return correct proxy URL', () => {
@@ -225,7 +225,7 @@ describe('env.config', () => {
       process.env.SESSION_SECRET = 'test-session-secret';
       process.env.GOOGLE_CLIENT_ID = 'test-google-client-id';
       process.env.GOOGLE_CLIENT_SECRET = 'test-google-secret';
-      process.env.BASE_URL = '/api';
+      process.env.API_BASE_PATH = '/api';
       process.env.APP_NAME = 'TestApp';
       process.env.SMTP_HOST = 'test-smtp-host';
       process.env.SMTP_PORT = '587';
@@ -313,7 +313,7 @@ describe('env.config', () => {
       process.env.SESSION_SECRET = 'test-session-secret';
       process.env.GOOGLE_CLIENT_ID = 'test-google-client-id';
       process.env.GOOGLE_CLIENT_SECRET = 'test-google-secret';
-      process.env.BASE_URL = '/api';
+      process.env.API_BASE_PATH = '/api';
       process.env.APP_NAME = 'TestApp';
       process.env.SMTP_HOST = 'test-smtp-host';
       process.env.SMTP_PORT = '587';

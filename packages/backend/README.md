@@ -35,7 +35,7 @@ JWT_SECRET=your-super-secret-jwt-key
 SESSION_SECRET=your-session-secret
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
-BASE_URL=/api
+API_BASE_PATH=/api
 APP_NAME=YourApp
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
@@ -123,7 +123,7 @@ The server consists of two main components:
 - `SESSION_SECRET` - Session secret key
 - `GOOGLE_CLIENT_ID` - Google OAuth client ID
 - `GOOGLE_CLIENT_SECRET` - Google OAuth client secret
-- `BASE_URL` - API base URL path
+- `API_BASE_PATH` - API base URL path
 - `APP_NAME` - Application name
 - `SMTP_*` - Email configuration
 - `MONGODB_USERNAME/PASSWORD` - Database credentials

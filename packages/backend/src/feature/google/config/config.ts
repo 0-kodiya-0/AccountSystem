@@ -1,4 +1,4 @@
-import { getBaseUrl, getGoogleClientId, getProxyUrl, getNodeEnv } from '../../../config/env.config';
+import { getApiBasePATH, getGoogleClientId, getProxyUrl, getNodeEnv } from '../../../config/env.config';
 import { getOAuthMockConfig } from '../../../config/mock.config';
 
 /**
@@ -23,7 +23,7 @@ export function getGoogleOAuthEndpoints() {
 
   if (useMock) {
     // Use mock endpoints for development/testing
-    const mockBaseUrl = `${getProxyUrl()}${getBaseUrl()}`;
+    const mockBaseUrl = `${getProxyUrl()}${getApiBasePATH()}`;
     return {
       authorizationEndpoint: `${mockBaseUrl}/mock/oauth/authorize`,
       tokenEndpoint: `${mockBaseUrl}/mock/oauth/token`,
@@ -169,7 +169,7 @@ export function buildGoogleOAuthUrl(options: GoogleOAuthUrlOptions): string {
     client_id: getGoogleClientId(),
     response_type: responseType,
     state: state,
-    redirect_uri: `${getProxyUrl()}${getBaseUrl()}${redirectPath}`,
+    redirect_uri: `${getProxyUrl()}${getApiBasePATH()}${redirectPath}`,
   };
 
   if (scopes.length > 0) {

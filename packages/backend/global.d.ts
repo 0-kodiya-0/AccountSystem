@@ -9,7 +9,7 @@ declare global {
 
       // Database configuration
       MONGODB_URI?: string;
-      BASE_URL?: string;
+      API_BASE_PATH?: string;
       PROXY_URL?: string;
 
       // JWT and session configuration

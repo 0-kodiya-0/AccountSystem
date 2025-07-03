@@ -194,7 +194,7 @@ describe('Health Checkers', () => {
         SESSION_SECRET: 'test-session',
         GOOGLE_CLIENT_ID: 'test-client-id',
         GOOGLE_CLIENT_SECRET: 'test-client-secret',
-        BASE_URL: 'http://localhost:3000',
+        API_BASE_PATH: 'http://localhost:3000',
         APP_NAME: 'TestApp',
         NODE_ENV: 'test',
       });
@@ -243,7 +243,7 @@ describe('Health Checkers', () => {
           'SESSION_SECRET',
           'GOOGLE_CLIENT_ID',
           'GOOGLE_CLIENT_SECRET',
-          'BASE_URL',
+          'API_BASE_PATH',
           'APP_NAME',
         ]),
       );
@@ -270,7 +270,7 @@ describe('Health Checkers', () => {
         SESSION_SECRET: 'test-session',
         GOOGLE_CLIENT_ID: 'test-client-id',
         GOOGLE_CLIENT_SECRET: 'test-client-secret',
-        BASE_URL: 'http://localhost:3000',
+        API_BASE_PATH: 'http://localhost:3000',
         APP_NAME: 'TestApp',
         NODE_ENV: 'production',
       });
@@ -585,7 +585,7 @@ describe('Health Checkers', () => {
         SESSION_SECRET: 'test',
         GOOGLE_CLIENT_ID: 'test',
         GOOGLE_CLIENT_SECRET: 'test',
-        BASE_URL: 'test',
+        API_BASE_PATH: 'test',
         APP_NAME: 'test',
       });
       vi.mocked(socketConfig.isExternalSocketIOInitialized).mockReturnValue(true);

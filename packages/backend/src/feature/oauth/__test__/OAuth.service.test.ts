@@ -65,7 +65,7 @@ vi.mock('../../google/config', () => ({
 }));
 
 vi.mock('../../../config/env.config', () => ({
-  getBaseUrl: vi.fn(() => '/api'),
+  getApiBasePATH: vi.fn(() => '/api'),
   getProxyUrl: vi.fn(() => 'http://localhost:3000'),
 }));
 

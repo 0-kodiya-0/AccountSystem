@@ -24,7 +24,7 @@ The AccountSystem Backend Server is built with a dual-server architecture to sep
 
 - **Port**: 3000
 - **Protocol**: HTTP
-- **Base Path**: Configurable via `BASE_URL` (default: `/api`)
+- **Base Path**: Configurable via `API_BASE_PATH` (default: `/api`)
 - **WebSocket**: Enabled for real-time features
 
 ### Internal HTTPS Server
@@ -118,7 +118,7 @@ GOOGLE_CLIENT_ID=your-google-oauth-client-id
 GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
 
 # Application Settings
-BASE_URL=/api
+API_BASE_PATH=/api
 APP_NAME=YourApplicationName
 
 # Email Settings

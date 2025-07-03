@@ -24,7 +24,7 @@ import {
   validateScopeNames,
 } from '../google/config';
 import { saveOAuthState, savePermissionState } from './OAuth.cache';
-import { getBaseUrl, getProxyUrl } from '../../config/env.config';
+import { getApiBasePATH, getProxyUrl } from '../../config/env.config';
 import { getModels } from '../../config/db.config';
 import { validateUserForAuthType } from './OAuth.validation';
 
@@ -153,7 +153,10 @@ export async function processOAuthCallback(
   stateDetails: OAuthState,
 ) {
   // Exchange code for tokens
-  const { tokens, userInfo } = await exchangeGoogleCode(code, `${getProxyUrl()}${getBaseUrl()}/oauth/callback/google`);
+  const { tokens, userInfo } = await exchangeGoogleCode(
+    code,
+    `${getProxyUrl()}${getApiBasePATH()}/oauth/callback/google`,
+  );
 
   const providerResponse = {
     email: userInfo.email || '',
@@ -252,7 +255,7 @@ export async function processPermissionCallback(
   const callbackUrl = permissionDetails.callbackUrl || `${getProxyUrl()}/auth/callback`;
 
   // Exchange code for tokens
-  const redirectUri = `${getProxyUrl()}${getBaseUrl()}/oauth/permission/callback/google`;
+  const redirectUri = `${getProxyUrl()}${getApiBasePATH()}/oauth/permission/callback/google`;
   const { tokens } = await exchangeGoogleCode(code, redirectUri);
 
   // Verify user exists

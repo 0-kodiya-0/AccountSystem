@@ -18,7 +18,7 @@ export class EnvironmentHealthChecker implements HealthChecker {
         'SESSION_SECRET',
         'GOOGLE_CLIENT_ID',
         'GOOGLE_CLIENT_SECRET',
-        'BASE_URL',
+        'API_BASE_PATH',
         'APP_NAME',
       ];
 

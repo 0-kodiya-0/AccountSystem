@@ -2,7 +2,6 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-import { logger } from '../utils/logger';
 
 // ES module equivalents
 const __filename = fileURLToPath(import.meta.url);
@@ -19,7 +18,7 @@ export const REQUIRED_ENV_VARS = [
   'GOOGLE_CLIENT_SECRET',
 
   // Application URLs
-  'BASE_URL',
+  'API_BASE_PATH',
 
   // Application Identity
   'APP_NAME',
@@ -43,7 +42,7 @@ export const OPTIONAL_ENV_VARS = {
   PORT: '3000',
 
   // Frontend & Proxy URLs
-  PROXY_URL: 'http://localhost:7000',
+  PROXY_URL: '',
 
   // Database URIs (have hardcoded fallbacks in db.config.ts)
   ACCOUNTS_DB_URI: '',
@@ -135,9 +134,7 @@ class EnvironmentConfig {
 
     // Exit if missing required variables
     if (missingVars.length > 0) {
-      logger.error('Missing required environment variables:');
-      missingVars.forEach((varName) => logger.error(`  - ${varName}`));
-      process.exit(1);
+      throw new Error(`Missing required environment variables: ${missingVars}`);
     }
 
     this.isInitialized = true;
@@ -188,7 +185,7 @@ export const getJwtSecret = (): string => envConfig.get('JWT_SECRET');
 export const getSessionSecret = (): string => envConfig.get('SESSION_SECRET');
 export const getPort = (): number => parseInt(envConfig.get('PORT'));
 export const getNodeEnv = (): string => envConfig.get('NODE_ENV');
-export const getBaseUrl = (): string => envConfig.get('BASE_URL');
+export const getApiBasePATH = (): string => envConfig.get('API_BASE_PATH');
 export const getProxyUrl = (): string => envConfig.get('PROXY_URL');
 export const getAppName = (): string => envConfig.get('APP_NAME');
 

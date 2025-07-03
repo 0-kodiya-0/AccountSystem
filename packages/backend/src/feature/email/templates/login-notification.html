@@ -1,27 +1,13 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>New Login Detected</title>
   </head>
-  <body
-    style="
-      margin: 0;
-      padding: 0;
-      font-family: Arial, sans-serif;
-      background-color: #f9f9f9;
-    "
-  >
+  <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f9f9f9">
     <div style="max-width: 600px; margin: 0 auto; padding: 20px">
-      <div
-        style="
-          background-color: white;
-          padding: 30px;
-          border-radius: 8px;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        "
-      >
+      <div style="background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1)">
         <!-- Header -->
         <div style="text-align: center; margin-bottom: 30px">
           <h1 style="color: #333; margin: 0; font-size: 28px">{{APP_NAME}}</h1>
@@ -31,16 +17,8 @@
         <h2 style="color: #333; margin-bottom: 20px">Hello, {{FIRST_NAME}}!</h2>
 
         <!-- Main content -->
-        <p
-          style="
-            color: #666;
-            font-size: 16px;
-            line-height: 1.5;
-            margin-bottom: 25px;
-          "
-        >
-          We detected a new login to your {{APP_NAME}} account. Here are the
-          details:
+        <p style="color: #666; font-size: 16px; line-height: 1.5; margin-bottom: 25px">
+          We detected a new login to your {{APP_NAME}} account. Here are the details:
         </p>
 
         <!-- Login details -->
@@ -55,28 +33,15 @@
         >
           <table style="width: 100%; border-collapse: collapse">
             <tr>
-              <td
-                style="
-                  padding: 8px 0;
-                  color: #666;
-                  font-weight: bold;
-                  width: 30%;
-                "
-              >
-                Time:
-              </td>
+              <td style="padding: 8px 0; color: #666; font-weight: bold; width: 30%">Time:</td>
               <td style="padding: 8px 0; color: #333">{{LOGIN_TIME}}</td>
             </tr>
             <tr>
-              <td style="padding: 8px 0; color: #666; font-weight: bold">
-                IP Address:
-              </td>
+              <td style="padding: 8px 0; color: #666; font-weight: bold">IP Address:</td>
               <td style="padding: 8px 0; color: #333">{{IP_ADDRESS}}</td>
             </tr>
             <tr>
-              <td style="padding: 8px 0; color: #666; font-weight: bold">
-                Device:
-              </td>
+              <td style="padding: 8px 0; color: #666; font-weight: bold">Device:</td>
               <td style="padding: 8px 0; color: #333">{{DEVICE}}</td>
             </tr>
           </table>
@@ -97,23 +62,15 @@
             margin-bottom: 25px;
           "
         >
-          <p
-            style="
-              color: #856404;
-              font-size: 14px;
-              margin-bottom: 15px;
-              font-weight: bold;
-            "
-          >
+          <p style="color: #856404; font-size: 14px; margin-bottom: 15px; font-weight: bold">
             ⚠️ Don't recognize this login?
           </p>
           <p style="color: #856404; font-size: 14px; margin-bottom: 15px">
-            If you don't recognize this login, please secure your account
-            immediately by changing your password.
+            If you don't recognize this login, please secure your account immediately by changing your password.
           </p>
           <div style="text-align: center">
             <a
-              href="{{BASE_URL}}/account/security"
+              href="{{API_BASE_PATH}}/account/security"
               style="
                 background-color: #f44336;
                 color: white;

@@ -19,7 +19,7 @@ vi.mock('../../../../config/env.config', async (importOriginal) => {
   return {
     getGoogleClientId: () => 'test-client-id',
     getProxyUrl: () => 'http://localhost:7000',
-    getBaseUrl: () => '/api',
+    getApiBasePATH: () => '/api',
     ...actual,
   };
 });
