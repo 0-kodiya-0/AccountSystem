@@ -185,7 +185,10 @@ export const getJwtSecret = (): string => envConfig.get('JWT_SECRET');
 export const getSessionSecret = (): string => envConfig.get('SESSION_SECRET');
 export const getPort = (): number => parseInt(envConfig.get('PORT'));
 export const getNodeEnv = (): string => envConfig.get('NODE_ENV');
-export const getApiBasePATH = (): string => envConfig.get('API_BASE_PATH');
+export const getApiBasePATH = (): string => {
+  const path = envConfig.get('API_BASE_PATH');
+  return path === '/' ? '' : path;
+};
 export const getProxyUrl = (): string => envConfig.get('PROXY_URL');
 export const getAppName = (): string => envConfig.get('APP_NAME');
 
