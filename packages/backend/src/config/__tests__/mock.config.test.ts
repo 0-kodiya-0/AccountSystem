@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mockConfig } from '../mock.config';
+import { getAvailableSeedingTags, mockConfig, previewSeeding } from '../mock.config';
 import {
   getEmailMockConfig,
   getOAuthMockConfig,
@@ -12,8 +12,18 @@ import {
   validateOAuthMockConfig,
   validateAccountsMockConfig,
   validateMockConfig,
+  getAllMockAccounts,
+  getMockAccountsForSeeding,
+  getMockAccountsByTags,
+  getMockAccountsById,
+  getMockAccountsByProvider,
+  getMockAccountsByType,
+  filterAccountsForSeeding,
+  getAccountsByTags,
+  getAccountsById,
 } from '../mock.config';
-import type { EmailMockConfig, OAuthMockConfig, AccountsMockConfig } from '../mock.config';
+import type { EmailMockConfig, OAuthMockConfig, AccountsMockConfig, SeedingOptions } from '../mock.config';
+import { OAuthProviders, AccountType, AccountStatus } from '../../feature/account/Account.types';
 
 describe('mock.config', () => {
   beforeEach(() => {
@@ -142,22 +152,24 @@ describe('mock.config', () => {
     });
   });
 
-  describe('Accounts Mock Configuration from File', () => {
-    it('should load accounts configuration from file', () => {
+  describe('Enhanced Accounts Mock Configuration from File', () => {
+    it('should load enhanced accounts configuration from file', () => {
       const accountsConfig = getAccountsMockConfig();
 
       expect(accountsConfig).toBeDefined();
       expect(accountsConfig).toHaveProperty('enabled');
       expect(accountsConfig).toHaveProperty('accounts');
+      expect(accountsConfig).toHaveProperty('seedingMode'); // New property
+      expect(accountsConfig).toHaveProperty('defaultSeedTags'); // New property
       expect(Array.isArray(accountsConfig.accounts)).toBe(true);
     });
 
-    it('should validate accounts configuration from file', () => {
+    it('should validate enhanced accounts configuration from file', () => {
       const accountsConfig = getAccountsMockConfig();
       expect(() => validateAccountsMockConfig(accountsConfig)).not.toThrow();
     });
 
-    it('should validate mock accounts structure from file', () => {
+    it('should validate enhanced mock accounts structure from file', () => {
       const accountsConfig = getAccountsMockConfig();
 
       accountsConfig.accounts.forEach((account) => {
@@ -166,11 +178,20 @@ describe('mock.config', () => {
         expect(account).toHaveProperty('name');
         expect(account).toHaveProperty('accountType');
         expect(account).toHaveProperty('emailVerified');
+        expect(account).toHaveProperty('seedByDefault'); // New property
+        expect(account).toHaveProperty('seedTags'); // New property
+        expect(account).toHaveProperty('testDescription'); // New property
 
         expect(typeof account.id).toBe('string');
         expect(typeof account.email).toBe('string');
         expect(typeof account.name).toBe('string');
         expect(typeof account.emailVerified).toBe('boolean');
+        expect(typeof account.seedByDefault).toBe('boolean');
+        expect(Array.isArray(account.seedTags)).toBe(true);
+
+        if (account.testDescription) {
+          expect(typeof account.testDescription).toBe('string');
+        }
       });
     });
 
@@ -182,11 +203,29 @@ describe('mock.config', () => {
       expect(accountTypes).toContain('local');
     });
 
-    it('should update accounts configuration at runtime', () => {
+    it('should have accounts with various seeding tags', () => {
+      const accountsConfig = getAccountsMockConfig();
+      const allTags = new Set<string>();
+
+      accountsConfig.accounts.forEach((account) => {
+        if (account.seedTags) {
+          account.seedTags.forEach((tag) => allTags.add(tag));
+        }
+      });
+
+      expect(allTags.size).toBeGreaterThan(0);
+      // Should have common tags
+      expect(allTags).toContain('basic');
+      expect(allTags).toContain('oauth');
+    });
+
+    it('should update enhanced accounts configuration at runtime', () => {
       const originalConfig = getAccountsMockConfig();
       const updates: Partial<AccountsMockConfig> = {
         enabled: !originalConfig.enabled,
         clearOnSeed: !originalConfig.clearOnSeed,
+        seedingMode: 'tagged',
+        defaultSeedTags: ['test-tag'],
       };
 
       updateAccountsMockConfig(updates);
@@ -194,6 +233,195 @@ describe('mock.config', () => {
 
       expect(updatedConfig.enabled).toBe(updates.enabled);
       expect(updatedConfig.clearOnSeed).toBe(updates.clearOnSeed);
+      expect(updatedConfig.seedingMode).toBe(updates.seedingMode);
+      expect(updatedConfig.defaultSeedTags).toEqual(updates.defaultSeedTags);
+    });
+  });
+
+  describe('Selective Seeding Helper Functions', () => {
+    it('should get all mock accounts', () => {
+      const allAccounts = getAllMockAccounts();
+
+      expect(Array.isArray(allAccounts)).toBe(true);
+      expect(allAccounts.length).toBeGreaterThan(0);
+
+      allAccounts.forEach((account) => {
+        expect(account).toHaveProperty('id');
+        expect(account).toHaveProperty('email');
+        expect(account).toHaveProperty('seedTags');
+        expect(account).toHaveProperty('seedByDefault');
+      });
+    });
+
+    it('should get accounts for default seeding', () => {
+      const defaultAccounts = getMockAccountsForSeeding({ mode: 'default' });
+
+      expect(Array.isArray(defaultAccounts)).toBe(true);
+
+      // All returned accounts should have seedByDefault: true
+      defaultAccounts.forEach((account) => {
+        expect(account.seedByDefault).toBe(true);
+      });
+    });
+
+    it('should get all accounts with "all" mode', () => {
+      const allConfigAccounts = getAllMockAccounts();
+      const allModeAccounts = getMockAccountsForSeeding({ mode: 'all' });
+
+      expect(allModeAccounts.length).toBe(allConfigAccounts.length);
+    });
+
+    it('should filter accounts by tags', () => {
+      const taggedAccounts = getMockAccountsByTags(['basic', 'oauth']);
+
+      expect(Array.isArray(taggedAccounts)).toBe(true);
+
+      // All returned accounts should have at least one of the specified tags
+      taggedAccounts.forEach((account) => {
+        const hasRequiredTag = account.seedTags && account.seedTags.some((tag) => ['basic', 'oauth'].includes(tag));
+        expect(hasRequiredTag).toBe(true);
+      });
+    });
+
+    it('should filter accounts by provider', () => {
+      const googleAccounts = getMockAccountsByProvider(OAuthProviders.Google);
+
+      expect(Array.isArray(googleAccounts)).toBe(true);
+
+      // All returned accounts should be Google OAuth accounts
+      googleAccounts.forEach((account) => {
+        expect(account.provider).toBe(OAuthProviders.Google);
+        expect(account.accountType).toBe(AccountType.OAuth);
+      });
+    });
+
+    it('should filter accounts by account type', () => {
+      const oauthAccounts = getMockAccountsByType(AccountType.OAuth);
+      const localAccounts = getMockAccountsByType(AccountType.Local);
+
+      expect(Array.isArray(oauthAccounts)).toBe(true);
+      expect(Array.isArray(localAccounts)).toBe(true);
+
+      oauthAccounts.forEach((account) => {
+        expect(account.accountType).toBe(AccountType.OAuth);
+      });
+
+      localAccounts.forEach((account) => {
+        expect(account.accountType).toBe(AccountType.Local);
+      });
+    });
+
+    it('should get accounts by specific IDs', () => {
+      const allAccounts = getAllMockAccounts();
+      if (allAccounts.length >= 2) {
+        const targetIds = allAccounts.slice(0, 2).map((acc) => acc.id);
+        const foundAccounts = getMockAccountsById(targetIds);
+
+        expect(foundAccounts.length).toBe(2);
+        foundAccounts.forEach((account) => {
+          expect(targetIds).toContain(account.id);
+        });
+      }
+    });
+
+    it('should get available seeding tags', () => {
+      const tags = getAvailableSeedingTags();
+
+      expect(Array.isArray(tags)).toBe(true);
+      expect(tags.length).toBeGreaterThan(0);
+
+      // Should be sorted
+      const sortedTags = [...tags].sort();
+      expect(tags).toEqual(sortedTags);
+
+      // Should contain common tags
+      expect(tags).toContain('basic');
+      expect(tags).toContain('oauth');
+    });
+
+    it('should filter accounts with complex seeding options', () => {
+      const options: SeedingOptions = {
+        mode: 'tagged',
+        tags: ['basic'],
+        excludeAccountIds: [],
+      };
+
+      const allAccounts = getAllMockAccounts();
+      if (allAccounts.length > 0) {
+        // Get first account ID to exclude
+        options.excludeAccountIds = [allAccounts[0].id];
+
+        const filteredAccounts = filterAccountsForSeeding(allAccounts, options);
+
+        // Should not contain the excluded account
+        const excludedFound = filteredAccounts.some((acc) => acc.id === allAccounts[0].id);
+        expect(excludedFound).toBe(false);
+
+        // All remaining accounts should have 'basic' tag
+        filteredAccounts.forEach((account) => {
+          expect(account.seedTags).toContain('basic');
+        });
+      }
+    });
+
+    it('should handle seeding options with explicit mode', () => {
+      const allAccounts = getAllMockAccounts();
+      if (allAccounts.length >= 2) {
+        const accountIds = allAccounts.slice(0, 2).map((acc) => acc.id);
+        const options: SeedingOptions = {
+          mode: 'explicit',
+          accountIds,
+        };
+
+        const accounts = getMockAccountsForSeeding(options);
+
+        expect(accounts.length).toBe(2);
+        accounts.forEach((account) => {
+          expect(accountIds).toContain(account.id);
+        });
+      }
+    });
+
+    it('should handle empty results gracefully', () => {
+      const nonExistentTags = getMockAccountsByTags(['non-existent-tag']);
+      const nonExistentIds = getMockAccountsById(['non-existent-id']);
+
+      expect(nonExistentTags).toEqual([]);
+      expect(nonExistentIds).toEqual([]);
+    });
+
+    it('should preview seeding correctly', () => {
+      const preview = previewSeeding();
+
+      expect(preview).toHaveProperty('accountsToSeed');
+      expect(preview).toHaveProperty('seedingCriteria');
+      expect(preview).toHaveProperty('summary');
+
+      expect(Array.isArray(preview.accountsToSeed)).toBe(true);
+      expect(typeof preview.summary.totalAccounts).toBe('number');
+      expect(typeof preview.summary.byType).toBe('object');
+      expect(typeof preview.summary.byProvider).toBe('object');
+      expect(typeof preview.summary.byTags).toBe('object');
+
+      // Summary should match accounts
+      expect(preview.summary.totalAccounts).toBe(preview.accountsToSeed.length);
+    });
+
+    it('should preview seeding with specific options', () => {
+      const options: SeedingOptions = {
+        mode: 'tagged',
+        tags: ['oauth'],
+      };
+
+      const preview = previewSeeding(options);
+
+      expect(preview.seedingCriteria.mode).toBe('tagged');
+      expect(preview.seedingCriteria.tags).toContain('oauth');
+
+      // All accounts should have 'oauth' tag
+      preview.accountsToSeed.forEach((account) => {
+        expect(account.tags).toContain('oauth');
+      });
     });
   });
 
@@ -241,7 +469,7 @@ describe('mock.config', () => {
     });
   });
 
-  describe('Configuration Validation Runtime Logic', () => {
+  describe('Enhanced Configuration Validation', () => {
     it('should validate email mock configuration correctly', () => {
       const emailConfig = getEmailMockConfig();
       expect(() => validateEmailMockConfig(emailConfig)).not.toThrow();
@@ -252,9 +480,22 @@ describe('mock.config', () => {
       expect(() => validateOAuthMockConfig(oauthConfig)).not.toThrow();
     });
 
-    it('should validate accounts mock configuration correctly', () => {
+    it('should validate enhanced accounts mock configuration correctly', () => {
       const accountsConfig = getAccountsMockConfig();
       expect(() => validateAccountsMockConfig(accountsConfig)).not.toThrow();
+    });
+
+    it('should validate mock account with enhanced properties', () => {
+      const accountsConfig = getAccountsMockConfig();
+      const firstAccount = accountsConfig.accounts[0];
+
+      // Should validate individual mock account
+      expect(firstAccount).toHaveProperty('seedByDefault');
+      expect(firstAccount).toHaveProperty('seedTags');
+      expect(firstAccount).toHaveProperty('testDescription');
+
+      expect(typeof firstAccount.seedByDefault).toBe('boolean');
+      expect(Array.isArray(firstAccount.seedTags)).toBe(true);
     });
 
     it('should throw error for invalid email configuration', () => {
@@ -291,6 +532,45 @@ describe('mock.config', () => {
       expect(() => validateOAuthMockConfig(invalidConfig)).toThrow('Invalid OAuth mock configuration');
     });
 
+    it('should validate enhanced accounts configuration with new properties', () => {
+      const validConfig: AccountsMockConfig = {
+        enabled: true,
+        clearOnSeed: false,
+        seedingMode: 'tagged',
+        defaultSeedTags: ['basic'],
+        accounts: [
+          {
+            id: 'test_account',
+            accountType: AccountType.OAuth,
+            email: 'test@example.com',
+            name: 'Test User',
+            emailVerified: true,
+            provider: OAuthProviders.Google,
+            seedByDefault: true,
+            seedTags: ['basic', 'oauth'],
+            testDescription: 'Test account for validation',
+            status: AccountStatus.Active,
+            twoFactorEnabled: false,
+          },
+        ],
+      };
+
+      expect(() => validateAccountsMockConfig(validConfig)).not.toThrow();
+    });
+
+    it('should validate seeding mode enum values', () => {
+      const validModes = ['all', 'default', 'tagged', 'explicit'];
+
+      validModes.forEach((mode) => {
+        const config: Partial<AccountsMockConfig> = {
+          seedingMode: mode as any,
+        };
+
+        // Should not throw for valid modes
+        expect(() => updateAccountsMockConfig(config)).not.toThrow();
+      });
+    });
+
     it('should handle boundary values in validation', () => {
       const boundaryEmailConfig: EmailMockConfig = {
         enabled: true,
@@ -322,9 +602,112 @@ describe('mock.config', () => {
     });
   });
 
+  describe('Enhanced Account Helper Functions', () => {
+    it('should filter accounts correctly with getAccountsByTags helper', () => {
+      const allAccounts = getAllMockAccounts();
+      const basicAccounts = getAccountsByTags(allAccounts, ['basic']);
+
+      basicAccounts.forEach((account) => {
+        expect(account.seedTags).toContain('basic');
+      });
+    });
+
+    it('should filter accounts correctly with getAccountsById helper', () => {
+      const allAccounts = getAllMockAccounts();
+      if (allAccounts.length > 0) {
+        const targetId = allAccounts[0].id;
+        const foundAccounts = getAccountsById(allAccounts, [targetId]);
+
+        expect(foundAccounts.length).toBe(1);
+        expect(foundAccounts[0].id).toBe(targetId);
+      }
+    });
+
+    it('should handle edge cases in filtering', () => {
+      const allAccounts = getAllMockAccounts();
+
+      // Empty tags array
+      const emptyTagsResult = getAccountsByTags(allAccounts, []);
+      expect(emptyTagsResult).toEqual([]);
+
+      // Empty IDs array
+      const emptyIdsResult = getAccountsById(allAccounts, []);
+      expect(emptyIdsResult).toEqual([]);
+
+      // Non-existent tags
+      const nonExistentTagsResult = getAccountsByTags(allAccounts, ['non-existent']);
+      expect(nonExistentTagsResult).toEqual([]);
+
+      // Non-existent IDs
+      const nonExistentIdsResult = getAccountsById(allAccounts, ['non-existent']);
+      expect(nonExistentIdsResult).toEqual([]);
+    });
+  });
+
   describe('Reset Functionality', () => {
     it('should throw error when trying to reset to defaults', () => {
       expect(() => resetMockConfig()).toThrow('Reset to defaults not supported');
+    });
+  });
+
+  describe('MockConfigManager Enhanced Methods', () => {
+    it('should get accounts by provider using manager method', () => {
+      const googleAccounts = mockConfig.getAccountsByProvider(OAuthProviders.Google);
+
+      expect(Array.isArray(googleAccounts)).toBe(true);
+      googleAccounts.forEach((account) => {
+        expect(account.provider).toBe(OAuthProviders.Google);
+      });
+    });
+
+    it('should get accounts by type using manager method', () => {
+      const oauthAccounts = mockConfig.getAccountsByType(AccountType.OAuth);
+      const localAccounts = mockConfig.getAccountsByType(AccountType.Local);
+
+      expect(Array.isArray(oauthAccounts)).toBe(true);
+      expect(Array.isArray(localAccounts)).toBe(true);
+
+      oauthAccounts.forEach((account) => {
+        expect(account.accountType).toBe(AccountType.OAuth);
+      });
+
+      localAccounts.forEach((account) => {
+        expect(account.accountType).toBe(AccountType.Local);
+      });
+    });
+
+    it('should get accounts for seeding with options using manager method', () => {
+      const options: SeedingOptions = {
+        mode: 'tagged',
+        tags: ['basic'],
+      };
+
+      const accounts = mockConfig.getAccountsForSeeding(options);
+
+      expect(Array.isArray(accounts)).toBe(true);
+      accounts.forEach((account) => {
+        expect(account.seedTags).toContain('basic');
+      });
+    });
+
+    it('should get accounts by tags using manager method', () => {
+      const basicAccounts = mockConfig.getAccountsByTags(['basic']);
+
+      expect(Array.isArray(basicAccounts)).toBe(true);
+      basicAccounts.forEach((account) => {
+        expect(account.seedTags).toContain('basic');
+      });
+    });
+
+    it('should get accounts by ID using manager method', () => {
+      const allAccounts = mockConfig.getAllAccounts();
+      if (allAccounts.length > 0) {
+        const targetId = allAccounts[0].id;
+        const foundAccounts = mockConfig.getAccountsById([targetId]);
+
+        expect(foundAccounts.length).toBe(1);
+        expect(foundAccounts[0].id).toBe(targetId);
+      }
     });
   });
 });

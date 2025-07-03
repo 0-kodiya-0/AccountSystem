@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://example.com/schemas/mock-config.schema.json",
   "title": "Mock Configuration Schema",
-  "description": "Schema for mock.config.json - Mock configuration for development and testing",
+  "description": "Schema for mock.config.json - Mock configuration for development and testing with selective seeding support",
   "type": "object",
   "properties": {
     "email": {
@@ -217,7 +217,7 @@
     },
     "AccountsMockConfig": {
       "type": "object",
-      "description": "Mock accounts configuration for testing",
+      "description": "Mock accounts configuration for testing with selective seeding support",
       "properties": {
         "enabled": {
           "type": "boolean",
@@ -228,6 +228,27 @@
           "type": "boolean",
           "description": "Clear existing mock accounts before seeding",
           "default": false
+        },
+        "seedingMode": {
+          "type": "string",
+          "enum": ["all", "default", "tagged", "explicit"],
+          "description": "Default seeding strategy: 'all' (all accounts), 'default' (seedByDefault: true), 'tagged' (specific tags), 'explicit' (specific IDs)",
+          "default": "default"
+        },
+        "defaultSeedTags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "description": "Default tags to use when seedingMode is 'tagged'",
+          "default": [],
+          "examples": [
+            ["basic", "oauth"],
+            ["2fa", "security"]
+          ]
         },
         "accounts": {
           "type": "array",
@@ -244,12 +265,14 @@
     },
     "MockAccount": {
       "type": "object",
-      "description": "A mock user account for testing",
+      "description": "A mock user account for testing with selective seeding support",
       "properties": {
         "id": {
           "type": "string",
           "description": "Unique identifier for the mock account",
           "pattern": "^[a-zA-Z0-9_-]+$",
+          "minLength": 1,
+          "maxLength": 50,
           "examples": ["account_1", "test_admin", "demo_user"]
         },
         "accountType": {
@@ -329,6 +352,40 @@
           "format": "date",
           "description": "Date of birth in YYYY-MM-DD format",
           "examples": ["1990-01-15", "1985-12-25"]
+        },
+        "seedByDefault": {
+          "type": "boolean",
+          "description": "Whether this account should be included in default seeding (when seedingMode is 'default')",
+          "default": true
+        },
+        "seedTags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "description": "Tags for selective seeding - used to group accounts by purpose or test scenario",
+          "default": [],
+          "examples": [
+            ["basic", "oauth", "no-2fa"],
+            ["admin", "2fa", "security"],
+            ["company", "enterprise"],
+            ["edge-case", "suspended"],
+            ["performance", "testing"]
+          ]
+        },
+        "testDescription": {
+          "type": "string",
+          "description": "Human-readable description of what this account is used for in tests",
+          "maxLength": 200,
+          "examples": [
+            "Basic OAuth user without 2FA for simple tests",
+            "Admin user with 2FA for security testing",
+            "Suspended user for error handling tests",
+            "Company user for enterprise features testing"
+          ]
         }
       },
       "required": ["id", "email", "name", "accountType", "emailVerified"],
@@ -341,10 +398,22 @@
         }
       },
       "then": {
-        "required": ["provider"]
+        "required": ["provider"],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": ["google", "microsoft", "facebook"]
+          }
+        }
       },
       "else": {
-        "required": ["password"]
+        "required": ["password"],
+        "properties": {
+          "password": {
+            "type": "string",
+            "minLength": 8
+          }
+        }
       },
       "examples": [
         {
@@ -358,7 +427,10 @@
           "emailVerified": true,
           "provider": "google",
           "twoFactorEnabled": false,
-          "status": "active"
+          "status": "active",
+          "seedByDefault": true,
+          "seedTags": ["basic", "oauth", "google", "no-2fa"],
+          "testDescription": "Basic OAuth user without 2FA for simple tests"
         },
         {
           "id": "account_2",
@@ -371,9 +443,182 @@
           "password": "SecurePassword123!",
           "emailVerified": true,
           "twoFactorEnabled": false,
-          "status": "active"
+          "status": "active",
+          "seedByDefault": true,
+          "seedTags": ["basic", "local", "no-2fa"],
+          "testDescription": "Basic local user without 2FA for simple tests"
+        },
+        {
+          "id": "account_3",
+          "accountType": "oauth",
+          "email": "admin@example.com",
+          "name": "Admin User",
+          "firstName": "Admin",
+          "lastName": "User",
+          "imageUrl": "https://via.placeholder.com/150?text=Admin+User",
+          "emailVerified": true,
+          "provider": "google",
+          "twoFactorEnabled": true,
+          "status": "active",
+          "seedByDefault": false,
+          "seedTags": ["admin", "oauth", "google", "2fa", "security"],
+          "testDescription": "Admin OAuth user with 2FA for security tests"
+        },
+        {
+          "id": "account_4",
+          "accountType": "oauth",
+          "email": "suspended@example.com",
+          "name": "Suspended User",
+          "firstName": "Suspended",
+          "lastName": "User",
+          "imageUrl": "https://via.placeholder.com/150?text=Suspended",
+          "emailVerified": true,
+          "provider": "google",
+          "twoFactorEnabled": false,
+          "status": "suspended",
+          "seedByDefault": false,
+          "seedTags": ["edge-case", "suspended", "error-handling"],
+          "testDescription": "Suspended OAuth user for error handling tests"
+        }
+      ]
+    },
+    "SeedingOptions": {
+      "type": "object",
+      "description": "Options for selective seeding operations",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["all", "default", "tagged", "explicit"],
+          "description": "Seeding strategy to use"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "description": "Tags to filter by (used when mode is 'tagged')"
+        },
+        "accountIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "description": "Specific account IDs to seed (used when mode is 'explicit')"
+        },
+        "excludeAccountIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "description": "Account IDs to exclude from seeding"
+        },
+        "clearOnSeed": {
+          "type": "boolean",
+          "description": "Whether to clear existing data before seeding"
+        }
+      },
+      "additionalProperties": false,
+      "examples": [
+        {
+          "mode": "default"
+        },
+        {
+          "mode": "tagged",
+          "tags": ["basic", "oauth"]
+        },
+        {
+          "mode": "explicit",
+          "accountIds": ["account_1", "account_2"],
+          "clearOnSeed": true
+        },
+        {
+          "mode": "tagged",
+          "tags": ["admin", "2fa"],
+          "excludeAccountIds": ["account_5"]
         }
       ]
     }
-  }
+  },
+  "examples": [
+    {
+      "email": {
+        "enabled": true,
+        "logEmails": true,
+        "simulateDelay": false,
+        "delayMs": 150,
+        "simulateFailures": false,
+        "failureRate": 0.1,
+        "failOnEmails": ["fail@example.com"],
+        "blockEmails": ["blocked@example.com"]
+      },
+      "oauth": {
+        "enabled": true,
+        "simulateDelay": true,
+        "delayMs": 1500,
+        "simulateErrors": false,
+        "errorRate": 0.05,
+        "failOnEmails": ["oauth-error@example.com"],
+        "blockEmails": ["oauth-blocked@example.com"],
+        "autoApprove": true,
+        "requireConsent": false,
+        "logRequests": true,
+        "mockServerEnabled": true,
+        "mockServerPort": 8080,
+        "providers": {
+          "google": {
+            "enabled": true
+          },
+          "microsoft": {
+            "enabled": false
+          },
+          "facebook": {
+            "enabled": false
+          }
+        }
+      },
+      "accounts": {
+        "enabled": true,
+        "clearOnSeed": false,
+        "seedingMode": "default",
+        "defaultSeedTags": ["basic", "oauth"],
+        "accounts": [
+          {
+            "id": "account_1",
+            "accountType": "oauth",
+            "email": "test.user@example.com",
+            "name": "Test User",
+            "firstName": "Test",
+            "lastName": "User",
+            "imageUrl": "https://via.placeholder.com/150?text=Test+User",
+            "emailVerified": true,
+            "provider": "google",
+            "twoFactorEnabled": false,
+            "status": "active",
+            "seedByDefault": true,
+            "seedTags": ["basic", "oauth", "google", "no-2fa"],
+            "testDescription": "Basic OAuth user without 2FA for simple tests"
+          },
+          {
+            "id": "account_2",
+            "accountType": "local",
+            "email": "local.user@example.com",
+            "name": "Local User",
+            "firstName": "Local",
+            "lastName": "User",
+            "username": "localuser",
+            "password": "TestPassword123!",
+            "emailVerified": true,
+            "twoFactorEnabled": false,
+            "status": "active",
+            "seedByDefault": true,
+            "seedTags": ["basic", "local", "no-2fa"],
+            "testDescription": "Basic local user without 2FA for simple tests"
+          }
+        ]
+      }
+    }
+  ]
 }

@@ -50,7 +50,7 @@ class GoogleProviderHandler extends BaseProviderHandler {
       );
     }
 
-    const allAccounts = oauthMockService.getAllMockAccounts(OAuthProviders.Google);
+    const allAccounts = oauthMockService.getNonDefaultAccounts(OAuthProviders.Google);
     const account = this.googleProvider.selectGoogleAccount(allAccounts, login_hint, stateData.mockAccountEmail);
 
     if (!account) {

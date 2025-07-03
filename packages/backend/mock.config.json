@@ -37,6 +37,8 @@
   "accounts": {
     "enabled": true,
     "clearOnSeed": false,
+    "seedingMode": "default",
+    "defaultSeedTags": ["basic", "oauth"],
     "accounts": [
       {
         "id": "account_1",
@@ -49,7 +51,10 @@
         "emailVerified": true,
         "provider": "google",
         "twoFactorEnabled": false,
-        "status": "active"
+        "status": "active",
+        "seedByDefault": true,
+        "seedTags": ["basic", "oauth", "google", "no-2fa"],
+        "testDescription": "Basic OAuth user without 2FA for simple tests"
       },
       {
         "id": "account_2",
@@ -62,7 +67,10 @@
         "emailVerified": true,
         "provider": "google",
         "twoFactorEnabled": true,
-        "status": "active"
+        "status": "active",
+        "seedByDefault": true,
+        "seedTags": ["basic", "oauth", "google", "2fa", "admin"],
+        "testDescription": "Admin OAuth user with 2FA for security tests"
       },
       {
         "id": "account_3",
@@ -75,7 +83,10 @@
         "emailVerified": true,
         "provider": "google",
         "twoFactorEnabled": false,
-        "status": "active"
+        "status": "active",
+        "seedByDefault": false,
+        "seedTags": ["oauth", "google", "company", "no-2fa"],
+        "testDescription": "Company OAuth user for enterprise testing"
       },
       {
         "id": "account_4",
@@ -88,7 +99,10 @@
         "emailVerified": true,
         "provider": "google",
         "twoFactorEnabled": true,
-        "status": "active"
+        "status": "active",
+        "seedByDefault": false,
+        "seedTags": ["oauth", "google", "company", "2fa"],
+        "testDescription": "Company OAuth user with 2FA for enterprise security tests"
       },
       {
         "id": "account_5",
@@ -101,7 +115,10 @@
         "emailVerified": true,
         "provider": "google",
         "twoFactorEnabled": false,
-        "status": "suspended"
+        "status": "suspended",
+        "seedByDefault": false,
+        "seedTags": ["oauth", "google", "suspended", "edge-case"],
+        "testDescription": "Suspended OAuth user for error handling tests"
       },
       {
         "id": "account_6",
@@ -114,7 +131,10 @@
         "emailVerified": true,
         "provider": "google",
         "twoFactorEnabled": false,
-        "status": "active"
+        "status": "active",
+        "seedByDefault": false,
+        "seedTags": ["oauth", "google", "developer", "testing"],
+        "testDescription": "Developer OAuth account for development testing"
       },
       {
         "id": "account_7",
@@ -127,7 +147,10 @@
         "password": "TestPassword123!",
         "emailVerified": true,
         "twoFactorEnabled": false,
-        "status": "active"
+        "status": "active",
+        "seedByDefault": true,
+        "seedTags": ["basic", "local", "no-2fa"],
+        "testDescription": "Basic local user without 2FA for simple tests"
       },
       {
         "id": "account_8",
@@ -140,7 +163,10 @@
         "password": "AdminPassword456!",
         "emailVerified": true,
         "twoFactorEnabled": true,
-        "status": "active"
+        "status": "active",
+        "seedByDefault": true,
+        "seedTags": ["basic", "local", "2fa", "admin"],
+        "testDescription": "Admin local user with 2FA for security tests"
       },
       {
         "id": "account_9",
@@ -153,7 +179,58 @@
         "password": "UnverifiedPass789!",
         "emailVerified": false,
         "twoFactorEnabled": false,
-        "status": "unverified"
+        "status": "unverified",
+        "seedByDefault": false,
+        "seedTags": ["local", "unverified", "edge-case"],
+        "testDescription": "Unverified local user for email verification tests"
+      },
+      {
+        "id": "account_10",
+        "accountType": "oauth",
+        "email": "performance.test@example.com",
+        "name": "Performance Test User",
+        "firstName": "Performance",
+        "lastName": "Test",
+        "imageUrl": "https://via.placeholder.com/150?text=Performance",
+        "emailVerified": true,
+        "provider": "google",
+        "twoFactorEnabled": false,
+        "status": "active",
+        "seedByDefault": false,
+        "seedTags": ["oauth", "google", "performance", "testing"],
+        "testDescription": "OAuth user specifically for performance testing"
+      },
+      {
+        "id": "account_11",
+        "accountType": "local",
+        "email": "security.test@example.com",
+        "name": "Security Test User",
+        "firstName": "Security",
+        "lastName": "Test",
+        "username": "securitytest",
+        "password": "SecurityPass123!",
+        "emailVerified": true,
+        "twoFactorEnabled": true,
+        "status": "active",
+        "seedByDefault": false,
+        "seedTags": ["local", "2fa", "security", "testing"],
+        "testDescription": "Local user with 2FA for security penetration testing"
+      },
+      {
+        "id": "account_12",
+        "accountType": "oauth",
+        "email": "integration.test@example.com",
+        "name": "Integration Test User",
+        "firstName": "Integration",
+        "lastName": "Test",
+        "imageUrl": "https://via.placeholder.com/150?text=Integration",
+        "emailVerified": true,
+        "provider": "google",
+        "twoFactorEnabled": false,
+        "status": "active",
+        "seedByDefault": false,
+        "seedTags": ["oauth", "google", "integration", "testing"],
+        "testDescription": "OAuth user for integration testing scenarios"
       }
     ]
   }

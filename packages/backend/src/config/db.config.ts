@@ -6,7 +6,12 @@ import {
   getTestDbSeedOnStart,
   getUseMemoryDb,
 } from './env.config';
-import { getAccountsMockConfig, getOAuthMockConfig } from './mock.config';
+import {
+  getAccountsMockConfig,
+  getOAuthMockConfig,
+  type SeedingOptions,
+  getMockAccountsForSeeding,
+} from './mock.config';
 import { logger } from '../utils/logger';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import processCleanup from '../utils/processCleanup';
@@ -298,9 +303,9 @@ export const getModels = async (): Promise<DatabaseModels> => {
 };
 
 /**
- * Seed database with test data (useful for testing)
+ * Enhanced seed database with selective seeding support
  */
-export const seedTestDatabase = async (): Promise<void> => {
+export const seedTestDatabase = async (seedingOptions?: SeedingOptions): Promise<void> => {
   if (getNodeEnv() === 'production') {
     throw new Error('Database seeding is not allowed in production');
   }
@@ -311,25 +316,53 @@ export const seedTestDatabase = async (): Promise<void> => {
       throw new Error('Database connection not established');
     }
 
+    // Get accounts configuration
     const accountsConfig = getAccountsMockConfig();
 
-    if (!accountsConfig.enabled || !accountsConfig.accounts || accountsConfig.accounts.length === 0) {
-      logger.info('No mock accounts to seed or accounts mock is disabled');
+    if (!accountsConfig.enabled) {
+      logger.info('Accounts mock is disabled, skipping seeding');
       return;
     }
 
-    logger.info(`Seeding database with ${accountsConfig.accounts.length} test accounts`);
+    // Determine which accounts to seed
+    let accountsToSeed;
+
+    if (seedingOptions) {
+      // Use provided seeding options
+      accountsToSeed = getMockAccountsForSeeding(seedingOptions);
+      logger.info(`Selective seeding requested:`, {
+        mode: seedingOptions.mode,
+        tags: seedingOptions.tags,
+        accountIds: seedingOptions.accountIds,
+        excludeAccountIds: seedingOptions.excludeAccountIds,
+        accountsFound: accountsToSeed.length,
+      });
+    } else {
+      // Use default configuration seeding mode
+      accountsToSeed = getMockAccountsForSeeding();
+      logger.info(
+        `Default seeding mode: ${accountsConfig.seedingMode || 'default'}, found ${accountsToSeed.length} accounts`,
+      );
+    }
+
+    if (accountsToSeed.length === 0) {
+      logger.info('No accounts to seed with current criteria');
+      return;
+    }
+
+    logger.info(`Seeding database with ${accountsToSeed.length} test accounts`);
 
     // Clear existing mock accounts if requested
-    if (accountsConfig.clearOnSeed) {
+    const shouldClear = seedingOptions?.clearOnSeed ?? accountsConfig.clearOnSeed;
+    if (shouldClear) {
       const deleteResult = await (
         await getModels()
       ).accounts.Account.deleteMany({
         $or: [
-          { 'userDetails.email': { $in: accountsConfig.accounts.map((acc) => acc.email) } },
+          { 'userDetails.email': { $in: accountsToSeed.map((acc) => acc.email) } },
           {
             'userDetails.username': {
-              $in: accountsConfig.accounts.filter((acc) => acc.username).map((acc) => acc.username),
+              $in: accountsToSeed.filter((acc) => acc.username).map((acc) => acc.username),
             },
           },
         ],
@@ -341,7 +374,7 @@ export const seedTestDatabase = async (): Promise<void> => {
     const skippedAccounts = [];
     const failedAccounts = [];
 
-    for (const mockAccount of accountsConfig.accounts) {
+    for (const mockAccount of accountsToSeed) {
       try {
         // Check if account already exists by email
         const existingAccountByEmail = await (
@@ -352,7 +385,12 @@ export const seedTestDatabase = async (): Promise<void> => {
 
         if (existingAccountByEmail) {
           logger.info(`Account already exists with email: ${mockAccount.email}, skipping`);
-          skippedAccounts.push({ email: mockAccount.email, reason: 'email_exists' });
+          skippedAccounts.push({
+            email: mockAccount.email,
+            reason: 'email_exists',
+            tags: mockAccount.seedTags,
+            testDescription: mockAccount.testDescription,
+          });
           continue;
         }
 
@@ -370,6 +408,8 @@ export const seedTestDatabase = async (): Promise<void> => {
               email: mockAccount.email,
               reason: 'username_exists',
               username: mockAccount.username,
+              tags: mockAccount.seedTags,
+              testDescription: mockAccount.testDescription,
             });
             continue;
           }
@@ -433,18 +473,29 @@ export const seedTestDatabase = async (): Promise<void> => {
           provider: mockAccount.provider,
           status: mockAccount.status || 'active',
           username: mockAccount.username,
+          tags: mockAccount.seedTags,
+          testDescription: mockAccount.testDescription,
+          seedByDefault: mockAccount.seedByDefault,
         });
 
-        logger.info(
-          `Seeded mock account: ${mockAccount.email} (${mockAccount.accountType}${
-            mockAccount.provider ? ` - ${mockAccount.provider}` : ''
-          })`,
-        );
+        const accountTypeLog =
+          mockAccount.accountType === 'oauth'
+            ? `${mockAccount.accountType} - ${mockAccount.provider}`
+            : mockAccount.accountType;
+
+        const tagInfo =
+          mockAccount.seedTags && mockAccount.seedTags.length > 0 ? ` [tags: ${mockAccount.seedTags.join(', ')}]` : '';
+
+        const descInfo = mockAccount.testDescription ? ` (${mockAccount.testDescription})` : '';
+
+        logger.info(`Seeded mock account: ${mockAccount.email} (${accountTypeLog})${tagInfo}${descInfo}`);
       } catch (error) {
         logger.error(`Failed to seed account ${mockAccount.email}:`, error);
         failedAccounts.push({
           email: mockAccount.email,
           error: error instanceof Error ? error.message : 'Unknown error',
+          tags: mockAccount.seedTags,
+          testDescription: mockAccount.testDescription,
         });
         // Continue with other accounts even if one fails
       }
@@ -455,15 +506,17 @@ export const seedTestDatabase = async (): Promise<void> => {
       `Seeded: ${seededAccounts.length}, Skipped: ${skippedAccounts.length}, Failed: ${failedAccounts.length}`,
     );
 
-    // Log seeding statistics
+    // Enhanced seeding statistics
     const stats = {
-      totalAttempted: accountsConfig.accounts.length,
+      totalAttempted: accountsToSeed.length,
       totalSeeded: seededAccounts.length,
       totalSkipped: skippedAccounts.length,
       totalFailed: failedAccounts.length,
       byAccountType: {} as Record<string, number>,
       byProvider: {} as Record<string, number>,
       byStatus: {} as Record<string, number>,
+      byTags: {} as Record<string, number>,
+      seedingOptions: seedingOptions || { mode: accountsConfig.seedingMode || 'default' },
       seededAccounts: seededAccounts.map((acc) => ({
         mockId: acc.mockId,
         email: acc.email,
@@ -471,17 +524,26 @@ export const seedTestDatabase = async (): Promise<void> => {
         accountType: acc.accountType,
         provider: acc.provider,
         status: acc.status,
+        tags: acc.tags,
+        testDescription: acc.testDescription,
       })),
       skippedAccounts,
       failedAccounts,
     };
 
+    // Calculate statistics
     seededAccounts.forEach((account) => {
       stats.byAccountType[account.accountType] = (stats.byAccountType[account.accountType] || 0) + 1;
       if (account.provider) {
         stats.byProvider[account.provider] = (stats.byProvider[account.provider] || 0) + 1;
       }
       stats.byStatus[account.status] = (stats.byStatus[account.status] || 0) + 1;
+
+      if (account.tags && account.tags.length > 0) {
+        account.tags.forEach((tag) => {
+          stats.byTags[tag] = (stats.byTags[tag] || 0) + 1;
+        });
+      }
     });
 
     logger.info('Seeding statistics:', stats);
@@ -530,9 +592,9 @@ export const clearDatabase = async (): Promise<void> => {
 };
 
 /**
- * Clean up seeded test data
+ * Enhanced cleanup with selective removal
  */
-export const cleanupSeededTestData = async (): Promise<void> => {
+export const cleanupSeededTestData = async (seedingOptions?: SeedingOptions): Promise<void> => {
   if (getNodeEnv() === 'production') {
     throw new Error('Database cleanup is not allowed in production');
   }
@@ -542,22 +604,37 @@ export const cleanupSeededTestData = async (): Promise<void> => {
       throw new Error('Database connection not established');
     }
 
-    const accountsConfig = getAccountsMockConfig();
+    let accountsToClean;
 
-    if (!accountsConfig.enabled || !accountsConfig.accounts || accountsConfig.accounts.length === 0) {
-      logger.info('No mock accounts configured to clean up');
+    if (seedingOptions) {
+      // Use provided seeding options to determine what to clean
+      accountsToClean = getMockAccountsForSeeding(seedingOptions);
+      logger.info(`Selective cleanup requested for ${accountsToClean.length} accounts`);
+    } else {
+      // Clean all configured accounts
+      const accountsConfig = getAccountsMockConfig();
+      accountsToClean = accountsConfig.accounts || [];
+      logger.info(`Cleaning all ${accountsToClean.length} configured mock accounts`);
+    }
+
+    if (accountsToClean.length === 0) {
+      logger.info('No mock accounts to clean up');
       return;
     }
 
-    // Remove accounts by email addresses from the mock config
-    const emailsToRemove = accountsConfig.accounts.map((acc) => acc.email);
+    // Remove accounts by email addresses
+    const emailsToRemove = accountsToClean.map((acc) => acc.email);
     const result = await (
       await getModels()
     ).accounts.Account.deleteMany({
       'userDetails.email': { $in: emailsToRemove },
     });
 
-    logger.info(`Cleaned up ${result.deletedCount} seeded test accounts`);
+    logger.info(`Cleaned up ${result.deletedCount} test accounts`, {
+      requestedCleanup: accountsToClean.length,
+      actuallyRemoved: result.deletedCount,
+      seedingOptions: seedingOptions || 'all_configured',
+    });
   } catch (error) {
     logger.error('Failed to cleanup seeded test data:', error);
     throw error;
@@ -565,13 +642,66 @@ export const cleanupSeededTestData = async (): Promise<void> => {
 };
 
 /**
- * Get seeded account statistics
+ * Seed specific accounts by tags
  */
-export const getSeededAccountStats = async (): Promise<{
+export const seedAccountsByTags = async (tags: string[], clearOnSeed: boolean = false): Promise<void> => {
+  const seedingOptions: SeedingOptions = {
+    mode: 'tagged',
+    tags,
+    clearOnSeed,
+  };
+
+  await seedTestDatabase(seedingOptions);
+};
+
+/**
+ * Seed specific accounts by IDs
+ */
+export const seedAccountsById = async (accountIds: string[], clearOnSeed: boolean = false): Promise<void> => {
+  const seedingOptions: SeedingOptions = {
+    mode: 'explicit',
+    accountIds,
+    clearOnSeed,
+  };
+
+  await seedTestDatabase(seedingOptions);
+};
+
+/**
+ * Seed only default accounts (those with seedByDefault: true)
+ */
+export const seedDefaultAccounts = async (clearOnSeed: boolean = false): Promise<void> => {
+  const seedingOptions: SeedingOptions = {
+    mode: 'default',
+    clearOnSeed,
+  };
+
+  await seedTestDatabase(seedingOptions);
+};
+
+/**
+ * Seed all accounts regardless of seedByDefault flag
+ */
+export const seedAllAccounts = async (clearOnSeed: boolean = false): Promise<void> => {
+  const seedingOptions: SeedingOptions = {
+    mode: 'all',
+    clearOnSeed,
+  };
+
+  await seedTestDatabase(seedingOptions);
+};
+
+/**
+ * Enhanced get seeded account statistics with filtering support
+ */
+export const getSeededAccountStats = async (
+  filterOptions?: SeedingOptions,
+): Promise<{
   totalSeededAccounts: number;
   accountsByType: Record<string, number>;
   accountsByProvider: Record<string, number>;
   accountsByStatus: Record<string, number>;
+  accountsByTags: Record<string, number>;
   accounts: Array<{
     id: string;
     email: string;
@@ -580,6 +710,8 @@ export const getSeededAccountStats = async (): Promise<{
     provider?: string;
     status: string;
     username?: string;
+    tags?: string[];
+    testDescription?: string;
   }>;
 }> => {
   try {
@@ -587,32 +719,23 @@ export const getSeededAccountStats = async (): Promise<{
       throw new Error('Database connection not established');
     }
 
+    // Get all seeded accounts first
     const accountsConfig = getAccountsMockConfig();
+    const allMockEmails = accountsConfig.accounts.map((acc) => acc.email);
 
-    if (!accountsConfig.enabled || !accountsConfig.accounts || accountsConfig.accounts.length === 0) {
-      return {
-        totalSeededAccounts: 0,
-        accountsByType: {},
-        accountsByProvider: {},
-        accountsByStatus: {},
-        accounts: [],
-      };
-    }
-
-    // Find accounts that match the mock configuration emails
-    const mockEmails = accountsConfig.accounts.map((acc) => acc.email);
     const seededAccounts = await (
       await getModels()
     ).accounts.Account.find({
-      'userDetails.email': { $in: mockEmails },
+      'userDetails.email': { $in: allMockEmails },
     }).select('userDetails provider status accountType');
 
-    const stats = {
-      totalSeededAccounts: seededAccounts.length,
-      accountsByType: {} as Record<string, number>,
-      accountsByProvider: {} as Record<string, number>,
-      accountsByStatus: {} as Record<string, number>,
-      accounts: seededAccounts.map((account) => ({
+    // Create a map of email to mock account for tag lookup
+    const mockAccountMap = new Map(accountsConfig.accounts.map((acc) => [acc.email, acc]));
+
+    // Convert to our stats format and add tag information
+    let accountsWithTags = seededAccounts.map((account) => {
+      const mockAccount = mockAccountMap.get(account.userDetails.email || '');
+      return {
         id: account._id.toString(),
         email: account.userDetails.email || '',
         name: account.userDetails.name || '',
@@ -620,11 +743,29 @@ export const getSeededAccountStats = async (): Promise<{
         provider: account.provider,
         status: account.status || '',
         username: account.userDetails.username,
-      })),
+        tags: mockAccount?.seedTags || [],
+        testDescription: mockAccount?.testDescription,
+      };
+    });
+
+    // Apply filtering if provided
+    if (filterOptions) {
+      const filteredMockAccounts = getMockAccountsForSeeding(filterOptions);
+      const filteredEmails = new Set(filteredMockAccounts.map((acc) => acc.email));
+      accountsWithTags = accountsWithTags.filter((acc) => filteredEmails.has(acc.email));
+    }
+
+    const stats = {
+      totalSeededAccounts: accountsWithTags.length,
+      accountsByType: {} as Record<string, number>,
+      accountsByProvider: {} as Record<string, number>,
+      accountsByStatus: {} as Record<string, number>,
+      accountsByTags: {} as Record<string, number>,
+      accounts: accountsWithTags,
     };
 
     // Calculate statistics
-    seededAccounts.forEach((account) => {
+    accountsWithTags.forEach((account) => {
       const accountType = account.accountType || 'unknown';
       const provider = account.provider;
       const status = account.status || 'unknown';
@@ -634,6 +775,12 @@ export const getSeededAccountStats = async (): Promise<{
         stats.accountsByProvider[provider] = (stats.accountsByProvider[provider] || 0) + 1;
       }
       stats.accountsByStatus[status] = (stats.accountsByStatus[status] || 0) + 1;
+
+      if (account.tags && account.tags.length > 0) {
+        account.tags.forEach((tag) => {
+          stats.accountsByTags[tag] = (stats.accountsByTags[tag] || 0) + 1;
+        });
+      }
     });
 
     return stats;

@@ -1,6 +1,14 @@
 import crypto from 'crypto';
 import { LRUCache } from 'lru-cache';
-import { getOAuthMockConfig, getAccountsMockConfig, OAuthMockConfig, MockAccount } from '../../config/mock.config';
+import {
+  getOAuthMockConfig,
+  getAccountsMockConfig,
+  OAuthMockConfig,
+  MockAccount,
+  getNonDefaultAccounts,
+  getAllMockAccounts,
+  getDefaultAccounts,
+} from '../../config/mock.config';
 import { OAuthProviders } from '../../feature/account/Account.types';
 import { logger } from '../../utils/logger';
 import { BaseMockOAuthProvider } from './provider/BaseMockOAuthProvider';
@@ -153,7 +161,7 @@ class OAuthMockService {
   // ============================================================================
 
   findMockAccount(email: string, provider?: OAuthProviders): MockAccount | null {
-    const accounts = this.getAccountsConfig();
+    const accounts = getAllMockAccounts();
 
     if (provider) {
       return (
@@ -165,7 +173,27 @@ class OAuthMockService {
   }
 
   getAllMockAccounts(provider?: OAuthProviders): MockAccount[] {
-    const accounts = this.getAccountsConfig();
+    const accounts = getAllMockAccounts();
+
+    if (provider) {
+      return accounts.filter((acc) => acc.provider === provider && acc.accountType === 'oauth');
+    }
+
+    return accounts.filter((acc) => acc.accountType === 'oauth');
+  }
+
+  getNonDefaultAccounts(provider?: OAuthProviders): MockAccount[] {
+    const accounts = getNonDefaultAccounts();
+
+    if (provider) {
+      return accounts.filter((acc) => acc.provider === provider && acc.accountType === 'oauth');
+    }
+
+    return accounts.filter((acc) => acc.accountType === 'oauth');
+  }
+
+  getDefaultAccounts(provider?: OAuthProviders): MockAccount[] {
+    const accounts = getDefaultAccounts();
 
     if (provider) {
       return accounts.filter((acc) => acc.provider === provider && acc.accountType === 'oauth');
