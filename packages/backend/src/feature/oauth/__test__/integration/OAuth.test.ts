@@ -758,6 +758,16 @@ describe('OAuth Integration Tests with Supertest', () => {
       const userInfo = oauthMockService.getUserInfo(access_token, OAuthProviders.Google);
       expect(userInfo).toBeTruthy();
       expect(userInfo.email).toBe(testAccount.email);
+
+      // Test token refresh
+      const refreshResult = oauthMockService.refreshAccessToken(refresh_token, OAuthProviders.Google);
+      expect(refreshResult).toBeTruthy();
+      expect(refreshResult.access_token).toBeTruthy();
+      expect(refreshResult.access_token).not.toBe(access_token); // Should be different
+
+      // Test token revocation
+      const revokeResult = oauthMockService.revokeToken(refreshResult?.access_token, OAuthProviders.Google);
+      expect(revokeResult).toBe(true);
     });
 
     it('should clear caches properly between tests', async () => {
