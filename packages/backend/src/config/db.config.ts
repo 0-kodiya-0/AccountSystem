@@ -39,8 +39,23 @@ interface DatabaseModels {
   google: GoogleModels;
 }
 
-// Create connection for authentication
-let authConnection: mongoose.Connection | null = null;
+// Connection state management
+interface ConnectionState {
+  connection: mongoose.Connection | null;
+  isConnected: boolean;
+  isConnecting: boolean;
+  lastConnectionTime: Date | null;
+  connectionPromise: Promise<mongoose.Connection> | null;
+}
+
+// Create connection state for authentication
+const connectionState: ConnectionState = {
+  connection: null,
+  isConnected: false,
+  isConnecting: false,
+  lastConnectionTime: null,
+  connectionPromise: null,
+};
 
 // Memory server instance for testing
 let memoryServer: MongoMemoryServer | null = null;
@@ -50,12 +65,21 @@ let isInitialized = false;
 let models: DatabaseModels | null = null;
 
 /**
+ * Database Connection Error
+ */
+export class DatabaseConnectionError extends Error {
+  constructor(message: string, public readonly cause?: Error) {
+    super(message);
+    this.name = 'DatabaseConnectionError';
+  }
+}
+
+/**
  * Check if we should use MongoDB Memory Server
  */
 export function shouldUseMemoryServer(): boolean {
   const nodeEnv = getNodeEnv();
   const isTestOrDev = nodeEnv === 'test' || nodeEnv === 'development';
-
   return MongoMemoryServer && getUseMemoryDb() && isTestOrDev;
 }
 
@@ -67,9 +91,6 @@ export async function startMemoryServer(): Promise<string> {
     throw new Error('MongoDB Memory Server is not available');
   }
 
-  /**
-   * Register cleanup handlers on module load
-   */
   processCleanup.registerCleanup({
     id: 'mongodb-memory-server',
     type: 'custom',
@@ -87,10 +108,10 @@ export async function startMemoryServer(): Promise<string> {
       instance: {
         dbName: 'test-accounts-db',
         dbPath: './.temp/db',
-        port: 27017, // Use default port for consistency
+        port: 27017,
       },
       binary: {
-        version: '7.0.0', // Use specific MongoDB version
+        version: '7.0.0',
       },
     });
 
@@ -126,7 +147,6 @@ async function getMongoDbUri(): Promise<string> {
     return await startMemoryServer();
   }
 
-  // Use provided URI or construct default
   const providedUri = getAccountsDbUri();
   if (providedUri) {
     return providedUri;
@@ -136,105 +156,186 @@ async function getMongoDbUri(): Promise<string> {
 }
 
 /**
- * Connect to the authentication database
+ * Wait for connection to be ready with timeout
+ */
+async function waitForConnection(connection: mongoose.Connection, timeoutMs: number = 30000): Promise<void> {
+  if (connection.readyState === mongoose.ConnectionStates.connected) {
+    return;
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      connection.removeAllListeners('connected');
+      connection.removeAllListeners('error');
+      reject(new DatabaseConnectionError(`Connection timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    const onConnected = () => {
+      clearTimeout(timeout);
+      connection.removeAllListeners('error');
+      resolve();
+    };
+
+    const onError = (err: Error) => {
+      clearTimeout(timeout);
+      connection.removeAllListeners('connected');
+      reject(new DatabaseConnectionError('Connection failed', err));
+    };
+
+    connection.once('connected', onConnected);
+    connection.once('error', onError);
+  });
+}
+
+/**
+ * Verify database connection is actually working
+ */
+async function verifyConnection(connection: mongoose.Connection): Promise<void> {
+  try {
+    if (!connection.db) {
+      throw new Error('Database object not available');
+    }
+    // Ping the database to ensure it's responsive
+    await connection.db.admin().ping();
+    logger.debug('Database ping successful');
+  } catch (error) {
+    throw new DatabaseConnectionError('Database ping failed - connection not functional', error as Error);
+  }
+}
+
+/**
+ * Connect to the authentication database with proper verification
  */
 export const connectAuthDB = async (forceNew: boolean = false): Promise<mongoose.Connection> => {
   try {
-    // Return existing connection if available and not forcing a new one
-    if (authConnection && !forceNew) {
-      const state = authConnection.readyState;
+    // Return existing connection if it's working and not forcing a new one
+    if (connectionState.connection && !forceNew && connectionState.isConnected) {
+      await verifyConnection(connectionState.connection);
+      logger.debug('Returning existing verified database connection');
+      return connectionState.connection;
+    }
 
-      // If connected, return existing connection
-      if (state === mongoose.ConnectionStates.connected) {
-        logger.debug('Returning existing authentication database connection');
-        return authConnection;
-      }
-
-      // If connecting, wait for it to complete
-      if (state === mongoose.ConnectionStates.connecting) {
-        logger.debug('Waiting for existing authentication database connection to complete');
-        await new Promise<void>((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            authConnection!.off('connected', onConnected);
-            authConnection!.off('error', onError);
-            reject(new Error('Connection timeout'));
-          }, 30000); // 30 second timeout
-
-          const onConnected = () => {
-            clearTimeout(timeout);
-            authConnection!.off('error', onError);
-            resolve();
-          };
-
-          const onError = (err: Error) => {
-            clearTimeout(timeout);
-            authConnection!.off('connected', onConnected);
-            reject(err);
-          };
-
-          authConnection!.once('connected', onConnected);
-          authConnection!.once('error', onError);
-        });
-        return authConnection;
-      }
+    // If currently connecting, wait for that connection
+    if (connectionState.isConnecting && connectionState.connectionPromise && !forceNew) {
+      logger.debug('Waiting for existing connection attempt to complete');
+      return await connectionState.connectionPromise;
     }
 
     // Force close existing connection if forceNew is true
-    if (forceNew && authConnection) {
-      logger.info('Forcing new authentication database connection - closing existing connection');
-      await authConnection.close();
-      authConnection = null;
+    if (forceNew && connectionState.connection) {
+      logger.info('Forcing new database connection - closing existing connection');
+      await connectionState.connection.close();
+      connectionState.connection = null;
+      connectionState.isConnected = false;
     }
 
-    const authURI = await getMongoDbUri();
+    // Set connecting state
+    connectionState.isConnecting = true;
 
-    // Create a new connection
-    authConnection = mongoose.createConnection(authURI);
+    // Create connection promise
+    connectionState.connectionPromise = (async () => {
+      const authURI = await getMongoDbUri();
 
-    const dbType = shouldUseMemoryServer() ? 'Memory' : 'MongoDB';
-    logger.info(`${dbType} authentication database connected successfully`);
+      // Create a new connection
+      const connection = mongoose.createConnection(authURI, {
+        // Connection options for reliability
+        maxPoolSize: 10,
+        serverSelectionTimeoutMS: 30000,
+        socketTimeoutMS: 45000,
+        family: 4, // Use IPv4, skip trying IPv6
+        retryWrites: true,
+        retryReads: true,
+      });
 
-    // Setup connection error handlers
-    authConnection.on('error', (err) => {
-      logger.error('Authentication database connection error:', err);
-    });
+      // Wait for connection to be established
+      await waitForConnection(connection);
 
-    authConnection.on('disconnected', () => {
-      logger.warn('Authentication database disconnected');
-    });
+      // Verify the connection is actually working
+      await verifyConnection(connection);
 
-    authConnection.on('reconnected', () => {
-      logger.info('Authentication database reconnected');
-    });
+      // Update connection state
+      connectionState.connection = connection;
+      connectionState.isConnected = true;
+      connectionState.isConnecting = false;
+      connectionState.lastConnectionTime = new Date();
 
-    // Memory server specific logging
-    if (shouldUseMemoryServer()) {
-      logger.info('Using MongoDB Memory Server for testing');
-      logger.info('Database will be cleared when server stops');
-    }
+      const dbType = shouldUseMemoryServer() ? 'Memory' : 'MongoDB';
+      logger.info(`${dbType} authentication database connected and verified successfully`);
 
-    return authConnection;
+      if (shouldUseMemoryServer()) {
+        logger.info('Using MongoDB Memory Server for testing');
+        logger.info('Database will be cleared when server stops');
+      }
+
+      return connection;
+    })();
+
+    return await connectionState.connectionPromise;
   } catch (error) {
+    connectionState.isConnecting = false;
+    connectionState.connectionPromise = null;
     logger.error('Authentication database connection error:', error);
 
     // If memory server fails, try regular MongoDB
     if (shouldUseMemoryServer()) {
       logger.warn('Memory server failed, falling back to regular MongoDB');
-      process.env.USE_MEMORY_DB = 'false'; // Disable memory server for this session
+      process.env.USE_MEMORY_DB = 'false';
+      // Retry with regular MongoDB
+      return await connectAuthDB(forceNew);
     }
 
-    process.exit(1);
+    throw new DatabaseConnectionError('Failed to connect to database', error as Error);
   }
 };
 
 /**
+ * Ensure database connection is ready
+ * This is the main function to use throughout the application
+ */
+export const ensureConnection = async (): Promise<mongoose.Connection> => {
+  if (!connectionState.connection) {
+    return await connectAuthDB();
+  }
+
+  if (!connectionState.isConnected) {
+    logger.warn('Database connection exists but is not connected, attempting to reconnect');
+    return await connectAuthDB(true);
+  }
+
+  try {
+    await verifyConnection(connectionState.connection);
+    return connectionState.connection;
+  } catch {
+    logger.warn('Database connection verification failed, reconnecting');
+    return await connectAuthDB(true);
+  }
+};
+
+/**
+ * Get the current connection or throw if not available
+ * Use this when you need to access the connection directly
+ */
+export const getConnection = (): mongoose.Connection => {
+  if (!connectionState.connection || !connectionState.isConnected) {
+    throw new DatabaseConnectionError('Database connection is not available. Call ensureConnection() first.');
+  }
+  return connectionState.connection;
+};
+
+/**
+ * Check if database is connected and ready
+ */
+export const isConnected = (): boolean => {
+  return connectionState.isConnected && !!connectionState.connection;
+};
+
+/**
  * Initialize all database connections and models
- * This ensures models are available before they're used
  */
 export const initializeDB = async (): Promise<DatabaseModels> => {
   try {
-    // Connect to database
-    const connection = await connectAuthDB();
+    // Ensure database connection is ready
+    const connection = await ensureConnection();
 
     // Initialize models on the authentication database
     const accountModel = await initAccountModel(connection);
@@ -259,25 +360,22 @@ export const initializeDB = async (): Promise<DatabaseModels> => {
 
     // Handle test database initialization
     if (getNodeEnv() === 'test' || getNodeEnv() === 'development') {
-      // Clear database if requested
       if (getTestDbClearOnStart()) {
         await clearDatabase();
         logger.info('Test database cleared on startup');
       }
 
-      // Seed database if requested
       if (getTestDbSeedOnStart()) {
         await seedTestDatabase();
         logger.info('Test database seeded on startup');
       }
 
-      // Log database stats for development/test
       const stats = await getDatabaseStats();
       logger.info('Database statistics:', stats);
     }
 
     const dbType = shouldUseMemoryServer() ? 'Memory' : 'MongoDB';
-    logger.info(`All ${dbType} database connections established`);
+    logger.info(`All ${dbType} database connections established and verified`);
 
     return models;
   } catch (error) {
@@ -288,22 +386,75 @@ export const initializeDB = async (): Promise<DatabaseModels> => {
 
 /**
  * Get models for database operations
- * This function ensures models are initialized before access
- * and throws a clear error if something goes wrong
  */
 export const getModels = async (): Promise<DatabaseModels> => {
   if (!isInitialized || !models) {
     try {
       return await initializeDB();
     } catch (error) {
-      throw new Error(`Failed to initialize database connections: ${error}`);
+      throw new DatabaseConnectionError(`Failed to initialize database connections: ${error}`);
     }
   }
   return models;
 };
 
 /**
- * Enhanced seed database with selective seeding support
+ * Clear database (useful for testing) - now with connection verification
+ */
+export const clearDatabase = async (): Promise<void> => {
+  if (getNodeEnv() === 'production') {
+    throw new Error('Database clearing is not allowed in production');
+  }
+
+  const connection = await ensureConnection();
+  if (!connection.db) {
+    throw new DatabaseConnectionError('Database object not available');
+  }
+
+  const collections = await connection.db.collections();
+  await Promise.all(collections.map((collection) => collection.deleteMany({})));
+  logger.info('Database cleared successfully');
+};
+
+/**
+ * Get database statistics - now with connection verification
+ */
+export const getDatabaseStats = async (): Promise<{
+  type: 'memory' | 'mongodb';
+  collections: string[];
+  totalDocuments: number;
+}> => {
+  const isMemory = shouldUseMemoryServer();
+  let collections: string[] = [];
+  let totalDocuments = 0;
+
+  try {
+    const connection = await ensureConnection();
+    if (!connection.db) {
+      throw new DatabaseConnectionError('Database object not available');
+    }
+
+    const collectionInfos = await connection.db.listCollections().toArray();
+    collections = collectionInfos.map((info) => info.name);
+
+    // Count documents in all collections
+    for (const collectionName of collections) {
+      const count = await connection.db.collection(collectionName).countDocuments();
+      totalDocuments += count;
+    }
+  } catch (error) {
+    logger.error('Error getting database stats:', error);
+  }
+
+  return {
+    type: isMemory ? 'memory' : 'mongodb',
+    collections,
+    totalDocuments,
+  };
+};
+
+/**
+ * Enhanced seed database with connection verification
  */
 export const seedTestDatabase = async (seedingOptions?: SeedingOptions): Promise<void> => {
   if (getNodeEnv() === 'production') {
@@ -311,10 +462,8 @@ export const seedTestDatabase = async (seedingOptions?: SeedingOptions): Promise
   }
 
   try {
-    // Get the authentication connection
-    if (!authConnection) {
-      throw new Error('Database connection not established');
-    }
+    // Ensure connection is ready
+    await ensureConnection();
 
     // Get accounts configuration
     const accountsConfig = getAccountsMockConfig();
@@ -568,6 +717,8 @@ export const seedTestDatabase = async (seedingOptions?: SeedingOptions): Promise
     } catch {
       logger.warn('Could not load OAuth configuration for logging');
     }
+
+    logger.info('Database seeding completed successfully');
   } catch (error) {
     logger.error('Failed to seed test database:', error);
     throw error;
@@ -575,272 +726,22 @@ export const seedTestDatabase = async (seedingOptions?: SeedingOptions): Promise
 };
 
 /**
- * Clear database (useful for testing)
- */
-export const clearDatabase = async (): Promise<void> => {
-  if (getNodeEnv() === 'production') {
-    throw new Error('Database clearing is not allowed in production');
-  }
-
-  if (authConnection && authConnection.db) {
-    const collections = await authConnection.db.collections();
-
-    await Promise.all(collections.map((collection) => collection.deleteMany({})));
-
-    logger.info('Database cleared successfully');
-  }
-};
-
-/**
- * Enhanced cleanup with selective removal
- */
-export const cleanupSeededTestData = async (seedingOptions?: SeedingOptions): Promise<void> => {
-  if (getNodeEnv() === 'production') {
-    throw new Error('Database cleanup is not allowed in production');
-  }
-
-  try {
-    if (!authConnection) {
-      throw new Error('Database connection not established');
-    }
-
-    let accountsToClean;
-
-    if (seedingOptions) {
-      // Use provided seeding options to determine what to clean
-      accountsToClean = getMockAccountsForSeeding(seedingOptions);
-      logger.info(`Selective cleanup requested for ${accountsToClean.length} accounts`);
-    } else {
-      // Clean all configured accounts
-      const accountsConfig = getAccountsMockConfig();
-      accountsToClean = accountsConfig.accounts || [];
-      logger.info(`Cleaning all ${accountsToClean.length} configured mock accounts`);
-    }
-
-    if (accountsToClean.length === 0) {
-      logger.info('No mock accounts to clean up');
-      return;
-    }
-
-    // Remove accounts by email addresses
-    const emailsToRemove = accountsToClean.map((acc) => acc.email);
-    const result = await (
-      await getModels()
-    ).accounts.Account.deleteMany({
-      'userDetails.email': { $in: emailsToRemove },
-    });
-
-    logger.info(`Cleaned up ${result.deletedCount} test accounts`, {
-      requestedCleanup: accountsToClean.length,
-      actuallyRemoved: result.deletedCount,
-      seedingOptions: seedingOptions || 'all_configured',
-    });
-  } catch (error) {
-    logger.error('Failed to cleanup seeded test data:', error);
-    throw error;
-  }
-};
-
-/**
- * Seed specific accounts by tags
- */
-export const seedAccountsByTags = async (tags: string[], clearOnSeed: boolean = false): Promise<void> => {
-  const seedingOptions: SeedingOptions = {
-    mode: 'tagged',
-    tags,
-    clearOnSeed,
-  };
-
-  await seedTestDatabase(seedingOptions);
-};
-
-/**
- * Seed specific accounts by IDs
- */
-export const seedAccountsById = async (accountIds: string[], clearOnSeed: boolean = false): Promise<void> => {
-  const seedingOptions: SeedingOptions = {
-    mode: 'explicit',
-    accountIds,
-    clearOnSeed,
-  };
-
-  await seedTestDatabase(seedingOptions);
-};
-
-/**
- * Seed only default accounts (those with seedByDefault: true)
- */
-export const seedDefaultAccounts = async (clearOnSeed: boolean = false): Promise<void> => {
-  const seedingOptions: SeedingOptions = {
-    mode: 'default',
-    clearOnSeed,
-  };
-
-  await seedTestDatabase(seedingOptions);
-};
-
-/**
- * Seed all accounts regardless of seedByDefault flag
- */
-export const seedAllAccounts = async (clearOnSeed: boolean = false): Promise<void> => {
-  const seedingOptions: SeedingOptions = {
-    mode: 'all',
-    clearOnSeed,
-  };
-
-  await seedTestDatabase(seedingOptions);
-};
-
-/**
- * Enhanced get seeded account statistics with filtering support
- */
-export const getSeededAccountStats = async (
-  filterOptions?: SeedingOptions,
-): Promise<{
-  totalSeededAccounts: number;
-  accountsByType: Record<string, number>;
-  accountsByProvider: Record<string, number>;
-  accountsByStatus: Record<string, number>;
-  accountsByTags: Record<string, number>;
-  accounts: Array<{
-    id: string;
-    email: string;
-    name: string;
-    accountType: string;
-    provider?: string;
-    status: string;
-    username?: string;
-    tags?: string[];
-    testDescription?: string;
-  }>;
-}> => {
-  try {
-    if (!authConnection) {
-      throw new Error('Database connection not established');
-    }
-
-    // Get all seeded accounts first
-    const accountsConfig = getAccountsMockConfig();
-    const allMockEmails = accountsConfig.accounts.map((acc) => acc.email);
-
-    const seededAccounts = await (
-      await getModels()
-    ).accounts.Account.find({
-      'userDetails.email': { $in: allMockEmails },
-    }).select('userDetails provider status accountType');
-
-    // Create a map of email to mock account for tag lookup
-    const mockAccountMap = new Map(accountsConfig.accounts.map((acc) => [acc.email, acc]));
-
-    // Convert to our stats format and add tag information
-    let accountsWithTags = seededAccounts.map((account) => {
-      const mockAccount = mockAccountMap.get(account.userDetails.email || '');
-      return {
-        id: account._id.toString(),
-        email: account.userDetails.email || '',
-        name: account.userDetails.name || '',
-        accountType: account.accountType || '',
-        provider: account.provider,
-        status: account.status || '',
-        username: account.userDetails.username,
-        tags: mockAccount?.seedTags || [],
-        testDescription: mockAccount?.testDescription,
-      };
-    });
-
-    // Apply filtering if provided
-    if (filterOptions) {
-      const filteredMockAccounts = getMockAccountsForSeeding(filterOptions);
-      const filteredEmails = new Set(filteredMockAccounts.map((acc) => acc.email));
-      accountsWithTags = accountsWithTags.filter((acc) => filteredEmails.has(acc.email));
-    }
-
-    const stats = {
-      totalSeededAccounts: accountsWithTags.length,
-      accountsByType: {} as Record<string, number>,
-      accountsByProvider: {} as Record<string, number>,
-      accountsByStatus: {} as Record<string, number>,
-      accountsByTags: {} as Record<string, number>,
-      accounts: accountsWithTags,
-    };
-
-    // Calculate statistics
-    accountsWithTags.forEach((account) => {
-      const accountType = account.accountType || 'unknown';
-      const provider = account.provider;
-      const status = account.status || 'unknown';
-
-      stats.accountsByType[accountType] = (stats.accountsByType[accountType] || 0) + 1;
-      if (provider) {
-        stats.accountsByProvider[provider] = (stats.accountsByProvider[provider] || 0) + 1;
-      }
-      stats.accountsByStatus[status] = (stats.accountsByStatus[status] || 0) + 1;
-
-      if (account.tags && account.tags.length > 0) {
-        account.tags.forEach((tag) => {
-          stats.accountsByTags[tag] = (stats.accountsByTags[tag] || 0) + 1;
-        });
-      }
-    });
-
-    return stats;
-  } catch (error) {
-    logger.error('Failed to get seeded account statistics:', error);
-    throw error;
-  }
-};
-
-/**
- * Get database statistics
- */
-export const getDatabaseStats = async (): Promise<{
-  type: 'memory' | 'mongodb';
-  collections: string[];
-  totalDocuments: number;
-}> => {
-  const isMemory = shouldUseMemoryServer();
-
-  let collections: string[] = [];
-  let totalDocuments = 0;
-
-  if (authConnection && authConnection.db) {
-    try {
-      const collectionInfos = await authConnection.db.listCollections().toArray();
-      collections = collectionInfos.map((info) => info.name);
-
-      // Count documents in all collections
-      for (const collectionName of collections) {
-        const count = await authConnection.db.collection(collectionName).countDocuments();
-        totalDocuments += count;
-      }
-    } catch (error) {
-      logger.error('Error getting database stats:', error);
-    }
-  }
-
-  return {
-    type: isMemory ? 'memory' : 'mongodb',
-    collections,
-    totalDocuments,
-  };
-};
-
-/**
  * Close all database connections
  */
 export const closeAllConnections = async (): Promise<void> => {
   try {
-    if (authConnection) {
-      await authConnection.close();
-      authConnection = null;
+    if (connectionState.connection) {
+      await connectionState.connection.close();
+      connectionState.connection = null;
+      connectionState.isConnected = false;
+      connectionState.isConnecting = false;
+      connectionState.connectionPromise = null;
     }
 
-    // Stop memory server if it was used
     if (shouldUseMemoryServer()) {
       await stopMemoryServer();
     }
 
-    // Reset state
     models = null;
     isInitialized = false;
 
@@ -852,39 +753,30 @@ export const closeAllConnections = async (): Promise<void> => {
 };
 
 /**
- * Get authentication database connection status
+ * Get authentication database connection status with detailed info
  */
 export const getAuthConnectionStatus = (): {
   connected: boolean;
+  connecting: boolean;
   readyState: number;
   host?: string;
   name?: string;
-  collections?: number;
+  lastConnectionTime?: Date;
   memoryServer: boolean;
 } => {
-  if (!authConnection) {
-    return {
-      connected: false,
-      readyState: mongoose.ConnectionStates.disconnected,
-      memoryServer: shouldUseMemoryServer(),
-    };
-  }
-
-  const readyState = authConnection.readyState;
-  const connected = readyState === mongoose.ConnectionStates.connected;
-
   const status = {
-    connected,
-    readyState,
+    connected: connectionState.isConnected,
+    connecting: connectionState.isConnecting,
+    readyState: connectionState.connection?.readyState || mongoose.ConnectionStates.disconnected,
     memoryServer: shouldUseMemoryServer(),
+    lastConnectionTime: connectionState.lastConnectionTime || undefined,
   };
 
-  // Add additional info if connected
-  if (connected && authConnection.db) {
+  if (connectionState.connection && connectionState.isConnected) {
     return {
       ...status,
-      host: authConnection.host,
-      name: authConnection.name,
+      host: connectionState.connection.host,
+      name: connectionState.connection.name,
     };
   }
 
