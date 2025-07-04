@@ -7,7 +7,7 @@ import * as SessionService from './session.service';
  * This API will be called by frontend on mount to get session state
  */
 export const getAccountSession = asyncHandler(async (req, res, next) => {
-  const sessionInfo = await SessionService.getAccountSession(req);
+  const sessionInfo = await SessionService.getAccountSession(req, res);
 
   next(new JsonSuccess(sessionInfo, 200));
 });

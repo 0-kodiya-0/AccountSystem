@@ -285,7 +285,7 @@ export const extractAccessToken = (req: Request, accountId: string): string | nu
  * Extract refresh token from cookies
  */
 export const extractRefreshToken = (req: Request, accountId: string): string | null => {
-  return req.cookies[`refresh_token_${accountId}`];
+  return req.cookies[`refresh_token_${accountId}`] || null;
 };
 
 /**

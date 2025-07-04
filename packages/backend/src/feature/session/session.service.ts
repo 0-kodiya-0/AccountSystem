@@ -18,7 +18,7 @@ import { logger } from '../../utils/logger';
  * Returns session data and validates account IDs still exist in database
  * Automatically cleans up invalid accounts from session
  */
-export async function getAccountSession(req: Request): Promise<GetAccountSessionResponse> {
+export async function getAccountSession(req: Request, res: Response): Promise<GetAccountSessionResponse> {
   const session = getAccountSessionFromCookies(req);
 
   if (!session.hasSession || !session.isValid || session.accountIds.length === 0) {
@@ -51,7 +51,7 @@ export async function getAccountSession(req: Request): Promise<GetAccountSession
       });
 
       // Clean up the session by removing missing accounts using existing function
-      clearAccountSession(req, {} as Response, missingAccountIds);
+      clearAccountSession(req, res, missingAccountIds);
 
       // Log the cleanup action
       logger.info('Session cleaned up - removed invalid accounts:', {
@@ -77,6 +77,7 @@ export async function getAccountSession(req: Request): Promise<GetAccountSession
       },
     };
   } catch (error) {
+    console.log(error);
     logger.error('Error validating session account IDs:', error);
 
     return {
