@@ -112,16 +112,16 @@ export const createRedirectUrl = (
     if (typeof data === 'object' && data !== null) {
       Object.keys(data).forEach((key) => {
         const value = data![key];
-        queryParams.append(key, encodeURIComponent(value));
+        queryParams.append(key, value);
       });
     } else {
-      queryParams.append('data', encodeURIComponent(JSON.stringify(data)));
+      queryParams.append('data', data);
     }
   }
 
   // For permission redirects, include original URL (cleaned)
   if (originalUrl) {
-    queryParams.append('redirectUrl', encodeURIComponent(originalUrl));
+    queryParams.append('redirectUrl', originalUrl);
   }
 
   // Construct the final URL with query parameters
