@@ -1,5 +1,5 @@
 import { OAuthProviders } from '../../feature/account';
-import { OAuthState, PermissionState, ProviderResponse, AuthType } from '../../feature/oauth/OAuth.types';
+import { OAuthState, OAuthPermissionState, ProviderResponse, AuthType } from '../../feature/oauth/OAuth.types';
 
 export const mockOAuthState: OAuthState = {
   state: 'oauth_state_12345abcdef',
@@ -9,7 +9,7 @@ export const mockOAuthState: OAuthState = {
   callbackUrl: 'https://app.example.com/auth/callback',
 };
 
-export const mockPermissionState: PermissionState = {
+export const mockPermissionState: OAuthPermissionState = {
   state: 'permission_state_67890ghijkl',
   provider: OAuthProviders.Google,
   authType: AuthType.PERMISSION,
