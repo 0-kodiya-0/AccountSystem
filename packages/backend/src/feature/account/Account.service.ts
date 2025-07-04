@@ -102,7 +102,7 @@ export async function updateAccount(account: AccountDocument, updates: any): Pro
       });
 
       if (existingAccount) {
-        throw new ValidationError('Username is already taken', 400, ApiErrorCode.USER_EXISTS);
+        throw new ValidationError('Username already in use', 400, ApiErrorCode.USER_EXISTS);
       }
     }
     allowedUpdates.username = updates.username;
