@@ -10,6 +10,7 @@ process.env.API_BASE_PATH = '/';
 process.env.PROXY_URL = 'http://localhost:7000';
 process.env.APP_NAME = 'TestApp';
 process.env.PORT = '3000';
+process.env.DEFAULT_ERROR_REDIRECT_URL = '/system-error';
 // process.env.SMTP_HOST = 'test-smtp.example.com';
 // process.env.SMTP_PORT = '587';
 // process.env.SMTP_SECURE = 'false';

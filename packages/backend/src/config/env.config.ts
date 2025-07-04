@@ -23,6 +23,8 @@ export const REQUIRED_ENV_VARS = [
   // Application Identity
   'APP_NAME',
 
+  'DEFAULT_ERROR_REDIRECT_URL',
+
   // Email Configuration (Required for user verification, password reset, etc.)
   'SMTP_HOST',
   'SMTP_PORT',
@@ -194,6 +196,7 @@ export const getAppName = (): string => envConfig.get('APP_NAME');
 
 // Database URIs
 export const getAccountsDbUri = (): string => envConfig.get('ACCOUNTS_DB_URI');
+export const getDefaultErrorRedirectUrl = (): string => envConfig.get('DEFAULT_ERROR_REDIRECT_URL');
 
 // Google OAuth
 export const getGoogleClientId = (): string => envConfig.get('GOOGLE_CLIENT_ID');

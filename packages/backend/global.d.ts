@@ -11,6 +11,7 @@ declare global {
       MONGODB_URI?: string;
       API_BASE_PATH?: string;
       PROXY_URL?: string;
+      DEFAULT_ERROR_REDIRECT_URL?: string;
 
       // JWT and session configuration
       JWT_SECRET?: string;
