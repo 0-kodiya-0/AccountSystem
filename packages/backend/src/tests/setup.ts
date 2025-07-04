@@ -11,6 +11,11 @@ process.env.PROXY_URL = 'http://localhost:7000';
 process.env.APP_NAME = 'TestApp';
 process.env.PORT = '3000';
 process.env.DEFAULT_ERROR_REDIRECT_URL = '/system-error';
+
+process.env.MOCK_ENABLED = 'true';
+process.env.USE_MEMORY_DB = 'true';
+process.env.TEST_DB_CLEAR_ON_START = 'true';
+process.env.TEST_DB_SEED_ON_START = 'true';
 // process.env.SMTP_HOST = 'test-smtp.example.com';
 // process.env.SMTP_PORT = '587';
 // process.env.SMTP_SECURE = 'false';
