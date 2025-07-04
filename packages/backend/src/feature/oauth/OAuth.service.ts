@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { ApiErrorCode, BadRequestError, NotFoundError, CallbackCode, CallbackData } from '../../types/response.types';
 import { Account, AccountType, AccountStatus, OAuthProviders } from '../account/Account.types';
-import { AuthType, OAuthState, PermissionState } from './OAuth.types';
+import { AuthType, OAuthState, OAuthPermissionState } from './OAuth.types';
 import { validateAccount } from '../account/Account.validation';
 import { findUserByEmail, findUserById } from '../account';
 import { createOAuthAccessToken, createOAuthRefreshToken } from '../tokens';
@@ -75,24 +75,19 @@ export async function generatePermissionUrl(
     throw new NotFoundError('Account not found or missing email', 404, ApiErrorCode.USER_NOT_FOUND);
   }
 
-  // Parse scope names
-  let scopeNames: string[];
-  try {
-    scopeNames = JSON.parse(requestedScopeNames);
-    if (!Array.isArray(scopeNames)) {
-      throw new Error('Not an array');
-    }
-  } catch {
-    scopeNames = requestedScopeNames.split(',').map((name) => name.trim());
+  // Parse scope names as comma-separated string
+  const scopeNames = requestedScopeNames
+    .split(',')
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0); // Remove empty strings
+
+  if (scopeNames.length === 0) {
+    throw new BadRequestError('At least one scope name is required');
   }
 
   const validation = validateScopeNames(scopeNames);
   if (!validation.valid) {
     throw new BadRequestError(`Invalid scope name format: ${validation.errors.join(', ')}`);
-  }
-
-  if (scopeNames.length === 0) {
-    throw new BadRequestError('At least one scope name is required');
   }
 
   const scopes = buildGoogleScopeUrls(scopeNames);
@@ -249,7 +244,7 @@ export async function processPermissionCallback(
   req: Request,
   res: Response,
   code: string,
-  permissionDetails: PermissionState,
+  permissionDetails: OAuthPermissionState,
 ) {
   const { accountId, service, scopeLevel } = permissionDetails;
   const callbackUrl = permissionDetails.callbackUrl || `${getProxyUrl()}/auth/callback`;

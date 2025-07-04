@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { OAuthProviders } from '../account/Account.types';
-import { AuthType, OAuthState, PermissionState, StateDetails } from './OAuth.types';
+import { AuthType, OAuthState, OAuthPermissionState, StateDetails } from './OAuth.types';
 import { getOAuthState, getPermissionState } from './OAuth.cache';
 import { BadRequestError, ApiErrorCode } from '../../types/response.types';
 import { findUserByEmail } from '../account';
@@ -45,7 +45,7 @@ export async function validateOAuthState(state: string, provider: OAuthProviders
 /**
  * Validate permission state
  */
-export async function validatePermissionState(state: string, provider: OAuthProviders): Promise<PermissionState> {
+export async function validatePermissionState(state: string, provider: OAuthProviders): Promise<OAuthPermissionState> {
   if (!state) {
     throw new BadRequestError('Missing state parameter', 400, ApiErrorCode.INVALID_STATE);
   }

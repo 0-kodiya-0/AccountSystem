@@ -82,16 +82,16 @@ export function isValidScopeName(scopeName: string): boolean {
     return false;
   }
 
-  if (trimmed.startsWith('https://') || trimmed.startsWith('http://')) {
+  if (/^https:\/\/www\.googleapis\.com\/auth\/[a-zA-Z0-9._-]+$/.test(trimmed)) {
     try {
       new URL(trimmed);
       return true;
     } catch {
       return false;
     }
+  } else {
+    return false;
   }
-
-  return /^[a-zA-Z0-9._-]+$/.test(trimmed);
 }
 
 /**

@@ -20,7 +20,7 @@ export interface OAuthState {
 }
 
 // Add a new type for permission requests
-export interface PermissionState extends OAuthState {
+export interface OAuthPermissionState extends OAuthState {
   accountId: string;
   service: string;
   scopeLevel: string;
@@ -54,7 +54,7 @@ export interface ProviderResponse {
   email?: string | null;
   imageUrl?: string | null;
   tokenDetails: TokenDetails;
-  permissionState?: PermissionState | null;
+  permissionState?: OAuthPermissionState | null;
 }
 
 export type StateDetails = OAuthState | SignInState | SignUpState | null;

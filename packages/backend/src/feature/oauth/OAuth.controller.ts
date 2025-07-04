@@ -13,6 +13,8 @@ import { asyncHandler } from '../../utils/response';
 import { logger } from '../../utils/logger';
 import * as OAuthService from './OAuth.service';
 import * as OAuthValidation from './OAuth.validation';
+import { OAuthPermissionState, OAuthState } from './OAuth.types';
+import { getDefaultErrorRedirectUrl } from '../../config/env.config';
 
 /**
  * Generate OAuth signup URL
@@ -72,15 +74,16 @@ export const handleOAuthCallback = asyncHandler(async (req: Request, res: Respon
   const provider = ValidationUtils.validateEnum(req.params.provider, OAuthProviders, 'OAuth provider');
   const { code, state } = req.query;
 
-  if (provider !== OAuthProviders.Google) {
-    throw new BadRequestError(`Provider ${provider} is not implemented yet`, 400, ApiErrorCode.INVALID_PROVIDER);
-  }
-
-  ValidationUtils.validateRequiredFields({ code, state }, ['code', 'state']);
-
-  const stateDetails = await OAuthValidation.validateOAuthState(state as string, provider);
+  let stateDetails: OAuthState | null = null;
 
   try {
+    if (provider !== OAuthProviders.Google) {
+      throw new BadRequestError(`Provider ${provider} is not implemented yet`, 400, ApiErrorCode.INVALID_PROVIDER);
+    }
+
+    ValidationUtils.validateRequiredFields({ code, state }, ['code', 'state']);
+
+    stateDetails = await OAuthValidation.validateOAuthState(state as string, provider);
     const result = await OAuthService.processOAuthCallback(req, res, provider, code as string, stateDetails);
 
     logger.info(`OAuth ${stateDetails.authType} successful for provider: ${provider}`);
@@ -95,7 +98,9 @@ export const handleOAuthCallback = asyncHandler(async (req: Request, res: Respon
       provider,
     };
 
-    next(new Redirect(callbackData, stateDetails.callbackUrl));
+    next(
+      new Redirect(callbackData, stateDetails?.callbackUrl ? stateDetails.callbackUrl : getDefaultErrorRedirectUrl()),
+    );
   }
 });
 
@@ -134,11 +139,13 @@ export const generatePermissionUrl = asyncHandler(async (req: Request, res: Resp
 export const handlePermissionCallback = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { code, state } = req.query;
 
-  ValidationUtils.validateRequiredFields({ code, state }, ['code', 'state']);
-
-  const permissionDetails = await OAuthValidation.validatePermissionState(state as string, OAuthProviders.Google);
+  let permissionDetails: OAuthPermissionState | null = null;
 
   try {
+    ValidationUtils.validateRequiredFields({ code, state }, ['code', 'state']);
+
+    permissionDetails = await OAuthValidation.validatePermissionState(state as string, OAuthProviders.Google);
+
     const result = await OAuthService.processPermissionCallback(req, res, code as string, permissionDetails);
 
     logger.info(`Permission tokens exchanged successfully for account ${permissionDetails.accountId}`);
@@ -153,7 +160,12 @@ export const handlePermissionCallback = asyncHandler(async (req: Request, res: R
       provider: OAuthProviders.Google,
     };
 
-    next(new Redirect(callbackData, permissionDetails.callbackUrl));
+    next(
+      new Redirect(
+        callbackData,
+        permissionDetails?.callbackUrl ? permissionDetails.callbackUrl : getDefaultErrorRedirectUrl(),
+      ),
+    );
   }
 });
 

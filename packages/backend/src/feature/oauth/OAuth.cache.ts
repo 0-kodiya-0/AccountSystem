@@ -1,5 +1,5 @@
 import { LRUCache } from 'lru-cache';
-import { AuthType, OAuthState, PermissionState } from './OAuth.types';
+import { AuthType, OAuthState, OAuthPermissionState } from './OAuth.types';
 import { OAuthProviders } from '../account/Account.types';
 import crypto from 'crypto';
 
@@ -13,7 +13,7 @@ const options = {
 
 // Create separate caches for each state type
 const oAuthStateCache = new LRUCache<string, OAuthState>(options);
-const permissionStateCache = new LRUCache<string, PermissionState>(options);
+const permissionStateCache = new LRUCache<string, OAuthPermissionState>(options);
 
 // OAuthState methods
 export const saveOAuthState = (provider: OAuthProviders, authType: AuthType, callbackUrl: string): string => {
@@ -66,7 +66,7 @@ export const savePermissionState = (
 
   const expiresAt = new Date(Date.now() + options.ttl);
 
-  const stateData: PermissionState = {
+  const stateData: OAuthPermissionState = {
     state,
     provider,
     authType: AuthType.PERMISSION,
@@ -82,7 +82,7 @@ export const savePermissionState = (
   return state;
 };
 
-export const getPermissionState = (state: string, provider: OAuthProviders): PermissionState | null => {
+export const getPermissionState = (state: string, provider: OAuthProviders): OAuthPermissionState | null => {
   const stateData = permissionStateCache.get(state);
 
   if (!stateData || stateData.provider !== provider) {
@@ -120,8 +120,8 @@ export const getAllOAuthStates = (): OAuthState[] => {
 /**
  * Get all permission states (for testing purposes)
  */
-export const getAllPermissionStates = (): PermissionState[] => {
-  const states: PermissionState[] = [];
+export const getAllPermissionStates = (): OAuthPermissionState[] => {
+  const states: OAuthPermissionState[] = [];
 
   for (const [state, data] of permissionStateCache.entries()) {
     // Check if not expired
