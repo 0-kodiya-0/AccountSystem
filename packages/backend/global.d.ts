@@ -60,6 +60,10 @@ declare global {
       LOG_LEVEL?: string;
       QUIET_MODE?: string;
       NO_REQUEST_LOGS?: string;
+
+      USE_MEMORY_DB?: string;
+      TEST_DB_CLEAR_ON_START?: string;
+      TEST_DB_SEED_ON_START?: string;
     }
   }
   namespace Express {
