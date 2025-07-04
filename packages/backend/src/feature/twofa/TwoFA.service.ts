@@ -4,7 +4,7 @@ import { authenticator } from 'otplib';
 import { ValidationUtils } from '../../utils/validation';
 import { ApiErrorCode, AuthError, BadRequestError, NotFoundError, ValidationError } from '../../types/response.types';
 import { AccountType } from '../account/Account.types';
-import { getAppName } from '../../config/env.config';
+import { getAppName, getNodeEnv, isMockEnabled } from '../../config/env.config';
 import { verifyGoogleTokenOwnership } from '../google/services/tokenInfo/tokenInfo.services';
 import { AccountDocument } from '../account/Account.model';
 import { getModels } from '../../config/db.config';
@@ -26,6 +26,8 @@ import {
   saveTwoFactorSetupToken,
 } from './TwoFA.cache';
 import { logger } from '../../utils/logger';
+
+const isMock = getNodeEnv() !== 'production' && isMockEnabled();
 
 /**
  * Get 2FA status for an account
@@ -106,10 +108,12 @@ export async function verifyAndEnableTwoFactor(
   }
 
   // Verify the 2FA token using the secret from the setup token
-  const isValid = authenticator.verify({
-    token: data.token,
-    secret: setupTokenData.secret,
-  });
+  const isValid = isMock
+    ? data.token === '123456' // In mock mode, accept '123456' as valid
+    : authenticator.verify({
+        token: data.token,
+        secret: setupTokenData.secret,
+      });
 
   if (!isValid) {
     throw new ValidationError('Invalid two-factor code', 401, ApiErrorCode.AUTH_FAILED);
@@ -335,6 +339,27 @@ async function disableTwoFactor(account: AccountDocument): Promise<TwoFactorSetu
  * Helper: Verify 2FA code (backup codes or TOTP)
  */
 async function verifyTwoFactorCode(account: AccountDocument, token: string): Promise<boolean> {
+  if (isMock) {
+    // Accept '123456' as a valid TOTP code for testing
+    if (token === '123456') {
+      return true;
+    }
+
+    // For backup codes in mock mode, accept 8-character hex codes
+    if (token.length === 8 && /^[0-9a-f]+$/.test(token)) {
+      // In mock mode, simulate consuming a backup code
+      // Remove one backup code to simulate usage
+      if (account.security.twoFactorBackupCodes && account.security.twoFactorBackupCodes.length > 0) {
+        account.security.twoFactorBackupCodes.pop();
+        await account.save();
+        return true;
+      }
+    }
+
+    // Invalid code in mock mode
+    return false;
+  }
+
   // Check if token is a backup code first
   if (account.security.twoFactorBackupCodes && account.security.twoFactorBackupCodes.length > 0) {
     const backupCodeIndex = await Promise.all(
