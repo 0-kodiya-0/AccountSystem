@@ -1,0 +1,305 @@
+{
+  "name": "code-removal-comments",
+  "displayName": "code-removal-comments",
+  "description": "Easily add BUILD_REMOVE comments for conditional code removal",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.101.0"
+  },
+  "categories": [
+    "Other",
+    "Snippets"
+  ],
+  "keywords": [
+    "code removal",
+    "build comments",
+    "conditional compilation",
+    "debug removal"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codeRemoval.wrapMultiLine",
+        "title": "Wrap with Multi-line Comments",
+        "category": "Code Removal"
+      },
+      {
+        "command": "codeRemoval.wrapSingleLine",
+        "title": "Wrap with Single-line Comments",
+        "category": "Code Removal"
+      },
+      {
+        "command": "codeRemoval.markLine",
+        "title": "Mark Line for Removal",
+        "category": "Code Removal"
+      },
+      {
+        "command": "codeRemoval.wrapInlineMultiLine",
+        "title": "Wrap Inline with Multi-line Comments",
+        "category": "Code Removal"
+      },
+      {
+        "command": "codeRemoval.wrapProductionOnly",
+        "title": "Wrap as Production Only",
+        "category": "Code Removal"
+      },
+      {
+        "command": "codeRemoval.wrapDevelopmentOnly",
+        "title": "Wrap as Development Only", 
+        "category": "Code Removal"
+      },
+      {
+        "command": "codeRemoval.wrapTestOnly",
+        "title": "Wrap as Test Only",
+        "category": "Code Removal"
+      },
+      {
+        "command": "codeRemoval.wrapDebugBlock",
+        "title": "Wrap as Debug Block",
+        "category": "Code Removal"
+      },
+      {
+        "command": "codeRemoval.removeExistingMarkers",
+        "title": "Remove Existing Markers",
+        "category": "Code Removal"
+      },
+      {
+        "command": "codeRemoval.convertToInline",
+        "title": "Convert to Inline",
+        "category": "Code Removal"
+      },
+      {
+        "command": "codeRemoval.configure",
+        "title": "Configure Comment Patterns",
+        "category": "Code Removal"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "codeRemoval.wrapMultiLine",
+        "key": "ctrl+shift+r m",
+        "mac": "cmd+shift+r m",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "codeRemoval.wrapSingleLine",
+        "key": "ctrl+shift+r s",
+        "mac": "cmd+shift+r s", 
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "codeRemoval.markLine",
+        "key": "ctrl+shift+r l",
+        "mac": "cmd+shift+r l",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "codeRemoval.wrapInlineMultiLine",
+        "key": "ctrl+shift+r i",
+        "mac": "cmd+shift+r i",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "codeRemoval.wrapProductionOnly",
+        "key": "ctrl+shift+r p",
+        "mac": "cmd+shift+r p",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "codeRemoval.wrapDevelopmentOnly",
+        "key": "ctrl+shift+r d",
+        "mac": "cmd+shift+r d",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "codeRemoval.wrapTestOnly",
+        "key": "ctrl+shift+r t",
+        "mac": "cmd+shift+r t",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "codeRemoval.wrapDebugBlock",
+        "key": "ctrl+shift+r b",
+        "mac": "cmd+shift+r b",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "codeRemoval.removeExistingMarkers",
+        "key": "ctrl+shift+r r",
+        "mac": "cmd+shift+r r",
+        "when": "editorTextFocus"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "submenu": "codeRemoval.submenu",
+          "group": "1_modification",
+          "when": "editorTextFocus"
+        }
+      ],
+      "codeRemoval.submenu": [
+        {
+          "command": "codeRemoval.wrapMultiLine",
+          "group": "1_wrap@1"
+        },
+        {
+          "command": "codeRemoval.wrapSingleLine", 
+          "group": "1_wrap@2"
+        },
+        {
+          "command": "codeRemoval.wrapInlineMultiLine",
+          "group": "1_wrap@3"
+        },
+        {
+          "command": "codeRemoval.markLine",
+          "group": "2_mark@1"
+        },
+        {
+          "command": "codeRemoval.wrapProductionOnly",
+          "group": "3_environment@1"
+        },
+        {
+          "command": "codeRemoval.wrapDevelopmentOnly", 
+          "group": "3_environment@2"
+        },
+        {
+          "command": "codeRemoval.wrapTestOnly",
+          "group": "3_environment@3"
+        },
+        {
+          "command": "codeRemoval.wrapDebugBlock",
+          "group": "4_debug@1"
+        },
+        {
+          "command": "codeRemoval.removeExistingMarkers",
+          "group": "5_utility@1"
+        },
+        {
+          "command": "codeRemoval.convertToInline",
+          "group": "5_utility@2"
+        },
+        {
+          "command": "codeRemoval.configure",
+          "group": "6_config@1"
+        }
+      ]
+    },
+    "submenus": [
+      {
+        "id": "codeRemoval.submenu",
+        "label": "Code Removal"
+      }
+    ],
+    "configuration": {
+      "title": "Code Removal Comments",
+      "properties": {
+        "codeRemoval.multiLineStart": {
+          "type": "string",
+          "default": "BUILD_REMOVE_START",
+          "description": "Start marker for multi-line removal blocks"
+        },
+        "codeRemoval.multiLineEnd": {
+          "type": "string",
+          "default": "BUILD_REMOVE_END",
+          "description": "End marker for multi-line removal blocks"
+        },
+        "codeRemoval.singleLineMarker": {
+          "type": "string",
+          "default": "BUILD_REMOVE",
+          "description": "Marker for single line removal"
+        },
+        "codeRemoval.productionOnlyStart": {
+          "type": "string",
+          "default": "PRODUCTION_ONLY_START",
+          "description": "Start marker for production-only blocks"
+        },
+        "codeRemoval.productionOnlyEnd": {
+          "type": "string",
+          "default": "PRODUCTION_ONLY_END",
+          "description": "End marker for production-only blocks"
+        },
+        "codeRemoval.developmentOnlyStart": {
+          "type": "string",
+          "default": "DEV_ONLY_START",
+          "description": "Start marker for development-only blocks"
+        },
+        "codeRemoval.developmentOnlyEnd": {
+          "type": "string",
+          "default": "DEV_ONLY_END",
+          "description": "End marker for development-only blocks"
+        },
+        "codeRemoval.testOnlyStart": {
+          "type": "string",
+          "default": "TEST_ONLY_START",
+          "description": "Start marker for test-only blocks"
+        },
+        "codeRemoval.testOnlyEnd": {
+          "type": "string",
+          "default": "TEST_ONLY_END",
+          "description": "End marker for test-only blocks"
+        },
+        "codeRemoval.debugStart": {
+          "type": "string",
+          "default": "DEBUG_START",
+          "description": "Start marker for debug blocks"
+        },
+        "codeRemoval.debugEnd": {
+          "type": "string",
+          "default": "DEBUG_END",
+          "description": "End marker for debug blocks"
+        },
+        "codeRemoval.useSpacing": {
+          "type": "boolean",
+          "default": true,
+          "description": "Add spacing around comment markers"
+        },
+        "codeRemoval.defaultCommentStyle": {
+          "type": "string",
+          "enum": ["multiline", "singleline"],
+          "default": "multiline",
+          "description": "Default comment style to use"
+        },
+        "codeRemoval.preserveIndentation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Preserve indentation when wrapping code"
+        },
+        "codeRemoval.addEmptyLines": {
+          "type": "boolean",
+          "default": true,
+          "description": "Add empty lines around wrapped blocks"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.101.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "20.x",
+    "@typescript-eslint/eslint-plugin": "^8.31.1",
+    "@typescript-eslint/parser": "^8.31.1",
+    "eslint": "^9.25.1",
+    "esbuild": "^0.25.3",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.8.3",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2"
+  }
+}
