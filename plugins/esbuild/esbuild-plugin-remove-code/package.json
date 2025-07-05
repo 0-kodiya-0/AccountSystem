@@ -1,0 +1,60 @@
+{
+  "name": "esbuild-plugin-remove-code",
+  "version": "1.0.0",
+  "description": "An esbuild plugin to remove code blocks marked with special comments during build",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "npm run clean && npm run compile",
+    "clean": "rimraf dist",
+    "compile": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build && npm run test"
+  },
+  "keywords": [
+    "esbuild",
+    "plugin",
+    "build",
+    "code-removal",
+    "conditional-compilation",
+    "dead-code-elimination",
+    "development",
+    "production"
+  ],
+  "author": "Sanithu Jayakody <sanithujayafiverr@gmail.com>",
+  "license": "MIT",
+  "peerDependencies": {
+    "esbuild": ">=0.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "esbuild": "^0.25.5",
+    "eslint": "^8.0.0",
+    "rimraf": "^5.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0-kodiya-0/esbuild-plugin-remove-code.git"
+  },
+  "bugs": {
+    "url": "https://github.com/0-kodiya-0/esbuild-plugin-remove-code/issues"
+  },
+  "homepage": "https://github.com/0-kodiya-0/esbuild-plugin-remove-code#readme"
+}
