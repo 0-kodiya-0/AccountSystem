@@ -18,6 +18,16 @@
   ],
   "activationEvents": [],
   "main": "./dist/extension.js",
+  "author": "Sanithu Jayakody <sanithujayafiverr@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0-kodiya-0/code-removal-comments.git"
+  },
+  "bugs": {
+    "url": "https://github.com/0-kodiya-0/code-removal-comments/issues"
+  },
+  "homepage": "https://github.com/0-kodiya-0/code-removal-comments#readme",
   "contributes": {
     "commands": [
       {
@@ -47,7 +57,7 @@
       },
       {
         "command": "codeRemoval.wrapDevelopmentOnly",
-        "title": "Wrap as Development Only", 
+        "title": "Wrap as Development Only",
         "category": "Code Removal"
       },
       {
@@ -86,7 +96,7 @@
       {
         "command": "codeRemoval.wrapSingleLine",
         "key": "ctrl+shift+r s",
-        "mac": "cmd+shift+r s", 
+        "mac": "cmd+shift+r s",
         "when": "editorTextFocus"
       },
       {
@@ -146,7 +156,7 @@
           "group": "1_wrap@1"
         },
         {
-          "command": "codeRemoval.wrapSingleLine", 
+          "command": "codeRemoval.wrapSingleLine",
           "group": "1_wrap@2"
         },
         {
@@ -162,7 +172,7 @@
           "group": "3_environment@1"
         },
         {
-          "command": "codeRemoval.wrapDevelopmentOnly", 
+          "command": "codeRemoval.wrapDevelopmentOnly",
           "group": "3_environment@2"
         },
         {
@@ -258,7 +268,10 @@
         },
         "codeRemoval.defaultCommentStyle": {
           "type": "string",
-          "enum": ["multiline", "singleline"],
+          "enum": [
+            "multiline",
+            "singleline"
+          ],
           "default": "multiline",
           "description": "Default comment style to use"
         },
