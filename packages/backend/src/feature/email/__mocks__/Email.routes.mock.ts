@@ -1,5 +1,5 @@
 import express from 'express';
-import * as EmailMockController from './Email.mock.controller';
+import * as EmailMockController from './Email.controller.mock';
 
 export const emailMockRouter = express.Router();
 

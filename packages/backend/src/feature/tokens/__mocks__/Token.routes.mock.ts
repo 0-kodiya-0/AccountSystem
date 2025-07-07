@@ -1,5 +1,5 @@
 import express from 'express';
-import * as TokenMockController from './Token.mock.controller';
+import * as TokenMockController from './Token.controller.mock';
 
 export const tokenMockRouter = express.Router();
 

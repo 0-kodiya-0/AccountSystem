@@ -1,5 +1,5 @@
 import express from 'express';
-import * as SessionMockController from './Session.mock.controller';
+import * as SessionMockController from './Session.controller.mock';
 
 export const sessionMockRouter = express.Router();
 

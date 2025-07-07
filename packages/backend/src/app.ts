@@ -17,10 +17,10 @@ import * as tokenRouter from './feature/tokens';
 import * as healthRouter from './feature/health/Health.routes';
 
 /* BUILD_REMOVE_START */
-import { emailMockRouter } from './feature/email/__mocks__/Email.mock.routes';
-import { oauthMockRouter } from './feature/oauth/__mocks__/OAuth.mock.routes';
-import { sessionMockRouter } from './feature/session/__mocks__/Session.mock.routes';
-import { tokenMockRouter } from './feature/tokens/__mocks__/Token.mock.routes';
+import { emailMockRouter } from './feature/email/__mocks__/Email.routes.mock';
+import { oauthMockRouter } from './feature/oauth/__mocks__/OAuth.routes.mock';
+import { sessionMockRouter } from './feature/session/__mocks__/Session.routes.mock';
+import { tokenMockRouter } from './feature/tokens/__mocks__/Token.routes.mock';
 /* BUILD_REMOVE_END */
 
 import notificationRouter, { NotificationSocketHandler } from './feature/notifications';

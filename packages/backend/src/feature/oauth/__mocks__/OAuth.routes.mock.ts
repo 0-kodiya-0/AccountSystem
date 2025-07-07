@@ -1,5 +1,5 @@
 import express from 'express';
-import * as OAuthMockController from './OAuth.mock.controller';
+import * as OAuthMockController from './OAuth.controller.mock';
 
 export const oauthMockRouter = express.Router();
 
