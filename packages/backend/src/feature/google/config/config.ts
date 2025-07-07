@@ -1,5 +1,10 @@
-import { getApiBasePATH, getGoogleClientId, getProxyUrl, getNodeEnv } from '../../../config/env.config';
-import { getOAuthMockConfig } from '../../../config/mock.config';
+import {
+  getApiBasePATH,
+  getGoogleClientId,
+  getProxyUrl,
+  getNodeEnv, // BUILD_REMOVE
+} from '../../../config/env.config';
+import { getOAuthMockConfig } from '../../../config/mock.config'; // BUILD_REMOVE
 
 /**
  * Google OAuth configuration with mock support
@@ -17,6 +22,7 @@ export const SPECIAL_SCOPES = {
  * Get OAuth endpoints (real or mock based on environment)
  */
 export function getGoogleOAuthEndpoints() {
+  /* BUILD_REMOVE_START */
   const mockConfig = getOAuthMockConfig();
   const isProduction = getNodeEnv() === 'production';
   const useMock = !isProduction && mockConfig.enabled;
@@ -33,6 +39,7 @@ export function getGoogleOAuthEndpoints() {
       isMock: true,
     };
   } else {
+    /* BUILD_REMOVE_END */
     // Use real Google endpoints
     return {
       authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
@@ -42,7 +49,7 @@ export function getGoogleOAuthEndpoints() {
       revokeEndpoint: 'https://oauth2.googleapis.com/revoke',
       isMock: false,
     };
-  }
+  } // BUILD_REMOVE
 }
 
 export function buildGoogleScopeUrl(scopeName: string): string {

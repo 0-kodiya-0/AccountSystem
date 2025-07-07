@@ -2,12 +2,17 @@ import { google } from 'googleapis';
 import { ApiErrorCode, ProviderValidationError } from '../../../../types/response.types';
 import { OAuthProviders } from '../../../account/Account.types';
 import { getModels } from '../../../../config/db.config';
-import { getGoogleClientId, getGoogleClientSecret, getNodeEnv } from '../../../../config/env.config';
-import { getOAuthMockConfig } from '../../../../config/mock.config';
+import {
+  getGoogleClientId,
+  getGoogleClientSecret,
+  getNodeEnv, // BUILD_REMOVE
+} from '../../../../config/env.config';
+import { getOAuthMockConfig } from '../../../../config/mock.config'; // BUILD_REMOVE
 import { logger } from '../../../../utils/logger';
 import { ValidationUtils } from '../../../../utils/validation';
-import { oauthMockService } from '../../../../mocks/oauth/OAuthMockService';
+import { oauthMockService } from '../../../../mocks/oauth/OAuthMockService'; // BUILD_REMOVE
 
+/* BUILD_REMOVE_START */
 /**
  * Check if we should use mock services
  */
@@ -16,6 +21,7 @@ function shouldUseMock(): boolean {
   const isProduction = getNodeEnv() === 'production';
   return !isProduction && mockConfig.enabled;
 }
+/* BUILD_REMOVE_END */
 
 /**
  * Get detailed token information from Google (with mock support)
@@ -23,6 +29,7 @@ function shouldUseMock(): boolean {
 export async function getGoogleTokenInfo(accessToken: string) {
   ValidationUtils.validateAccessToken(accessToken, 'getTokenInfo');
 
+  /* BUILD_REMOVE_START */
   if (shouldUseMock()) {
     // Use mock service
     const tokenInfo = oauthMockService.getTokenInfo(accessToken.trim(), OAuthProviders.Google);
@@ -38,6 +45,7 @@ export async function getGoogleTokenInfo(accessToken: string) {
 
     return tokenInfo;
   }
+  /* BUILD_REMOVE_END */
 
   try {
     const tokenInfoResult = await google.oauth2('v2').tokeninfo({
@@ -62,6 +70,7 @@ export async function getGoogleTokenInfo(accessToken: string) {
 export async function getGoogleTokenScopes(accessToken: string): Promise<string[]> {
   ValidationUtils.validateAccessToken(accessToken, 'getTokenScopes');
 
+  /* BUILD_REMOVE_START */
   if (shouldUseMock()) {
     // Use mock service
     const tokenInfo = oauthMockService.getTokenInfo(accessToken.trim(), OAuthProviders.Google);
@@ -77,6 +86,7 @@ export async function getGoogleTokenScopes(accessToken: string): Promise<string[
 
     return tokenInfo.scope ? tokenInfo.scope.split(' ') : [];
   }
+  /* BUILD_REMOVE_END */
 
   try {
     const tokenInfoResult = await google.oauth2('v2').tokeninfo({
@@ -177,6 +187,7 @@ export async function getGoogleAccountScopes(accountId: string): Promise<string[
 export async function refreshGoogleToken(refreshToken: string) {
   ValidationUtils.validateRefreshToken(refreshToken, 'refreshGoogleToken');
 
+  /* BUILD_REMOVE_START */
   if (shouldUseMock()) {
     // Use mock service
     const tokens = oauthMockService.refreshAccessToken(refreshToken.trim(), OAuthProviders.Google);
@@ -196,6 +207,7 @@ export async function refreshGoogleToken(refreshToken: string) {
       expiry_date: Date.now() + tokens.expires_in * 1000,
     };
   }
+  /* BUILD_REMOVE_END */
 
   try {
     const refreshClient = new google.auth.OAuth2(getGoogleClientId(), getGoogleClientSecret());
@@ -227,6 +239,7 @@ export async function revokeGoogleTokens(tokens: (string | undefined)[]) {
     throw new Error('No tokens provided for revocation');
   }
 
+  /* BUILD_REMOVE_START */
   if (shouldUseMock()) {
     // Use mock service
     const results = {
@@ -272,6 +285,7 @@ export async function revokeGoogleTokens(tokens: (string | undefined)[]) {
 
     return results;
   }
+  /* BUILD_REMOVE_END */
 
   try {
     const oAuth2Client = new google.auth.OAuth2(getGoogleClientId(), getGoogleClientSecret());
@@ -360,6 +374,7 @@ export async function verifyGoogleTokenOwnership(
   accountId: string,
 ): Promise<{ isValid: boolean; reason?: string }> {
   try {
+    /* BUILD_REMOVE_START */
     if (shouldUseMock()) {
       // Use mock service
       const userInfo = oauthMockService.getUserInfo(accessToken, OAuthProviders.Google);
@@ -377,6 +392,7 @@ export async function verifyGoogleTokenOwnership(
 
       return { isValid: true };
     }
+    /* BUILD_REMOVE_END */
 
     const models = await getModels();
 
@@ -426,6 +442,7 @@ export async function verifyGoogleTokenOwnership(
  * Exchange Google authorization code for tokens (with mock support)
  */
 export async function exchangeGoogleCode(code: string, redirectUri: string) {
+  /* BUILD_REMOVE_START */
   if (shouldUseMock()) {
     // Use mock service
     const result = oauthMockService.exchangeAuthorizationCode(code, OAuthProviders.Google);
@@ -450,6 +467,7 @@ export async function exchangeGoogleCode(code: string, redirectUri: string) {
       },
     };
   }
+  /* BUILD_REMOVE_END */
 
   // Use real Google OAuth
   const oAuth2Client = new google.auth.OAuth2(getGoogleClientId(), getGoogleClientSecret(), redirectUri);

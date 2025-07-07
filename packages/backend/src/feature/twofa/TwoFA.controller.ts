@@ -20,10 +20,10 @@ import {
   updateAccountScopes,
   checkForAdditionalGoogleScopes,
 } from '../google/services/tokenInfo/tokenInfo.services';
-import { getNodeEnv, isMockEnabled } from '../../config/env.config';
-import { getAllSetupTokens, getAllTempTokens, getTwoFactorTempToken } from './TwoFA.cache';
+import { getNodeEnv, isMockEnabled } from '../../config/env.config'; // BUILD_REMOVE
+import { getTwoFactorTempToken } from './TwoFA.cache';
 
-const isMock = getNodeEnv() !== 'production' && isMockEnabled();
+const isMock = getNodeEnv() !== 'production' && isMockEnabled(); // BUILD_REMOVE
 
 /**
  * Get 2FA status for the current account
@@ -60,6 +60,7 @@ export const setupTwoFactor = asyncHandler(async (req, res, next) => {
 
   const result = await TwoFAService.setupTwoFactor(accountId, data, oauthAccessToken);
 
+  /* BUILD_REMOVE_START */
   // If enabling 2FA, generate QR code and return setup token
   if (isMock && data.enableTwoFactor && result.secret && result.qrCodeUrl && result.setupToken) {
     try {
@@ -85,6 +86,7 @@ export const setupTwoFactor = asyncHandler(async (req, res, next) => {
       throw new BadRequestError('Failed to generate QR code', 500, ApiErrorCode.SERVER_ERROR);
     }
   } else {
+    /* BUILD_REMOVE_END */
     // Original response logic for production
     if (data.enableTwoFactor && result.secret && result.qrCodeUrl && result.setupToken) {
       try {
@@ -97,7 +99,7 @@ export const setupTwoFactor = asyncHandler(async (req, res, next) => {
     } else {
       next(new JsonSuccess(result));
     }
-  }
+  } // BUILD_REMOVE
 });
 
 /**
@@ -234,6 +236,7 @@ export const verifyTwoFactorLogin = asyncHandler(async (req, res, next) => {
     );
   }
 
+  /* BUILD_REMOVE_START */
   if (isMock) {
     const tempTokenData = getTwoFactorTempToken(data.tempToken);
 
@@ -260,6 +263,7 @@ export const verifyTwoFactorLogin = asyncHandler(async (req, res, next) => {
 
     next(new JsonSuccess(responseData));
   } else {
+    /* BUILD_REMOVE_END */
     // Original response logic
     const responseData = {
       accountId: result.accountId,
@@ -270,41 +274,5 @@ export const verifyTwoFactorLogin = asyncHandler(async (req, res, next) => {
     };
 
     next(new JsonSuccess(responseData));
-  }
-});
-
-/**
- * Get active 2FA tokens
- */
-export const getActiveTwoFactorTokens = asyncHandler(async (req, res, next) => {
-  if (!isMock) {
-    throw new BadRequestError('2FA token inspection disabled in production', 400, ApiErrorCode.INVALID_REQUEST);
-  }
-
-  const tempTokens = getAllTempTokens();
-  const setupTokens = getAllSetupTokens();
-
-  next(
-    new JsonSuccess({
-      tempTokens: tempTokens.map((tokenData) => ({
-        token: tokenData.token,
-        accountId: tokenData.accountId,
-        email: tokenData.email,
-        accountType: tokenData.accountType,
-        expiresAt: tokenData.expiresAt,
-        hasOAuthTokens: !!tokenData.oauthTokens,
-      })),
-      setupTokens: setupTokens.map((tokenData) => ({
-        token: tokenData.token,
-        accountId: tokenData.accountId,
-        accountType: tokenData.accountType,
-        expiresAt: tokenData.expiresAt,
-        createdAt: tokenData.createdAt,
-        hasSecret: !!tokenData.secret,
-      })),
-      tempCount: tempTokens.length,
-      setupCount: setupTokens.length,
-      message: 'Active 2FA tokens retrieved successfully',
-    }),
-  );
+  } // BUILD_REMOVE
 });

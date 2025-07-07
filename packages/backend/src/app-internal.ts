@@ -12,12 +12,18 @@ import { internalAuthentication } from './middleware/internal.middleware';
 import { ApiErrorCode, NotFoundError } from './types/response.types';
 import socketConfig from './config/socket.config';
 import { logger } from './utils/logger';
-import { getInternalServerEnabled, getInternalPort, getNodeEnv, getMockEnabled } from './config/env.config';
+import {
+  getInternalServerEnabled,
+  getInternalPort,
+  getNodeEnv, // BUILD_REMOVE
+  getMockEnabled, // BUILD_REMOVE
+} from './config/env.config';
 import { loadInternalSSLCertificates } from './config/internal-server.config';
 
 let internalServer: http.Server | https.Server | null = null;
 let internalSocketHandler: InternalSocketHandler | null = null;
 
+/* BUILD_REMOVE_START */
 /**
  * Determine if we should use HTTPS for internal server
  */
@@ -33,6 +39,7 @@ function shouldUseHttps(): boolean {
   // Use HTTPS in production
   return nodeEnv === 'production';
 }
+/* BUILD_REMOVE_END */
 
 /**
  * Create the internal Express app
@@ -103,11 +110,13 @@ export async function startInternalServer(): Promise<void> {
   // Create the Express app
   const app = createInternalApp();
   const port = getInternalPort();
-  const useHttps = shouldUseHttps();
+  const useHttps = shouldUseHttps(); // BUILD_REMOVE
 
   try {
+    /* BUILD_REMOVE_START */
     // Create server based on environment
     if (useHttps) {
+      /* BUILD_REMOVE_END */
       // Production mode: Use HTTPS with certificates
       logger.info('Starting internal HTTPS server with certificate authentication...');
 
@@ -115,6 +124,7 @@ export async function startInternalServer(): Promise<void> {
       internalServer = https.createServer(httpsOptions, app);
 
       logger.info('Internal HTTPS server configured with mTLS authentication');
+      /* BUILD_REMOVE_START */
     } else {
       // Development/Mock mode: Use HTTP
       logger.info('Starting internal HTTP server (development/mock mode)...');
@@ -123,6 +133,7 @@ export async function startInternalServer(): Promise<void> {
 
       logger.info('Internal HTTP server configured for development (no certificates required)');
     }
+    /* BUILD_REMOVE_END */
 
     // Register internal server for cleanup
     registerServer('internal-server', internalServer);
@@ -165,7 +176,7 @@ export async function startInternalServer(): Promise<void> {
     });
 
     // HTTPS-specific events
-    if (useHttps && internalServer instanceof https.Server) {
+    if (/* BUILD_REMOVE_START */ useHttps && /* BUILD_REMOVE_END */ internalServer instanceof https.Server) {
       internalServer.on('secureConnection', (tlsSocket) => {
         logger.debug('Secure TLS connection established', {
           authorized: tlsSocket.authorized,
@@ -185,8 +196,12 @@ export async function startInternalServer(): Promise<void> {
     // Start the server
     await new Promise<void>((resolve, reject) => {
       internalServer!.listen(port, () => {
-        const protocol = useHttps ? 'HTTPS' : 'HTTP';
-        const authMethod = useHttps ? 'mTLS certificates + service headers' : 'service headers only';
+        const protocol = /* BUILD_REMOVE_START */ useHttps
+          ? /* BUILD_REMOVE_END */ 'HTTPS' /* BUILD_REMOVE_START */
+          : 'HTTP'; /* BUILD_REMOVE_END */
+        const authMethod = /* BUILD_REMOVE_START */ useHttps
+          ? /* BUILD_REMOVE_END */ 'mTLS certificates + service headers' /* BUILD_REMOVE_START */
+          : 'service headers only'; /* BUILD_REMOVE_END */
 
         logger.info(`🔌 Internal ${protocol} server running on port ${port}`);
         logger.info(`   ✅ ${protocol} REST API endpoints available`);
@@ -201,13 +216,17 @@ export async function startInternalServer(): Promise<void> {
         logger.info(`   🔐 Authentication: ${authMethod}`);
         logger.info('   🛡️  Process cleanup handlers are active');
 
+        /* BUILD_REMOVE_START */
         if (useHttps) {
+          /* BUILD_REMOVE_END */
           logger.info('   🔐 Client certificates: Required and validated');
           logger.info('   🔐 Service headers: Required for identification');
+          /* BUILD_REMOVE_START */
         } else {
           logger.info('   🔐 Client certificates: Not required (development mode)');
           logger.info('   🔐 Service headers: Required with secret validation');
         }
+        /* BUILD_REMOVE_END */
 
         logger.info('   📊 Features: Notifications, Activity Tracking, Service Management');
 
@@ -221,7 +240,11 @@ export async function startInternalServer(): Promise<void> {
   } catch (error) {
     logger.error('Failed to start internal server:', error);
 
-    if (useHttps && error instanceof Error && error.message.includes('certificate')) {
+    if (
+      /* BUILD_REMOVE_START */ useHttps &&
+      /* BUILD_REMOVE_END */ error instanceof Error &&
+      error.message.includes('certificate')
+    ) {
       logger.error('Certificate loading failed. You can:');
       logger.error('1. Set NODE_ENV=development to use HTTP mode');
       logger.error('2. Set MOCK_ENABLED=true to use HTTP mode');
@@ -252,28 +275,4 @@ export async function stopInternalServer(): Promise<void> {
       resolve();
     });
   });
-}
-
-/**
- * Get internal server status
- */
-export function getInternalServerStatus(): {
-  running: boolean;
-  protocol: 'HTTP' | 'HTTPS' | null;
-  port: number;
-  authMode: 'production' | 'development';
-  requiresCertificates: boolean;
-} {
-  const isRunning = !!internalServer;
-  const protocol =
-    internalServer instanceof https.Server ? 'HTTPS' : internalServer instanceof http.Server ? 'HTTP' : null;
-  const useHttps = shouldUseHttps();
-
-  return {
-    running: isRunning,
-    protocol,
-    port: getInternalPort(),
-    authMode: useHttps ? 'production' : 'development',
-    requiresCertificates: useHttps,
-  };
 }

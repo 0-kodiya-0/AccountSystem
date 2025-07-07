@@ -4,7 +4,13 @@ import { authenticator } from 'otplib';
 import { ValidationUtils } from '../../utils/validation';
 import { ApiErrorCode, AuthError, BadRequestError, NotFoundError, ValidationError } from '../../types/response.types';
 import { AccountType } from '../account/Account.types';
-import { getAppName, getNodeEnv, isMockEnabled } from '../../config/env.config';
+import {
+  getAppName,
+  /* BUILD_REMOVE_START */
+  getNodeEnv,
+  isMockEnabled,
+  /* BUILD_REMOVE_END */
+} from '../../config/env.config';
 import { verifyGoogleTokenOwnership } from '../google/services/tokenInfo/tokenInfo.services';
 import { AccountDocument } from '../account/Account.model';
 import { getModels } from '../../config/db.config';
@@ -27,7 +33,7 @@ import {
 } from './TwoFA.cache';
 import { logger } from '../../utils/logger';
 
-const isMock = getNodeEnv() !== 'production' && isMockEnabled();
+const isMock = getNodeEnv() !== 'production' && isMockEnabled(); // BUILD_REMOVE
 
 /**
  * Get 2FA status for an account
@@ -107,13 +113,18 @@ export async function verifyAndEnableTwoFactor(
     throw new NotFoundError('Account not found', 404, ApiErrorCode.USER_NOT_FOUND);
   }
 
-  // Verify the 2FA token using the secret from the setup token
-  const isValid = isMock
-    ? data.token === '123456' // In mock mode, accept '123456' as valid
-    : authenticator.verify({
-        token: data.token,
-        secret: setupTokenData.secret,
-      });
+  let isValid: boolean | null = null;
+
+  /* BUILD_REMOVE_START */
+  if (isMock) {
+    isValid = data.token === '123456';
+  } else {
+    /* BUILD_REMOVE_END */
+    isValid = authenticator.verify({
+      token: data.token,
+      secret: setupTokenData.secret,
+    });
+  } // BUILD_REMOVE
 
   if (!isValid) {
     throw new ValidationError('Invalid two-factor code', 401, ApiErrorCode.AUTH_FAILED);
@@ -339,6 +350,7 @@ async function disableTwoFactor(account: AccountDocument): Promise<TwoFactorSetu
  * Helper: Verify 2FA code (backup codes or TOTP)
  */
 async function verifyTwoFactorCode(account: AccountDocument, token: string): Promise<boolean> {
+  /* BUILD_REMOVE_START */
   if (isMock) {
     // Accept '123456' as a valid TOTP code for testing
     if (token === '123456') {
@@ -359,6 +371,7 @@ async function verifyTwoFactorCode(account: AccountDocument, token: string): Pro
     // Invalid code in mock mode
     return false;
   }
+  /* BUILD_REMOVE_END */
 
   // Check if token is a backup code first
   if (account.security.twoFactorBackupCodes && account.security.twoFactorBackupCodes.length > 0) {

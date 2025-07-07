@@ -9,11 +9,16 @@ import {
   validateTemplateVariables,
 } from './Email.utils';
 import { EmailTemplate } from './Email.types';
-import { getAppName, getNodeEnv, getSenderEmail, getSenderName } from '../../config/env.config';
+import {
+  getAppName,
+  getNodeEnv, // BUILD_REMOVE
+  getSenderEmail,
+  getSenderName,
+} from '../../config/env.config';
 import { getTransporter, resetTransporter } from './Email.transporter';
 import { logger } from '../../utils/logger';
 import { ValidationUtils } from '../../utils/validation';
-import { emailMock } from '../../mocks/email/EmailServiceMock';
+import { emailMock } from '../../mocks/email/EmailServiceMock'; // BUILD_REMOVE
 
 // Template cache to avoid reading files repeatedly
 const templateCache = new Map<EmailTemplate, string>();
@@ -38,6 +43,7 @@ export async function loadTemplate(template: EmailTemplate): Promise<string> {
   }
 }
 
+/* BUILD_REMOVE_START */
 /**
  * Mock implementation that uses the same template system as the real service
  */
@@ -49,6 +55,7 @@ export async function sendCustomEmailMock(
 ): Promise<void> {
   return emailMock.sendEmail(to, subject, template, variables);
 }
+/* BUILD_REMOVE_END */
 
 /**
  * Generic email sender for custom templates with type safety
@@ -60,11 +67,13 @@ export async function sendCustomEmail(
   template: EmailTemplate,
   variables: Record<string, string>,
 ): Promise<void> {
+  /* BUILD_REMOVE_START */
   // Check if mocking is enabled
   if (emailMock.isEnabled()) {
     logger.info('Using mock email service for sendCustomEmail');
     return sendCustomEmailMock(to, subject, template, variables);
   }
+  /* BUILD_REMOVE_END */
 
   // Original implementation continues here...
   // Input validation
@@ -105,10 +114,12 @@ export async function sendCustomEmail(
   try {
     const result = await transporter.sendMail(mailOptions);
 
+    /* BUILD_REMOVE_START */
     // Log preview URL for development
     if (getNodeEnv() !== 'production') {
       logger.info('Preview URL: %s', nodemailer.getTestMessageUrl(result));
     }
+    /* BUILD_REMOVE_END */
 
     logger.info(`Email sent successfully to ${to}: ${subject}`);
   } catch (error) {
@@ -130,6 +141,7 @@ export async function sendCustomEmail(
   }
 }
 
+/* BUILD_REMOVE_START */
 /**
  * Mock implementations using your existing email service patterns
  */
@@ -144,6 +156,7 @@ export async function sendPasswordResetEmailMock(
     RESET_URL: `${callbackUrl}?token=${encodeURIComponent(token)}`,
   });
 }
+/* BUILD_REMOVE_END */
 
 /**
  * Send password reset email with callback URL - UPDATED with mocking support
@@ -154,10 +167,12 @@ export async function sendPasswordResetEmail(
   token: string,
   callbackUrl: string,
 ): Promise<void> {
+  /* BUILD_REMOVE_START */
   if (emailMock.isEnabled()) {
     logger.info('Using mock email service for sendPasswordResetEmail');
     return sendPasswordResetEmailMock(email, firstName, token, callbackUrl);
   }
+  /* BUILD_REMOVE_END */
 
   // Original implementation continues here...
   if (!email || !firstName || !token || !callbackUrl) {
@@ -176,6 +191,7 @@ export async function sendPasswordResetEmail(
   });
 }
 
+/* BUILD_REMOVE_START */
 export async function sendPasswordChangedNotificationMock(email: string, firstName: string): Promise<void> {
   const now = new Date();
   return sendCustomEmailMock(email, `Your password was changed on AccountSystem`, EmailTemplate.PASSWORD_CHANGED, {
@@ -184,15 +200,18 @@ export async function sendPasswordChangedNotificationMock(email: string, firstNa
     TIME: now.toLocaleTimeString(),
   });
 }
+/* BUILD_REMOVE_END */
 
 /**
  * Send password changed notification - now supports mocking
  */
 export async function sendPasswordChangedNotification(email: string, firstName: string): Promise<void> {
+  /* BUILD_REMOVE_START */
   if (emailMock.isEnabled()) {
     logger.info('Using mock email service for sendPasswordChangedNotification');
     return sendPasswordChangedNotificationMock(email, firstName);
   }
+  /* BUILD_REMOVE_END */
 
   // Original implementation continues here...
   if (!email || !firstName) {
@@ -208,6 +227,7 @@ export async function sendPasswordChangedNotification(email: string, firstName: 
   });
 }
 
+/* BUILD_REMOVE_START */
 export async function sendLoginNotificationMock(
   email: string,
   firstName: string,
@@ -222,6 +242,7 @@ export async function sendLoginNotificationMock(
     DEVICE: device,
   });
 }
+/* BUILD_REMOVE_END */
 
 /**
  * Send login notification - now supports mocking
@@ -232,10 +253,12 @@ export async function sendLoginNotification(
   ipAddress: string,
   device: string,
 ): Promise<void> {
+  /* BUILD_REMOVE_START */
   if (emailMock.isEnabled()) {
     logger.info('Using mock email service for sendLoginNotification');
     return sendLoginNotificationMock(email, firstName, ipAddress, device);
   }
+  /* BUILD_REMOVE_END */
 
   // Original implementation continues here...
   if (!email || !firstName || !ipAddress || !device) {
@@ -252,6 +275,7 @@ export async function sendLoginNotification(
   });
 }
 
+/* BUILD_REMOVE_START */
 export async function sendTwoFactorEnabledNotificationMock(email: string, firstName: string): Promise<void> {
   const now = new Date();
   return sendCustomEmailMock(
@@ -264,15 +288,18 @@ export async function sendTwoFactorEnabledNotificationMock(email: string, firstN
     },
   );
 }
+/* BUILD_REMOVE_END */
 
 /**
  * Send two-factor authentication enabled notification - now supports mocking
  */
 export async function sendTwoFactorEnabledNotification(email: string, firstName: string): Promise<void> {
+  /* BUILD_REMOVE_START */
   if (emailMock.isEnabled()) {
     logger.info('Using mock email service for sendTwoFactorEnabledNotification');
     return sendTwoFactorEnabledNotificationMock(email, firstName);
   }
+  /* BUILD_REMOVE_END */
 
   // Original implementation continues here...
   if (!email || !firstName) {
@@ -292,6 +319,7 @@ export async function sendTwoFactorEnabledNotification(email: string, firstName:
   );
 }
 
+/* BUILD_REMOVE_START */
 export async function sendSignupEmailVerificationMock(
   email: string,
   token: string,
@@ -307,15 +335,18 @@ export async function sendSignupEmailVerificationMock(
     },
   );
 }
+/* BUILD_REMOVE_END */
 
 /**
  * Send email verification for two-step signup with callback URL - UPDATED with mocking support
  */
 export async function sendSignupEmailVerification(email: string, token: string, callbackUrl: string): Promise<void> {
+  /* BUILD_REMOVE_START */
   if (emailMock.isEnabled()) {
     logger.info('Using mock email service for sendSignupEmailVerification');
     return sendSignupEmailVerificationMock(email, token, callbackUrl);
   }
+  /* BUILD_REMOVE_END */
 
   // Original implementation continues here...
   if (!email || !token || !callbackUrl) {

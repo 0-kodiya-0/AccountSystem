@@ -67,6 +67,7 @@ export const OPTIONAL_ENV_VARS = {
   INTERNAL_SERVER_CERT_PATH: '',
   INTERNAL_CA_CERT_PATH: '',
 
+  /* BUILD_REMOVE_START */
   // Mock Configuration
   MOCK_ENABLED: 'false',
 
@@ -78,6 +79,7 @@ export const OPTIONAL_ENV_VARS = {
   // Test Database Configuration
   TEST_DB_CLEAR_ON_START: 'false',
   TEST_DB_SEED_ON_START: 'false',
+  /* BUILD_REMOVE_END */
 } as const;
 
 type RequiredEnvVar = (typeof REQUIRED_ENV_VARS)[number];
@@ -186,11 +188,12 @@ export const envConfig = EnvironmentConfig.getInstance();
 export const getJwtSecret = (): string => envConfig.get('JWT_SECRET');
 export const getSessionSecret = (): string => envConfig.get('SESSION_SECRET');
 export const getPort = (): number => parseInt(envConfig.get('PORT'));
-export const getNodeEnv = (): string => envConfig.get('NODE_ENV');
+export const getNodeEnv = (): string => envConfig.get('NODE_ENV'); // BUILD_REMOVE
 export const getApiBasePATH = (): string => {
   const path = envConfig.get('API_BASE_PATH');
   return path === '/' ? '' : path;
 };
+
 export const getProxyUrl = (): string => envConfig.get('PROXY_URL');
 export const getAppName = (): string => envConfig.get('APP_NAME');
 
@@ -233,7 +236,8 @@ export const getInternalServerKeyPath = (): string => envConfig.get('INTERNAL_SE
 export const getInternalServerCertPath = (): string => envConfig.get('INTERNAL_SERVER_CERT_PATH');
 export const getInternalCACertPath = (): string => envConfig.get('INTERNAL_CA_CERT_PATH');
 
-// NEW: Mock configuration
+/* BUILD_REMOVE_START */
+// Mock configuration
 export const isMockEnabled = (): boolean => envConfig.isMockEnabled();
 export const getMockEnabled = (): boolean => envConfig.get('MOCK_ENABLED') === 'true';
 
@@ -245,3 +249,4 @@ export const getMemoryDbVersion = (): string => envConfig.get('MEMORY_DB_VERSION
 // Test Database configuration
 export const getTestDbClearOnStart = (): boolean => envConfig.get('TEST_DB_CLEAR_ON_START') === 'true';
 export const getTestDbSeedOnStart = (): boolean => envConfig.get('TEST_DB_SEED_ON_START') === 'true';
+/* BUILD_REMOVE_END */

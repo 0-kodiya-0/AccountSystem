@@ -1,17 +1,19 @@
 import mongoose from 'mongoose';
 import {
   getAccountsDbUri,
-  getNodeEnv,
+  getNodeEnv, // BUILD_REMOVE
   getTestDbClearOnStart,
   getTestDbSeedOnStart,
   getUseMemoryDb,
 } from './env.config';
+/* BUILD_REMOVE_START */
 import {
   getAccountsMockConfig,
   getOAuthMockConfig,
   type SeedingOptions,
   getMockAccountsForSeeding,
 } from './mock.config';
+/* BUILD_REMOVE_END */
 import { logger } from '../utils/logger';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import processCleanup from '../utils/processCleanup';
@@ -58,7 +60,7 @@ const connectionState: ConnectionState = {
 };
 
 // Memory server instance for testing
-let memoryServer: MongoMemoryServer | null = null;
+let memoryServer: MongoMemoryServer | null = null; // BUILD_REMOVE
 
 // Track initialization state
 let isInitialized = false;
@@ -74,6 +76,7 @@ export class DatabaseConnectionError extends Error {
   }
 }
 
+/* BUILD_REMOVE_START */
 /**
  * Check if we should use MongoDB Memory Server
  */
@@ -138,14 +141,17 @@ export async function stopMemoryServer(): Promise<void> {
     }
   }
 }
+/* BUILD_REMOVE_END */
 
 /**
  * Get the appropriate MongoDB URI
  */
 async function getMongoDbUri(): Promise<string> {
+  /* BUILD_REMOVE_START */
   if (shouldUseMemoryServer()) {
     return await startMemoryServer();
   }
+  /* BUILD_REMOVE_END */
 
   const providedUri = getAccountsDbUri();
   if (providedUri) {
@@ -259,13 +265,15 @@ export const connectAuthDB = async (forceNew: boolean = false): Promise<mongoose
       connectionState.isConnecting = false;
       connectionState.lastConnectionTime = new Date();
 
-      const dbType = shouldUseMemoryServer() ? 'Memory' : 'MongoDB';
+      const dbType = /* BUILD_REMOVE_START */ shouldUseMemoryServer() ? 'Memory' : /* BUILD_REMOVE_END */ 'MongoDB';
       logger.info(`${dbType} authentication database connected and verified successfully`);
 
+      /* BUILD_REMOVE_START */
       if (shouldUseMemoryServer()) {
         logger.info('Using MongoDB Memory Server for testing');
         logger.info('Database will be cleared when server stops');
       }
+      /* BUILD_REMOVE_END */
 
       return connection;
     })();
@@ -276,6 +284,7 @@ export const connectAuthDB = async (forceNew: boolean = false): Promise<mongoose
     connectionState.connectionPromise = null;
     logger.error('Authentication database connection error:', error);
 
+    /* BUILD_REMOVE_START */
     // If memory server fails, try regular MongoDB
     if (shouldUseMemoryServer()) {
       logger.warn('Memory server failed, falling back to regular MongoDB');
@@ -283,6 +292,7 @@ export const connectAuthDB = async (forceNew: boolean = false): Promise<mongoose
       // Retry with regular MongoDB
       return await connectAuthDB(forceNew);
     }
+    /* BUILD_REMOVE_END */
 
     throw new DatabaseConnectionError('Failed to connect to database', error as Error);
   }
@@ -358,6 +368,7 @@ export const initializeDB = async (): Promise<DatabaseModels> => {
     isInitialized = true;
     logger.info('Database models initialized successfully');
 
+    /* BUILD_REMOVE_START */
     // Handle test database initialization
     if (getNodeEnv() === 'test' || getNodeEnv() === 'development') {
       if (getTestDbClearOnStart()) {
@@ -373,8 +384,9 @@ export const initializeDB = async (): Promise<DatabaseModels> => {
       const stats = await getDatabaseStats();
       logger.info('Database statistics:', stats);
     }
+    /* BUILD_REMOVE_END */
 
-    const dbType = shouldUseMemoryServer() ? 'Memory' : 'MongoDB';
+    const dbType = /* BUILD_REMOVE_START */ shouldUseMemoryServer() ? 'Memory' : /* BUILD_REMOVE_END */ 'MongoDB';
     logger.info(`All ${dbType} database connections established and verified`);
 
     return models;
@@ -398,6 +410,7 @@ export const getModels = async (): Promise<DatabaseModels> => {
   return models;
 };
 
+/* BUILD_REMOVE_START */
 /**
  * Clear database (useful for testing) - now with connection verification
  */
@@ -415,6 +428,7 @@ export const clearDatabase = async (): Promise<void> => {
   await Promise.all(collections.map((collection) => collection.deleteMany({})));
   logger.info('Database cleared successfully');
 };
+/* BUILD_REMOVE_END */
 
 /**
  * Get database statistics - now with connection verification
@@ -424,7 +438,7 @@ export const getDatabaseStats = async (): Promise<{
   collections: string[];
   totalDocuments: number;
 }> => {
-  const isMemory = shouldUseMemoryServer();
+  const isMemory = shouldUseMemoryServer(); // BUILD_REMOVE
   let collections: string[] = [];
   let totalDocuments = 0;
 
@@ -447,12 +461,13 @@ export const getDatabaseStats = async (): Promise<{
   }
 
   return {
-    type: isMemory ? 'memory' : 'mongodb',
+    type: /* BUILD_REMOVE_START */ isMemory ? 'memory' : /* BUILD_REMOVE_END */ 'mongodb',
     collections,
     totalDocuments,
   };
 };
 
+/* BUILD_REMOVE_START */
 /**
  * Enhanced seed database with connection verification
  */
@@ -725,6 +740,8 @@ export const seedTestDatabase = async (seedingOptions?: SeedingOptions): Promise
   }
 };
 
+/* BUILD_REMOVE_END */
+
 /**
  * Close all database connections
  */
@@ -738,9 +755,11 @@ export const closeAllConnections = async (): Promise<void> => {
       connectionState.connectionPromise = null;
     }
 
+    /* BUILD_REMOVE_START */
     if (shouldUseMemoryServer()) {
       await stopMemoryServer();
     }
+    /* BUILD_REMOVE_END */
 
     models = null;
     isInitialized = false;
@@ -762,13 +781,13 @@ export const getAuthConnectionStatus = (): {
   host?: string;
   name?: string;
   lastConnectionTime?: Date;
-  memoryServer: boolean;
+  memoryServer: boolean; // BUILD_REMOVE
 } => {
   const status = {
     connected: connectionState.isConnected,
     connecting: connectionState.isConnecting,
     readyState: connectionState.connection?.readyState || mongoose.ConnectionStates.disconnected,
-    memoryServer: shouldUseMemoryServer(),
+    memoryServer: shouldUseMemoryServer(), // BUILD_REMOVE
     lastConnectionTime: connectionState.lastConnectionTime || undefined,
   };
 

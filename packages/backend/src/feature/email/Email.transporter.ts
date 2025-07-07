@@ -1,27 +1,24 @@
-import nodemailer, { Transporter } from "nodemailer";
-import SMTPTransport from "nodemailer/lib/smtp-transport";
-import { ServerError } from "../../types/response.types";
+import nodemailer, { Transporter } from 'nodemailer';
+import SMTPTransport from 'nodemailer/lib/smtp-transport';
+import { ServerError } from '../../types/response.types';
 import {
-  getNodeEnv,
+  getNodeEnv, // BUILD_REMOVE
   getSenderEmail,
   getSmtpAppPassword,
   getSmtpHost,
   getSmtpPort,
   getSmtpSecure,
-} from "../../config/env.config";
-import { logger } from "../../utils/logger";
+} from '../../config/env.config';
+import { logger } from '../../utils/logger';
 
 // Singleton transporter instance
-let transporterInstance: Transporter<SMTPTransport.SentMessageInfo> | null =
-  null;
+let transporterInstance: Transporter<SMTPTransport.SentMessageInfo> | null = null;
 let isTransporterVerified = false;
 
 /**
  * Create and verify SMTP transporter (singleton pattern)
  */
-export const getTransporter = async (): Promise<
-  Transporter<SMTPTransport.SentMessageInfo>
-> => {
+export const getTransporter = async (): Promise<Transporter<SMTPTransport.SentMessageInfo>> => {
   // Return existing instance if already created and verified
   if (transporterInstance && isTransporterVerified) {
     return transporterInstance;
@@ -40,7 +37,9 @@ export const getTransporter = async (): Promise<
       // Additional options for better reliability
       tls: {
         // Do not fail on invalid certs (for development)
-        rejectUnauthorized: getNodeEnv() === "production",
+        rejectUnauthorized: /* BUILD_REMOVE_START */ !(getNodeEnv() === 'production')
+          ? false
+          : /* BUILD_REMOVE_END */ true,
       },
       // Connection timeouts
       connectionTimeout: 60000, // 60 seconds
@@ -55,16 +54,16 @@ export const getTransporter = async (): Promise<
     if (!isTransporterVerified) {
       await transporterInstance.verify();
       isTransporterVerified = true;
-      logger.info("SMTP connection verified successfully");
+      logger.info('SMTP connection verified successfully');
     }
 
     return transporterInstance;
   } catch (error) {
-    logger.error("Failed to create email transporter:", error);
+    logger.error('Failed to create email transporter:', error);
     // Reset state on error
     transporterInstance = null;
     isTransporterVerified = false;
-    throw new ServerError("Failed to create email transporter");
+    throw new ServerError('Failed to create email transporter');
   }
 };
 
@@ -77,7 +76,7 @@ export const resetTransporter = (): void => {
   }
   transporterInstance = null;
   isTransporterVerified = false;
-  logger.info("Email transporter reset");
+  logger.info('Email transporter reset');
 };
 
 /**
@@ -101,7 +100,7 @@ export const closeTransporter = async (): Promise<void> => {
     transporterInstance.close();
     transporterInstance = null;
     isTransporterVerified = false;
-    logger.info("Email transporter closed gracefully");
+    logger.info('Email transporter closed gracefully');
   }
 };
 
@@ -111,10 +110,10 @@ export const closeTransporter = async (): Promise<void> => {
 export const testEmailConfiguration = async (): Promise<boolean> => {
   try {
     await getTransporter();
-    logger.info("✅ Email configuration test passed");
+    logger.info('✅ Email configuration test passed');
     return true;
   } catch (error) {
-    logger.error("❌ Email configuration test failed:", error);
+    logger.error('❌ Email configuration test failed:', error);
     return false;
   }
 };

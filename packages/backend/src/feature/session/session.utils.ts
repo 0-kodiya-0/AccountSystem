@@ -1,6 +1,9 @@
 import jwt from 'jsonwebtoken';
 import { Request, Response } from 'express';
-import { getJwtSecret, getNodeEnv } from '../../config/env.config';
+import {
+  getJwtSecret,
+  getNodeEnv, // BUILD_REMOVE
+} from '../../config/env.config';
 import { getStrippedPathPrefix } from '../../utils/redirect';
 import { AccountSessionData, AccountSessionTokenPayload, AccountSessionInfo } from './session.types';
 import { logger } from '../../utils/logger';
@@ -60,7 +63,7 @@ export function setAccountSessionCookie(req: Request, res: Response, sessionData
 
   res.cookie(ACCOUNT_SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: getNodeEnv() === 'production',
+    secure: /* BUILD_REMOVE_START */ !(getNodeEnv() === 'production') ? false : /* BUILD_REMOVE_END */ true,
     path: '/', // Set at root path as requested
     maxAge: COOKIE_MAX_AGE,
     sameSite: 'lax',
@@ -223,7 +226,7 @@ export const setAccessTokenCookie = (
 ): void => {
   res.cookie(`access_token_${accountId}`, accessToken, {
     httpOnly: true,
-    secure: getNodeEnv() === 'production',
+    secure: /* BUILD_REMOVE_START */ !(getNodeEnv() === 'production') ? false : /* BUILD_REMOVE_END */ true,
     maxAge: expiresIn,
     path: `${getStrippedPathPrefix(req)}/${accountId}`,
     sameSite: 'lax',
@@ -236,7 +239,7 @@ export const setAccessTokenCookie = (
 export const setRefreshTokenCookie = (req: Request, res: Response, accountId: string, refreshToken: string): void => {
   res.cookie(`refresh_token_${accountId}`, refreshToken, {
     httpOnly: true,
-    secure: getNodeEnv() === 'production',
+    secure: /* BUILD_REMOVE_START */ !(getNodeEnv() === 'production') ? false : /* BUILD_REMOVE_END */ true,
     maxAge: COOKIE_MAX_AGE,
     path: `${getStrippedPathPrefix(req)}/${accountId}/tokens/refresh`,
     sameSite: 'lax',

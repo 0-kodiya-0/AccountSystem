@@ -4,7 +4,7 @@ import { TLSSocket, PeerCertificate } from 'tls';
 import { ApiErrorCode, AuthError } from '../types/response.types';
 import { asyncHandler } from '../utils/response';
 import { logger } from '../utils/logger';
-import { getNodeEnv, getMockEnabled } from '../config/env.config';
+import { getNodeEnv, getMockEnabled } from '../config/env.config'; // BUILD_REMOVE
 
 export interface InternalRequest extends Request {
   clientCertificate?: {
@@ -19,42 +19,22 @@ export interface InternalRequest extends Request {
 
 /**
  * Internal authentication middleware
- * Note: Certificate validation is handled by Node.js HTTPS module automatically.
- * This middleware only extracts certificate info and validates service headers.
+ * - Production: mTLS certificate validation (handled by Node.js) + Service ID header
+ * - Development: Service ID header only (no certificates required)
  */
 export const internalAuthentication = asyncHandler((req: InternalRequest, res, next) => {
+  /* BUILD_REMOVE_START */
   const nodeEnv = getNodeEnv();
   const mockEnabled = getMockEnabled();
   const isProduction = nodeEnv === 'production' && !mockEnabled;
+  /* BUILD_REMOVE_END */
 
   try {
     const socket = req.socket as TLSSocket;
     const isSecureConnection = socket.encrypted || req.secure;
 
-    // Extract certificate information if available (for logging/audit purposes only)
-    if (isSecureConnection && socket.getPeerCertificate) {
-      const cert = socket.getPeerCertificate(true);
-
-      if (cert && Object.keys(cert).length > 0) {
-        // Generate fingerprint for logging
-        const fingerprint = crypto.createHash('sha256').update(cert.raw).digest('hex').toUpperCase();
-
-        req.clientCertificate = {
-          fingerprint,
-          subject: cert.subject,
-          issuer: cert.issuer,
-        };
-
-        logger.info(`Internal request with certificate: ${fingerprint}`, {
-          subject: cert.subject.CN || 'Unknown',
-          issuer: cert.issuer.CN || 'Unknown',
-        });
-      }
-    }
-
-    // Validate service identification headers
+    // Extract service identification headers (required in both modes)
     const serviceId = req.get('X-Internal-Service-ID');
-    const serviceSecret = req.get('X-Internal-Service-Secret');
     const serviceName = req.get('X-Internal-Service-Name') || serviceId;
 
     if (!serviceId) {
@@ -65,32 +45,54 @@ export const internalAuthentication = asyncHandler((req: InternalRequest, res, n
       );
     }
 
-    // In development/mock mode, require service secret when no certificate is present
-    const hasCertificate = !!req.clientCertificate;
-    if (!isProduction && !hasCertificate && !serviceSecret) {
-      throw new AuthError(
-        'Service secret required in development mode (X-Internal-Service-Secret header)',
-        401,
-        ApiErrorCode.AUTH_FAILED,
-      );
-    }
+    /* BUILD_REMOVE_START */
+    // Production Mode: Verify mTLS certificate + Service ID
+    if (isProduction) {
+      /* BUILD_REMOVE_END */
+      if (!isSecureConnection) {
+        throw new AuthError('HTTPS connection required in production mode', 401, ApiErrorCode.AUTH_FAILED);
+      }
 
-    // Set request properties
+      // Extract certificate information (certificate validation already handled by Node.js HTTPS)
+      const cert = socket.getPeerCertificate && socket.getPeerCertificate(true);
+
+      if (!cert || Object.keys(cert).length === 0) {
+        throw new AuthError('Valid client certificate required in production mode', 401, ApiErrorCode.AUTH_FAILED);
+      }
+
+      // Generate fingerprint for logging/audit purposes
+      const fingerprint = crypto.createHash('sha256').update(cert.raw).digest('hex').toUpperCase();
+
+      req.clientCertificate = {
+        fingerprint,
+        subject: cert.subject,
+        issuer: cert.issuer,
+      };
+
+      logger.info(`Internal service authenticated via mTLS: ${serviceName}`, {
+        serviceId,
+        certificateFingerprint: fingerprint,
+        certificateSubject: cert.subject.CN || 'Unknown',
+        certificateIssuer: cert.issuer.CN || 'Unknown',
+        path: req.path,
+      });
+      /* BUILD_REMOVE_START */
+    }
+    // Development Mode: Service ID header only
+    else {
+      logger.info(`Internal service authenticated via headers: ${serviceName}`, {
+        serviceId,
+        connectionType: isSecureConnection ? 'HTTPS' : 'HTTP',
+        environment: 'development',
+        path: req.path,
+      });
+    }
+    /* BUILD_REMOVE_END */
+
+    // Set request properties for both modes
     req.isInternalRequest = true;
     req.serviceId = serviceId;
     req.serviceName = serviceName || serviceId;
-
-    // Log successful authentication
-    const connectionType = isSecureConnection ? 'HTTPS' : 'HTTP';
-    const authMethod = hasCertificate ? 'Certificate + Headers' : 'Headers Only';
-
-    logger.info(`Internal service authenticated: ${req.serviceName}`, {
-      serviceId,
-      connectionType,
-      authMethod,
-      environment: isProduction ? 'production' : 'development',
-      path: req.path,
-    });
 
     next();
   } catch (error) {

@@ -7,17 +7,10 @@ import { setupCompleteAccountSession } from '../session/session.utils';
 import { ValidationUtils } from '../../utils/validation';
 import { createLocalAccessToken, createLocalRefreshToken } from '../tokens';
 import { Account } from '../account';
-import {
-  getEmailVerificationData,
-  getProfileCompletionData,
-  getAllPasswordResetTokens,
-  getAllProfileCompletionTokens,
-  getAllEmailVerificationTokens,
-} from './LocalAuth.cache';
-import { getNodeEnv, isMockEnabled } from '../../config/env.config';
-import { logger } from '../../utils/logger';
+import { getEmailVerificationData, getProfileCompletionData } from './LocalAuth.cache';
+import { getNodeEnv, isMockEnabled } from '../../config/env.config'; // BUILD_REMOVE
 
-const isMock = getNodeEnv() !== 'production' && isMockEnabled();
+const isMock = getNodeEnv() !== 'production' && isMockEnabled(); // BUILD_REMOVE
 
 /**
  * Step 1: Request email verification - UPDATED to require callback URL
@@ -31,6 +24,7 @@ export const requestEmailVerification = asyncHandler(async (req, res, next) => {
 
   const { token } = await LocalAuthService.requestEmailVerification(email, callbackUrl);
 
+  /* BUILD_REMOVE_START */
   if (isMock) {
     next(
       new JsonSuccess({
@@ -46,6 +40,7 @@ export const requestEmailVerification = asyncHandler(async (req, res, next) => {
       }),
     );
   } else {
+    /* BUILD_REMOVE_END */
     next(
       new JsonSuccess({
         message: 'Verification email sent. Please check your email to continue.',
@@ -53,7 +48,7 @@ export const requestEmailVerification = asyncHandler(async (req, res, next) => {
         callbackUrl: callbackUrl,
       }),
     );
-  }
+  } // BUILD_REMOVE
 });
 
 /**
@@ -239,6 +234,7 @@ export const requestPasswordReset = asyncHandler(async (req, res, next) => {
   const { resetToken } = await LocalAuthService.requestPasswordReset({ email, callbackUrl });
 
   // Return success response (even if email not found for security)
+  /* BUILD_REMOVE_START */
   if (isMock) {
     next(
       new JsonSuccess({
@@ -253,13 +249,14 @@ export const requestPasswordReset = asyncHandler(async (req, res, next) => {
       }),
     );
   } else {
+    /* BUILD_REMOVE_END */
     next(
       new JsonSuccess({
         message: 'If your email is registered, you will receive instructions to reset your password.',
         callbackUrl: callbackUrl,
       }),
     );
-  }
+  } // BUILD_REMOVE
 });
 
 export const verifyPasswordResetRequest = asyncHandler(async (req, res, next) => {
@@ -326,50 +323,6 @@ export const changePassword = asyncHandler(async (req, res, next) => {
   next(
     new JsonSuccess({
       message: 'Password changed successfully.',
-    }),
-  );
-});
-
-export const getActiveTokens = asyncHandler(async (req, res, next) => {
-  if (getNodeEnv() === 'production') {
-    throw new BadRequestError('Token inspection disabled in production', 400, ApiErrorCode.INVALID_REQUEST);
-  }
-
-  const emailTokens = getAllEmailVerificationTokens();
-  const profileTokens = getAllProfileCompletionTokens();
-  const resetTokens = getAllPasswordResetTokens();
-
-  next(
-    new JsonSuccess({
-      emailVerification: {
-        tokens: emailTokens.map((token) => ({
-          email: token.email,
-          verificationToken: token.verificationToken,
-          step: token.step,
-          expiresAt: token.expiresAt,
-          createdAt: token.createdAt,
-        })),
-        count: emailTokens.length,
-      },
-      profileCompletion: {
-        tokens: profileTokens.map((token) => ({
-          email: token.email,
-          verificationToken: token.verificationToken,
-          emailVerified: token.emailVerified,
-          expiresAt: token.expiresAt,
-        })),
-        count: profileTokens.length,
-      },
-      passwordReset: {
-        tokens: resetTokens.map((token) => ({
-          accountId: token.accountId,
-          email: token.email,
-          token: token.token,
-          expiresAt: token.expiresAt,
-        })),
-        count: resetTokens.length,
-      },
-      message: 'Active tokens retrieved successfully',
     }),
   );
 });

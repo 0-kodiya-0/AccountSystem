@@ -1,4 +1,3 @@
-// src/app.ts
 import { getPort } from './config/env.config';
 
 import http, { Server } from 'http';
@@ -17,10 +16,12 @@ import * as twoFARouter from './feature/twofa';
 import * as tokenRouter from './feature/tokens';
 import * as healthRouter from './feature/health/Health.routes';
 
+/* BUILD_REMOVE_START */
 import { emailMockRouter } from './feature/email/__mocks__/Email.mock.routes';
 import { oauthMockRouter } from './feature/oauth/__mocks__/OAuth.mock.routes';
 import { sessionMockRouter } from './feature/session/__mocks__/Session.mock.routes';
 import { tokenMockRouter } from './feature/tokens/__mocks__/Token.mock.routes';
+/* BUILD_REMOVE_END */
 
 import notificationRouter, { NotificationSocketHandler } from './feature/notifications';
 
@@ -59,6 +60,7 @@ function createMainApp(): Express {
 
   app.use('/health', healthRouter.healthRouter);
 
+  /* BUILD_REMOVE_START */
   if (process.env.NODE_ENV !== 'production') {
     if (process.env.MOCK_ENABLED === 'true') {
       // Email mock routes
@@ -78,59 +80,42 @@ function createMainApp(): Express {
       logger.info('Token mock routes enabled');
     }
   }
+  /* BUILD_REMOVE_END */
 
   // Routes - Using API paths that match the proxy configuration
 
-  // OAuth routes (enabled unless specifically disabled)
-  if (process.env.DISABLE_OAUTH !== 'true') {
-    app.use('/oauth', autoTrackParentUrl(), oauthRouter.authNotRequiredRouter);
-    logger.info('OAuth routes enabled');
-  } else {
-    logger.info('OAuth routes disabled');
-  }
+  // OAuth routes
+  app.use('/oauth', autoTrackParentUrl(), oauthRouter.authNotRequiredRouter);
+  logger.info('OAuth routes enabled');
 
   // Account routes (always enabled)
   app.use('/account', autoTrackParentUrl(), accountRouter.authNotRequiredRouter);
   app.use('/session', autoTrackParentUrl(), sessionRouter.sessionRouter);
 
-  // Local auth routes (enabled unless specifically disabled)
-  if (process.env.DISABLE_LOCAL_AUTH !== 'true') {
-    app.use('/auth', autoTrackParentUrl(), localAuthRouter.authNotRequiredRouter);
-    logger.info('Local authentication routes enabled');
-  } else {
-    logger.info('Local authentication routes disabled');
-  }
+  // Local auth routes
+  app.use('/auth', autoTrackParentUrl(), localAuthRouter.authNotRequiredRouter);
+  logger.info('Local authentication routes enabled');
 
-  // 2FA public routes (enabled unless specifically disabled)
-  if (process.env.DISABLE_LOCAL_AUTH !== 'true' || process.env.DISABLE_OAUTH !== 'true') {
-    app.use('/twofa', autoTrackParentUrl(), twoFARouter.twoFAPublicRouter);
-    logger.info('2FA public routes enabled');
-  }
+  // 2FA public routes
+  app.use('/twofa', autoTrackParentUrl(), twoFARouter.twoFAPublicRouter);
+  logger.info('2FA public routes enabled');
 
   // Routes that need authentication
   app.use('/:accountId', authenticateSession, validateAccountAccess, validateTokenAccess);
 
   app.use('/:accountId/account', autoTrackParentUrl(), accountRouter.authRequiredRouter);
 
-  // Notification routes (enabled unless specifically disabled)
-  if (process.env.DISABLE_NOTIFICATIONS !== 'true') {
-    app.use('/:accountId/notifications', autoTrackParentUrl(), notificationRouter);
-    logger.info('Notification routes enabled');
-  } else {
-    logger.info('Notification routes disabled');
-  }
+  // Notification routes
+  app.use('/:accountId/notifications', autoTrackParentUrl(), notificationRouter);
+  logger.info('Notification routes enabled');
 
-  // Local auth authenticated routes (enabled unless specifically disabled)
-  if (process.env.DISABLE_LOCAL_AUTH !== 'true') {
-    app.use('/:accountId/auth', autoTrackParentUrl(), localAuthRouter.authRequiredRouter);
-    logger.info('Local auth authenticated routes enabled');
-  }
+  // Local auth authenticated routes
+  app.use('/:accountId/auth', autoTrackParentUrl(), localAuthRouter.authRequiredRouter);
+  logger.info('Local auth authenticated routes enabled');
 
-  // 2FA authenticated routes (enabled unless both auth types are disabled)
-  if (process.env.DISABLE_LOCAL_AUTH !== 'true' || process.env.DISABLE_OAUTH !== 'true') {
-    app.use('/:accountId/twofa', autoTrackParentUrl(), twoFARouter.twoFAAuthenticatedRouter);
-    logger.info('2FA authenticated routes enabled');
-  }
+  // 2FA authenticated routes
+  app.use('/:accountId/twofa', autoTrackParentUrl(), twoFARouter.twoFAAuthenticatedRouter);
+  logger.info('2FA authenticated routes enabled');
 
   app.use('/:accountId/tokens', autoTrackParentUrl(), tokenRouter.tokenRouter);
   logger.info('Centralized token routes enabled');
@@ -182,13 +167,9 @@ export async function startMainServer() {
     logger.info('Socket.IO connections closed');
   });
 
-  // Initialize socket handlers if notifications are enabled
-  if (process.env.DISABLE_NOTIFICATIONS !== 'true') {
-    new NotificationSocketHandler(io);
-    logger.info('Notification socket handlers initialized');
-  } else {
-    logger.info('Notification system disabled');
-  }
+  // Initialize socket handlers
+  new NotificationSocketHandler(io);
+  logger.info('Notification socket handlers initialized');
 
   // Start HTTP server
   const PORT = getPort();
@@ -199,6 +180,7 @@ export async function startMainServer() {
       logger.info(`📡 Socket.IO is listening on the same port`);
       logger.info('🛡️  Process cleanup handlers are active');
 
+      /* BUILD_REMOVE_START */
       // Log enabled mock services
       if (process.env.NODE_ENV !== 'production' && process.env.MOCK_ENABLED === 'true') {
         logger.info('🧪 Mock services enabled:');
@@ -207,6 +189,7 @@ export async function startMainServer() {
         logger.info('   🏷️ Session Mock: /mock/session/*');
         logger.info('   🎫 Token Mock: /mock/token/*');
       }
+      /* BUILD_REMOVE_END */
 
       resolve();
     });

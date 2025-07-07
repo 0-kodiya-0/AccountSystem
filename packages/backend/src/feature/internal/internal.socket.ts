@@ -1,6 +1,6 @@
 import { Server, Socket, Namespace } from 'socket.io';
 import { logger } from '../../utils/logger';
-import { getNodeEnv, getMockEnabled } from '../../config/env.config';
+import { getNodeEnv, getMockEnabled } from '../../config/env.config'; // BUILD_REMOVE
 
 // Import existing services
 import * as AccountService from '../account/Account.service';
@@ -46,9 +46,11 @@ export class InternalSocketHandler {
   }
 
   private init(): void {
+    /* BUILD_REMOVE_START */
     const nodeEnv = getNodeEnv();
     const mockEnabled = getMockEnabled();
     const isProduction = nodeEnv === 'production' && !mockEnabled;
+    /* BUILD_REMOVE_END */
 
     // Authentication middleware with simplified logic
     this.internalNamespace.use((socket: InternalSocket, next) => {
@@ -77,10 +79,12 @@ export class InternalSocketHandler {
           lastActivity: now,
         };
 
-        const authMode = !isProduction ? 'development (headers)' : 'production (mTLS)';
+        const authMode = /* BUILD_REMOVE_START */ !isProduction
+          ? 'development (headers)'
+          : /* BUILD_REMOVE_END */ 'production (mTLS)';
         logger.info(`Internal service connected via socket: ${finalServiceName} (${serviceId})`, {
           authMode,
-          environment: !isProduction ? 'production' : 'development',
+          environment: /* BUILD_REMOVE_START */ !isProduction ? 'production' : /* BUILD_REMOVE_END */ 'development',
         });
 
         next();
