@@ -12,10 +12,22 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "moduleResolution": "node",
+    "emitDeclarationOnly": true,
     "resolveJsonModule": true,
     "declarationMap": true,
     "sourceMap": false
   },
   "include": ["src/**/*", "global.d.ts", "src/cli.ts"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/*.mock.ts",
+    "src/tests/**/*",
+    "src/**/tests/**/*",
+    "src/**/__mocks__/**/*",
+    "src/feature/health/**/*",
+    "src/mocks/**/*"
+  ]
 }

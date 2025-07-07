@@ -10,10 +10,11 @@
     "abs": "dist/cli.js"
   },
   "scripts": {
-    "build": "npm run clean && npm run build:types && npm run build:cli && npm run build:server",
+    "build": "npm run clean && npm run build:production",
     "build:types": "tsc --emitDeclarationOnly",
-    "build:cli": "esbuild src/cli.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/cli.js --packages=external",
-    "build:server": "esbuild src/index.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/index.js --packages=external",
+    "build:cli": "node build.config.js --cli-only",
+    "build:server": "node build.config.js --server-only",
+    "build:production": "node build.config.js",
     "dev:build": "npm run build --watch",
     "dev:nodemon": "nodemon",
     "clean": "node -e \"const fs = require('fs'); if (fs.existsSync('dist')) fs.rmSync('dist', { recursive: true });\"",
@@ -101,6 +102,7 @@
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
     "dotenv": "^16.4.7",
+    "esbuild-plugin-remove-code": "file:../../plugins/esbuild/esbuild-plugin-remove-code",
     "express": "^4.21.2",
     "googleapis": "^146.0.0",
     "jsonwebtoken": "^9.0.2",
