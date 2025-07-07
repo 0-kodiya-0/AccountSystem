@@ -7,6 +7,7 @@ import * as SessionService from '../session/session.service';
 import * as TokenService from '../tokens/Token.service';
 import { verifyAccessToken, verifyRefreshToken } from '../tokens/Token.jwt';
 import { TokenVerificationResponse } from './internal.types';
+import { clearAllAccountsWithSession, getAccountSessionFromCookies } from '../session/session.utils';
 
 /**
  * Verify and extract token information (unified for local and OAuth)
@@ -163,11 +164,16 @@ export const checkUserExists = asyncHandler(async (req: Request, res: Response, 
  */
 export const getSessionInfo = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   // This will read from cookies automatically
-  const sessionInfo = await SessionService.getAccountSession(req);
+  const session = getAccountSessionFromCookies(req);
+  const sessionInfo = await SessionService.getAccountSession(session);
+
+  if (sessionInfo.missingAccountIds.length > 0) {
+    clearAllAccountsWithSession(req, res, sessionInfo.missingAccountIds);
+  }
 
   next(
     new JsonSuccess({
-      session: sessionInfo.session,
+      session: sessionInfo,
     }),
   );
 });
@@ -179,8 +185,8 @@ export const getSessionInfo = asyncHandler(async (req: Request, res: Response, n
  */
 export const getSessionAccountsData = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { accountIds } = req.body;
-
-  const accountsData = await SessionService.getSessionAccountsData(req, accountIds);
+  const session = getAccountSessionFromCookies(req);
+  const accountsData = await SessionService.getSessionAccountsData(session, accountIds);
 
   next(
     new JsonSuccess({
@@ -198,20 +204,25 @@ export const getSessionAccountsData = asyncHandler(async (req: Request, res: Res
 export const validateSession = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { accountId } = req.body;
 
-  const sessionInfo = await SessionService.getAccountSession(req);
+  const session = getAccountSessionFromCookies(req);
+  const sessionInfo = await SessionService.getAccountSession(session);
+
+  if (sessionInfo.missingAccountIds.length > 0) {
+    clearAllAccountsWithSession(req, res, sessionInfo.missingAccountIds);
+  }
 
   let isAccountInSession = false;
   let isCurrentAccount = false;
 
   if (accountId) {
     ValidationUtils.validateObjectId(accountId, 'Account ID');
-    isAccountInSession = sessionInfo.session.accountIds.includes(accountId);
-    isCurrentAccount = sessionInfo.session.currentAccountId === accountId;
+    isAccountInSession = sessionInfo.accountIds.includes(accountId);
+    isCurrentAccount = sessionInfo.currentAccountId === accountId;
   }
 
   next(
     new JsonSuccess({
-      session: sessionInfo.session,
+      session: sessionInfo,
       ...(accountId && {
         accountId,
         isAccountInSession,

@@ -1,13 +1,19 @@
 import { asyncHandler } from '../../utils/response';
 import { JsonSuccess } from '../../types/response.types';
 import * as SessionService from './session.service';
+import { clearAllAccountsWithSession, getAccountSessionFromCookies } from './session.utils';
 
 /**
  * Get current account session information (session data only)
  * This API will be called by frontend on mount to get session state
  */
 export const getAccountSession = asyncHandler(async (req, res, next) => {
-  const sessionInfo = await SessionService.getAccountSession(req, res);
+  const session = getAccountSessionFromCookies(req);
+  const sessionInfo = await SessionService.getAccountSession(session);
+
+  if (sessionInfo.missingAccountIds.length > 0) {
+    clearAllAccountsWithSession(req, res, sessionInfo.missingAccountIds);
+  }
 
   next(new JsonSuccess(sessionInfo, 200));
 });
@@ -18,7 +24,8 @@ export const getAccountSession = asyncHandler(async (req, res, next) => {
  */
 export const getSessionAccountsData = asyncHandler(async (req, res, next) => {
   const { accountIds } = req.query;
-  const accountsData = await SessionService.getSessionAccountsData(req, accountIds as string[] | string);
+  const session = getAccountSessionFromCookies(req);
+  const accountsData = await SessionService.getSessionAccountsData(session, accountIds as string[] | string);
 
   next(new JsonSuccess(accountsData, 200));
 });

@@ -6,7 +6,7 @@ import {
   setCurrentAccountInSession as setCurrentAccountInSessionManager,
   clearAccountSession,
 } from './session.utils';
-import { GetAccountSessionDataResponse, GetAccountSessionResponse } from './session.types';
+import { AccountSessionInfo, GetAccountSessionDataResponse, GetAccountSessionResponse } from './session.types';
 import { ValidationUtils } from '../../utils/validation';
 import { BadRequestError, ApiErrorCode } from '../../types/response.types';
 import { getModels } from '../../config/db.config';
@@ -18,17 +18,14 @@ import { logger } from '../../utils/logger';
  * Returns session data and validates account IDs still exist in database
  * Automatically cleans up invalid accounts from session
  */
-export async function getAccountSession(req: Request, res: Response): Promise<GetAccountSessionResponse> {
-  const session = getAccountSessionFromCookies(req);
-
+export async function getAccountSession(session: AccountSessionInfo): Promise<GetAccountSessionResponse> {
   if (!session.hasSession || !session.isValid || session.accountIds.length === 0) {
     return {
-      session: {
-        hasSession: false,
-        accountIds: [],
-        currentAccountId: null,
-        isValid: false,
-      },
+      hasSession: false,
+      accountIds: [],
+      currentAccountId: null,
+      missingAccountIds: [],
+      isValid: false,
     };
   }
 
@@ -50,9 +47,6 @@ export async function getAccountSession(req: Request, res: Response): Promise<Ge
         foundAccountIds,
       });
 
-      // Clean up the session by removing missing accounts using existing function
-      clearAccountSession(req, res, missingAccountIds);
-
       // Log the cleanup action
       logger.info('Session cleaned up - removed invalid accounts:', {
         removedAccountIds: missingAccountIds,
@@ -69,24 +63,22 @@ export async function getAccountSession(req: Request, res: Response): Promise<Ge
         : null;
 
     return {
-      session: {
-        hasSession: true,
-        accountIds: foundAccountIds,
-        currentAccountId: validCurrentAccountId,
-        isValid: true,
-      },
+      hasSession: true,
+      accountIds: foundAccountIds,
+      currentAccountId: validCurrentAccountId,
+      missingAccountIds: missingAccountIds,
+      isValid: true,
     };
   } catch (error) {
     console.log(error);
     logger.error('Error validating session account IDs:', error);
 
     return {
-      session: {
-        hasSession: true,
-        accountIds: session.accountIds,
-        currentAccountId: session.currentAccountId,
-        isValid: false,
-      },
+      hasSession: true,
+      accountIds: session.accountIds,
+      currentAccountId: session.currentAccountId,
+      missingAccountIds: [],
+      isValid: false,
     };
   }
 }
@@ -96,11 +88,9 @@ export async function getAccountSession(req: Request, res: Response): Promise<Ge
  * This should be called separately when account data is needed
  */
 export async function getSessionAccountsData(
-  req: Request,
+  session: AccountSessionInfo,
   accountIds?: string[] | string,
 ): Promise<GetAccountSessionDataResponse> {
-  const session = getAccountSessionFromCookies(req);
-
   if (accountIds && accountIds.length > 0 && Array.isArray(accountIds)) {
     accountIds = accountIds.filter((id) => session.accountIds.includes(id));
   } else if (accountIds && !Array.isArray(accountIds)) {

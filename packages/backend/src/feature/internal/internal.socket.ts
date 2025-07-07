@@ -17,6 +17,7 @@ import {
   InternalSocketData,
   ConnectedServiceInfo,
 } from './internal.socket.types';
+import { AccountSessionInfo } from '../session/session.types';
 
 // Type-safe Socket interface
 export type InternalSocket = Socket<
@@ -34,17 +35,6 @@ export type InternalNamespace = Namespace<
   InternalSocketData
 >;
 
-/**
- * Check if we should require strict authentication for sockets
- */
-function shouldRequireStrictAuth(): boolean {
-  const nodeEnv = getNodeEnv();
-  const mockEnabled = getMockEnabled();
-
-  // Require strict auth in production only
-  return nodeEnv === 'production' && !mockEnabled;
-}
-
 export class InternalSocketHandler {
   private io: Server;
   private internalNamespace: InternalNamespace;
@@ -56,51 +46,41 @@ export class InternalSocketHandler {
   }
 
   private init(): void {
-    const requireStrictAuth = shouldRequireStrictAuth();
+    const nodeEnv = getNodeEnv();
+    const mockEnabled = getMockEnabled();
+    const isProduction = nodeEnv === 'production' && !mockEnabled;
 
-    // Authentication middleware with environment-aware validation
+    // Authentication middleware with simplified logic
     this.internalNamespace.use((socket: InternalSocket, next) => {
       try {
         const { auth, query } = socket.handshake;
         const serviceId = (auth.serviceId || query.serviceId) as string;
         const serviceName = (auth.serviceName || query.serviceName) as string;
-        const serviceSecret = (auth.serviceSecret || query.serviceSecret) as string;
 
-        // Basic service identification is always required
+        // Service ID is always required in both modes
         if (!serviceId) {
           return next(new Error('Internal service ID required (serviceId in auth or query)'));
         }
 
-        // Default service name to service ID if not provided
         const finalServiceName = serviceName || serviceId;
-
-        // In production mode, require service secret
-        // In development/mock mode, service secret is optional but recommended
-        if (requireStrictAuth && !serviceSecret) {
-          logger.warn(`Internal socket connection without secret from ${finalServiceName} in production mode`);
-          return next(new Error('Service secret required in production mode'));
-        }
-
-        if (!requireStrictAuth && !serviceSecret) {
-          logger.info(`Internal socket connection without secret from ${finalServiceName} (development mode)`);
-        }
-
         const now = new Date().toISOString();
 
-        // Store service info in socket data with proper typing
+        // Production mode: Certificate validation already handled by HTTPS layer
+        // Development mode: No additional validation needed beyond service ID
+
+        // Store service info in socket data
         socket.data = {
           serviceId,
           serviceName: finalServiceName,
-          authenticated: !!serviceSecret || !requireStrictAuth,
+          authenticated: true, // Always true if we reach this point
           connectedAt: now,
           lastActivity: now,
         };
 
-        const authMode = requireStrictAuth ? 'production' : 'development';
+        const authMode = !isProduction ? 'development (headers)' : 'production (mTLS)';
         logger.info(`Internal service connected via socket: ${finalServiceName} (${serviceId})`, {
           authMode,
-          hasSecret: !!serviceSecret,
-          strictAuth: requireStrictAuth,
+          environment: !isProduction ? 'production' : 'development',
         });
 
         next();
@@ -110,15 +90,14 @@ export class InternalSocketHandler {
       }
     });
 
-    // Connection event with proper typing
+    // Rest of the Socket.IO initialization...
     this.internalNamespace.on('connection', (socket: InternalSocket) => {
       this.handleInternalConnection(socket);
     });
 
     logger.info('Internal Socket.IO namespace initialized', {
       namespace: '/internal-socket',
-      strictAuth: requireStrictAuth,
-      mode: requireStrictAuth ? 'production' : 'development',
+      authMode: isProduction ? 'production (mTLS + headers)' : 'development (headers only)',
     });
   }
 
@@ -342,12 +321,15 @@ export class InternalSocketHandler {
       this.updateActivity(socket);
 
       try {
-        const mockReq = this.createMockRequest(data.sessionCookie);
-        const sessionInfo = await SessionService.getAccountSession(mockReq);
+        if (!data.sessionCookie) {
+          throw new Error('data.sessionCookie is need');
+        }
+
+        const sessionInfo = await SessionService.getAccountSession(data.sessionCookie as unknown as AccountSessionInfo);
 
         callback({
           success: true,
-          data: { session: sessionInfo.session },
+          data: { session: sessionInfo },
         });
       } catch (error) {
         callback({
@@ -364,8 +346,14 @@ export class InternalSocketHandler {
       this.updateActivity(socket);
 
       try {
-        const mockReq = this.createMockRequest(data.sessionCookie);
-        const accountsData = await SessionService.getSessionAccountsData(mockReq, data.accountIds);
+        if (!data.sessionCookie) {
+          throw new Error('data.sessionCookie is need');
+        }
+
+        const accountsData = await SessionService.getSessionAccountsData(
+          data.sessionCookie as unknown as AccountSessionInfo,
+          data.accountIds,
+        );
 
         callback({
           success: true,
@@ -386,16 +374,19 @@ export class InternalSocketHandler {
       this.updateActivity(socket);
 
       try {
-        const mockReq = this.createMockRequest(data.sessionCookie);
-        const sessionInfo = await SessionService.getAccountSession(mockReq);
+        if (!data.sessionCookie) {
+          throw new Error('sessionCookie is need');
+        }
 
-        const response: any = { session: sessionInfo.session };
+        const sessionInfo = await SessionService.getAccountSession(data.sessionCookie as unknown as AccountSessionInfo);
+
+        const response: any = { session: sessionInfo };
 
         if (data.accountId && typeof data.accountId === 'string') {
           ValidationUtils.validateObjectId(data.accountId, 'Account ID');
           response.accountId = data.accountId;
-          response.isAccountInSession = sessionInfo.session.accountIds.includes(data.accountId);
-          response.isCurrentAccount = sessionInfo.session.currentAccountId === data.accountId;
+          response.isAccountInSession = sessionInfo.accountIds.includes(data.accountId);
+          response.isCurrentAccount = sessionInfo.currentAccountId === data.accountId;
         }
 
         callback({ success: true, data: response });
@@ -488,12 +479,6 @@ export class InternalSocketHandler {
 
   private updateActivity(socket: InternalSocket): void {
     socket.data.lastActivity = new Date().toISOString();
-  }
-
-  private createMockRequest(sessionCookie?: string) {
-    return {
-      cookies: sessionCookie ? { account_session: sessionCookie } : {},
-    } as Parameters<typeof SessionService.getAccountSession>[0];
   }
 
   // ========================================================================

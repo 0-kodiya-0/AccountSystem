@@ -53,9 +53,11 @@ describe('Session Service', () => {
       provider: undefined,
     };
 
-    // Mock account model
+    // Mock account model with proper query chain
     mockAccountModel = {
-      find: vi.fn(),
+      find: vi.fn().mockReturnValue({
+        distinct: vi.fn(),
+      }),
       findById: vi.fn().mockResolvedValue(mockAccount),
     };
 
@@ -81,142 +83,135 @@ describe('Session Service', () => {
 
   describe('getAccountSession', () => {
     it('should return session info when no session exists', async () => {
-      vi.mocked(sessionUtils.getAccountSessionFromCookies).mockReturnValue({
+      const session = {
         hasSession: false,
         accountIds: [],
         currentAccountId: null,
         isValid: false,
-      });
+      };
 
-      const result = await SessionService.getAccountSession(mockRequest as Request);
+      const result = await SessionService.getAccountSession(session);
 
       expect(result).toEqual({
-        session: {
-          hasSession: false,
-          accountIds: [],
-          currentAccountId: null,
-          isValid: false,
-        },
+        hasSession: false,
+        accountIds: [],
+        currentAccountId: null,
+        missingAccountIds: [],
+        isValid: false,
       });
     });
 
     it('should return session info when session is invalid', async () => {
-      vi.mocked(sessionUtils.getAccountSessionFromCookies).mockReturnValue({
+      const session = {
         hasSession: true,
         accountIds: [mockAccountId],
         currentAccountId: mockAccountId,
         isValid: false,
-      });
+      };
 
-      const result = await SessionService.getAccountSession(mockRequest as Request);
+      const result = await SessionService.getAccountSession(session);
 
       expect(result).toEqual({
-        session: {
-          hasSession: false,
-          accountIds: [],
-          currentAccountId: null,
-          isValid: false,
-        },
+        hasSession: false,
+        accountIds: [],
+        currentAccountId: null,
+        missingAccountIds: [],
+        isValid: false,
       });
     });
 
     it('should return valid session when all accounts exist', async () => {
       const accountIds = [mockAccountId, mockAccountId2];
-      vi.mocked(sessionUtils.getAccountSessionFromCookies).mockReturnValue({
+      const session = {
         hasSession: true,
         accountIds,
         currentAccountId: mockAccountId,
         isValid: true,
+      };
+
+      // Mock the distinct method to return the account IDs
+      mockAccountModel.find.mockReturnValue({
+        distinct: vi.fn().mockResolvedValue([mockAccountId, mockAccountId2]),
       });
 
-      mockAccountModel.find.mockResolvedValue([
-        { _id: { toString: () => mockAccountId } },
-        { _id: { toString: () => mockAccountId2 } },
-      ]);
-
-      const result = await SessionService.getAccountSession(mockRequest as Request);
+      const result = await SessionService.getAccountSession(session);
 
       expect(mockAccountModel.find).toHaveBeenCalledWith({ _id: { $in: accountIds } }, { _id: 1 });
+      expect(mockAccountModel.find().distinct).toHaveBeenCalledWith('_id');
 
       expect(result).toEqual({
-        session: {
-          hasSession: true,
-          accountIds,
-          currentAccountId: mockAccountId,
-          isValid: true,
-        },
+        hasSession: true,
+        accountIds,
+        currentAccountId: mockAccountId,
+        missingAccountIds: [],
+        isValid: true,
       });
     });
 
     it('should clean up session when some accounts no longer exist', async () => {
       const accountIds = [mockAccountId, mockAccountId2, mockAccountId3];
-      vi.mocked(sessionUtils.getAccountSessionFromCookies).mockReturnValue({
+      const session = {
         hasSession: true,
         accountIds,
         currentAccountId: mockAccountId2,
         isValid: true,
-      });
+      };
 
       // Only return two accounts (one is missing)
-      mockAccountModel.find.mockResolvedValue([
-        { _id: { toString: () => mockAccountId } },
-        { _id: { toString: () => mockAccountId3 } },
-      ]);
+      mockAccountModel.find.mockReturnValue({
+        distinct: vi.fn().mockResolvedValue([mockAccountId, mockAccountId3]),
+      });
 
-      const result = await SessionService.getAccountSession(mockRequest as Request);
-
-      expect(sessionUtils.clearAccountSession).toHaveBeenCalledWith(
-        mockRequest,
-        {},
-        [mockAccountId2], // Missing account ID
-      );
+      const result = await SessionService.getAccountSession(session);
 
       expect(result).toEqual({
-        session: {
-          hasSession: true,
-          accountIds: [mockAccountId, mockAccountId3],
-          currentAccountId: mockAccountId, // Should switch to first available
-          isValid: true,
-        },
+        hasSession: true,
+        accountIds: [mockAccountId, mockAccountId3],
+        currentAccountId: mockAccountId, // Should switch to first available
+        missingAccountIds: [mockAccountId2],
+        isValid: true,
       });
     });
 
     it('should handle current account being removed', async () => {
       const accountIds = [mockAccountId, mockAccountId2];
-      vi.mocked(sessionUtils.getAccountSessionFromCookies).mockReturnValue({
+      const session = {
         hasSession: true,
         accountIds,
         currentAccountId: mockAccountId2,
         isValid: true,
-      });
+      };
 
       // Only return first account (current account is missing)
-      mockAccountModel.find.mockResolvedValue([{ _id: { toString: () => mockAccountId } }]);
+      mockAccountModel.find.mockReturnValue({
+        distinct: vi.fn().mockResolvedValue([mockAccountId]),
+      });
 
-      const result = await SessionService.getAccountSession(mockRequest as Request);
+      const result = await SessionService.getAccountSession(session);
 
-      expect(result.session.currentAccountId).toBe(mockAccountId);
+      expect(result.currentAccountId).toBe(mockAccountId);
     });
 
     it('should handle database errors gracefully', async () => {
-      vi.mocked(sessionUtils.getAccountSessionFromCookies).mockReturnValue({
+      const session = {
         hasSession: true,
         accountIds: [mockAccountId],
         currentAccountId: mockAccountId,
         isValid: true,
+      };
+
+      mockAccountModel.find.mockReturnValue({
+        distinct: vi.fn().mockRejectedValue(new Error('Database error')),
       });
 
-      mockAccountModel.find.mockRejectedValue(new Error('Database error'));
-
-      const result = await SessionService.getAccountSession(mockRequest as Request);
+      const result = await SessionService.getAccountSession(session);
 
       expect(result).toEqual({
-        session: {
-          hasSession: true,
-          accountIds: [mockAccountId],
-          currentAccountId: mockAccountId,
-          isValid: false,
-        },
+        hasSession: true,
+        accountIds: [mockAccountId],
+        currentAccountId: mockAccountId,
+        missingAccountIds: [],
+        isValid: false,
       });
     });
   });
@@ -247,19 +242,24 @@ describe('Session Service', () => {
       },
     ];
 
-    beforeEach(() => {
-      vi.mocked(sessionUtils.getAccountSessionFromCookies).mockReturnValue({
-        hasSession: true,
-        accountIds: [mockAccountId, mockAccountId2],
-        currentAccountId: mockAccountId,
-        isValid: true,
-      });
+    const session = {
+      hasSession: true,
+      accountIds: [mockAccountId, mockAccountId2],
+      currentAccountId: mockAccountId,
+      isValid: true,
+    };
 
-      mockAccountModel.find.mockResolvedValue(mockAccounts);
+    beforeEach(() => {
+      // Reset the find mock for getSessionAccountsData tests with intelligent filtering
+      mockAccountModel.find = vi.fn().mockImplementation((query) => {
+        const requestedIds = query._id.$in;
+        const filteredAccounts = mockAccounts.filter((account) => requestedIds.includes(account._id.toString()));
+        return Promise.resolve(filteredAccounts);
+      });
     });
 
     it('should return account data for all session accounts', async () => {
-      const result = await SessionService.getSessionAccountsData(mockRequest as Request);
+      const result = await SessionService.getSessionAccountsData(session);
 
       expect(mockAccountModel.find).toHaveBeenCalledWith({
         _id: { $in: [mockAccountId, mockAccountId2] },
@@ -291,7 +291,7 @@ describe('Session Service', () => {
     });
 
     it('should return account data for specific account IDs', async () => {
-      const result = await SessionService.getSessionAccountsData(mockRequest as Request, [mockAccountId]);
+      const result = await SessionService.getSessionAccountsData(session, [mockAccountId]);
 
       expect(mockAccountModel.find).toHaveBeenCalledWith({
         _id: { $in: [mockAccountId] },
@@ -301,7 +301,7 @@ describe('Session Service', () => {
     });
 
     it('should handle string account ID parameter', async () => {
-      const result = await SessionService.getSessionAccountsData(mockRequest as Request, mockAccountId);
+      const result = await SessionService.getSessionAccountsData(session, mockAccountId);
 
       expect(mockAccountModel.find).toHaveBeenCalledWith({
         _id: { $in: [mockAccountId] },
@@ -313,10 +313,7 @@ describe('Session Service', () => {
     it('should filter account IDs to only include session accounts', async () => {
       const unauthorizedAccountId = '507f1f77bcf86cd799439099';
 
-      const result = await SessionService.getSessionAccountsData(mockRequest as Request, [
-        mockAccountId,
-        unauthorizedAccountId,
-      ]);
+      await SessionService.getSessionAccountsData(session, [mockAccountId, unauthorizedAccountId]);
 
       // Should only query for the account that's in the session
       expect(mockAccountModel.find).toHaveBeenCalledWith({
@@ -327,13 +324,13 @@ describe('Session Service', () => {
     it('should return empty array on database error', async () => {
       mockAccountModel.find.mockRejectedValue(new Error('Database error'));
 
-      const result = await SessionService.getSessionAccountsData(mockRequest as Request);
+      const result = await SessionService.getSessionAccountsData(session);
 
       expect(result).toEqual([]);
     });
 
     it('should handle empty account IDs', async () => {
-      const result = await SessionService.getSessionAccountsData(mockRequest as Request, []);
+      await SessionService.getSessionAccountsData(session, []);
 
       expect(mockAccountModel.find).toHaveBeenCalledWith({
         _id: { $in: [mockAccountId, mockAccountId2] },
@@ -364,7 +361,7 @@ describe('Session Service', () => {
     it('should throw error for invalid account ID', async () => {
       await expect(
         SessionService.addAccountToSession(mockRequest as Request, mockResponse as Response, 'invalid-id'),
-      ).rejects.toThrow('Invalid ObjectId format');
+      ).rejects.toThrow('Invalid Account ID format');
     });
 
     it('should throw error when account does not exist', async () => {
@@ -389,7 +386,7 @@ describe('Session Service', () => {
     it('should throw error for invalid account ID', async () => {
       await expect(
         SessionService.removeAccountFromSession(mockRequest as Request, mockResponse as Response, 'invalid-id'),
-      ).rejects.toThrow('Invalid ObjectId format');
+      ).rejects.toThrow('Invalid Account ID format');
     });
 
     it('should throw error when account is not in session', async () => {
@@ -425,7 +422,7 @@ describe('Session Service', () => {
     it('should throw error for invalid account ID', async () => {
       await expect(
         SessionService.setCurrentAccountInSession(mockRequest as Request, mockResponse as Response, 'invalid-id'),
-      ).rejects.toThrow('Invalid ObjectId format');
+      ).rejects.toThrow('Invalid Account ID format');
     });
 
     it('should throw error when account is not in session', async () => {
@@ -467,7 +464,7 @@ describe('Session Service', () => {
 
       await expect(
         SessionService.removeAccountsFromSession(mockRequest as Request, mockResponse as Response, accountIds),
-      ).rejects.toThrow('Invalid ObjectId format');
+      ).rejects.toThrow('Invalid Account ID format');
     });
 
     it('should handle empty account IDs array', async () => {
@@ -479,52 +476,53 @@ describe('Session Service', () => {
 
   describe('Edge Cases', () => {
     it('should handle session with no current account ID', async () => {
-      vi.mocked(sessionUtils.getAccountSessionFromCookies).mockReturnValue({
+      const session = {
         hasSession: true,
         accountIds: [mockAccountId],
         currentAccountId: null,
         isValid: true,
+      };
+
+      mockAccountModel.find.mockReturnValue({
+        distinct: vi.fn().mockResolvedValue([mockAccountId]),
       });
 
-      mockAccountModel.find.mockResolvedValue([{ _id: { toString: () => mockAccountId } }]);
+      const result = await SessionService.getAccountSession(session);
 
-      const result = await SessionService.getAccountSession(mockRequest as Request);
-
-      expect(result.session.currentAccountId).toBe(mockAccountId);
+      expect(result.currentAccountId).toBe(mockAccountId);
     });
 
     it('should handle session with empty account IDs', async () => {
-      vi.mocked(sessionUtils.getAccountSessionFromCookies).mockReturnValue({
+      const session = {
         hasSession: true,
         accountIds: [],
         currentAccountId: null,
         isValid: true,
-      });
+      };
 
-      const result = await SessionService.getAccountSession(mockRequest as Request);
+      const result = await SessionService.getAccountSession(session);
 
       expect(result).toEqual({
-        session: {
-          hasSession: false,
-          accountIds: [],
-          currentAccountId: null,
-          isValid: false,
-        },
+        hasSession: false,
+        accountIds: [],
+        currentAccountId: null,
+        missingAccountIds: [],
+        isValid: false,
       });
     });
 
     it('should handle null account documents from database', async () => {
-      vi.mocked(sessionUtils.getAccountSessionFromCookies).mockReturnValue({
+      const session = {
         hasSession: true,
         accountIds: [mockAccountId],
         currentAccountId: mockAccountId,
         isValid: true,
-      });
+      };
 
       // Mock toSafeSessionAccount to return null for invalid accounts
       mockAccountModel.find.mockResolvedValue([null]);
 
-      const result = await SessionService.getSessionAccountsData(mockRequest as Request);
+      const result = await SessionService.getSessionAccountsData(session);
 
       expect(result).toEqual([]);
     });

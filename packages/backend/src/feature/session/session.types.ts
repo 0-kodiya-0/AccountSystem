@@ -42,6 +42,4 @@ export interface SessionAccount {
 
 export type GetAccountSessionDataResponse = SessionAccount[];
 
-export interface GetAccountSessionResponse {
-  session: AccountSessionInfo;
-}
+export type GetAccountSessionResponse = AccountSessionInfo & { missingAccountIds: string[] };
