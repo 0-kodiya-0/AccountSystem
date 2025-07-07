@@ -427,7 +427,7 @@ async function main(): Promise<void> {
   // Enhanced graceful shutdown handling with cleanup system
   const shutdown = async (signal: string) => {
     if (!options.quiet) {
-      logger.info(`\n🛑 Received ${signal}, initiating graceful shutdown...`);
+      logger.info(`🛑 Received ${signal}, initiating graceful shutdown...`);
     }
 
     try {

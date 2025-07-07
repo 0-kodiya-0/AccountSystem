@@ -101,7 +101,9 @@ export class InternalSocketHandler {
 
     logger.info('Internal Socket.IO namespace initialized', {
       namespace: '/internal-socket',
-      authMode: isProduction ? 'production (mTLS + headers)' : 'development (headers only)',
+      authMode: /* BUILD_REMOVE_START */ !isProduction
+        ? 'development (headers only)'
+        : /* BUILD_REMOVE_END */ 'production (mTLS + headers)',
     });
   }
 

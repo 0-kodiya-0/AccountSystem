@@ -1,9 +1,4 @@
-/**
- * Simple logger utility that integrates with existing console.log statements
- * without requiring major code changes throughout the application.
- */
-
-type LogLevel = "debug" | "info" | "warn" | "error";
+type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type LogMeta = Record<string, any> | undefined | string | unknown;
@@ -15,7 +10,7 @@ const LOG_LEVELS: Record<LogLevel, number> = {
   error: 3,
 };
 
-let currentLogLevel: LogLevel = "info";
+let currentLogLevel: LogLevel = 'info';
 
 // Initialize log level from environment
 function initializeLogLevel(): void {
@@ -25,8 +20,8 @@ function initializeLogLevel(): void {
   }
 
   // Enable debug mode if specified
-  if (process.env.DEBUG_MODE === "true") {
-    currentLogLevel = "debug";
+  if (process.env.DEBUG_MODE === 'true') {
+    currentLogLevel = 'debug';
   }
 }
 
@@ -34,48 +29,91 @@ function shouldLog(level: LogLevel): boolean {
   return LOG_LEVELS[level] >= LOG_LEVELS[currentLogLevel];
 }
 
-function formatMessage(
-  level: LogLevel,
-  message: string | unknown,
-  meta?: LogMeta,
-): string {
+// Helper function to properly serialize errors
+function serializeError(error: Error): Record<string, unknown> {
+  return {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+    // Include any custom properties that might exist on the error
+    ...Object.getOwnPropertyNames(error).reduce((acc, key) => {
+      if (key !== 'name' && key !== 'message' && key !== 'stack') {
+        acc[key] = (error as any)[key];
+      }
+      return acc;
+    }, {} as Record<string, unknown>),
+  };
+}
+
+// Helper function to safely stringify objects, handling errors and circular references
+function safeStringify(obj: unknown): string {
+  try {
+    if (obj instanceof Error) {
+      return JSON.stringify(serializeError(obj), null, 2);
+    }
+
+    if (typeof obj === 'object' && obj !== null) {
+      return JSON.stringify(obj, null, 2);
+    }
+
+    return String(obj);
+  } catch (error) {
+    // Handle circular references or other JSON.stringify errors
+    return `[Unable to serialize: ${error instanceof Error ? error.message : 'Unknown error'}]`;
+  }
+}
+
+function formatMessage(level: LogLevel, message: string | unknown, meta?: LogMeta): string {
   const timestamp = new Date().toISOString();
   const prefix = `[${timestamp}] [${level.toUpperCase()}] [BACKEND]`;
 
-  if (meta && typeof meta === "object" && Object.keys(meta).length > 0) {
-    return `${prefix} ${message} ${JSON.stringify(meta)}`;
+  // Handle the main message
+  let formattedMessage = message instanceof Error ? `${message.name}: ${message.message}` : String(message);
+
+  // Handle meta information
+  if (meta !== undefined) {
+    if (typeof meta === 'string') {
+      formattedMessage += ` | ${meta}`;
+    } else if (meta instanceof Error) {
+      formattedMessage += `\n${safeStringify(meta)}`;
+    } else if (typeof meta === 'object' && meta !== null && Object.keys(meta).length > 0) {
+      formattedMessage += `\n${safeStringify(meta)}`;
+    } else if (meta !== undefined) {
+      formattedMessage += ` | ${String(meta)}`;
+    }
   }
 
-  return `${prefix} ${message}`;
+  // For errors, include stack trace if available
+  if (message instanceof Error && message.stack) {
+    formattedMessage += `\n${message.stack}`;
+  }
+
+  return `${prefix} ${formattedMessage}`;
 }
 
-function logAtLevel(
-  level: LogLevel,
-  message: string | unknown,
-  meta?: LogMeta,
-): void {
+function logAtLevel(level: LogLevel, message: string | unknown, meta?: LogMeta): void {
   if (!shouldLog(level)) {
     return;
   }
 
   // Check for quiet mode - only show errors
-  if (process.env.QUIET_MODE === "true" && level !== "error") {
+  if (process.env.QUIET_MODE === 'true' && level !== 'error') {
     return;
   }
 
   const formattedMessage = formatMessage(level, message, meta);
 
   switch (level) {
-    case "debug":
+    case 'debug':
       console.debug(formattedMessage);
       break;
-    case "info":
+    case 'info':
       console.info(formattedMessage);
       break;
-    case "warn":
+    case 'warn':
       console.warn(formattedMessage);
       break;
-    case "error":
+    case 'error':
       console.error(formattedMessage);
       break;
   }
@@ -83,19 +121,19 @@ function logAtLevel(
 
 // Main logging functions
 export function debug(message: string | unknown, meta?: LogMeta): void {
-  logAtLevel("debug", message, meta);
+  logAtLevel('debug', message, meta);
 }
 
 export function info(message: string | unknown, meta?: LogMeta): void {
-  logAtLevel("info", message, meta);
+  logAtLevel('info', message, meta);
 }
 
 export function warn(message: string | unknown, meta?: LogMeta): void {
-  logAtLevel("warn", message, meta);
+  logAtLevel('warn', message, meta);
 }
 
 export function error(message: string | unknown, meta?: LogMeta): void {
-  logAtLevel("error", message, meta);
+  logAtLevel('error', message, meta);
 }
 
 // Utility functions

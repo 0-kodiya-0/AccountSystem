@@ -15,7 +15,9 @@ import {
 } from './mock.config';
 /* BUILD_REMOVE_END */
 import { logger } from '../utils/logger';
+/* BUILD_REMOVE_START */
 import { MongoMemoryServer } from 'mongodb-memory-server';
+/* BUILD_REMOVE_END */
 import processCleanup from '../utils/processCleanup';
 
 // Import model initializers

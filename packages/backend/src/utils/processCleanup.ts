@@ -140,7 +140,6 @@ class SimpleProcessCleanup {
 
     this.isCleaningUp = true;
     logger.info(`Starting graceful shutdown - Reason: ${reason}`);
-    logger.info('Note: MongoDB Memory Server will clean up its own temp files automatically');
 
     try {
       // Run cleanup for registered resources with timeout
