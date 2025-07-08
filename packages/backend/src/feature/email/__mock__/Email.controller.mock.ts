@@ -167,35 +167,7 @@ export const searchEmailsByMetadata = asyncHandler(async (req: Request, res: Res
     throw new BadRequestError('Filter object is required', 400, ApiErrorCode.MISSING_DATA);
   }
 
-  const result = EmailMockService.searchByMetadata(filter, limit);
-  next(new JsonSuccess(result));
-});
-
-/**
- * Get emails by test context
- * GET /mock/email/test/:testId
- */
-export const getEmailsByTestId = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const { testId } = req.params;
-  const { limit } = req.query;
-
-  const result = EmailMockService.getEmailsByTestContext(testId, limit ? parseInt(limit as string) : undefined);
-  next(new JsonSuccess(result));
-});
-
-/**
- * Get emails by flow
- * GET /mock/email/flow/:flowName
- */
-export const getEmailsByFlow = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const { flowName } = req.params;
-  const { flowStep, limit } = req.query;
-
-  const result = EmailMockService.getEmailsByFlow(
-    flowName,
-    flowStep as string,
-    limit ? parseInt(limit as string) : undefined,
-  );
+  const result = EmailMockService.searchByMetadata(filter, typeof limit === 'string' ? parseInt(limit) : undefined);
   next(new JsonSuccess(result));
 });
 
@@ -206,15 +178,6 @@ export const getEmailsByFlow = asyncHandler(async (req: Request, res: Response, 
 export const getAvailableTemplates = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const result = EmailMockService.getAvailableTemplates();
   next(new JsonSuccess(result));
-});
-
-/**
- * Get enhanced statistics with metadata breakdowns
- * GET /mock/email/stats
- */
-export const getEnhancedStats = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const stats = EmailMockService.getEnhancedStats();
-  next(new JsonSuccess(stats));
 });
 
 /**

@@ -15,13 +15,6 @@ export const emailMockRouter = express.Router();
 emailMockRouter.get('/status', EmailMockController.getStatus);
 
 /**
- * @route GET /mock/email/stats
- * @desc Get enhanced statistics with metadata breakdowns
- * @access Public (development/test only)
- */
-emailMockRouter.get('/stats', EmailMockController.getEnhancedStats);
-
-/**
  * @route GET /mock/email/metadata/insights
  * @desc Get metadata usage insights and analytics
  * @access Public (development/test only)
@@ -97,7 +90,7 @@ emailMockRouter.delete('/clear', EmailMockController.clearSentEmails);
  * @desc Clear all sent emails
  * @access Public (development/test only)
  */
-emailMockRouter.delete('/clear-all', EmailMockController.clearAllEmails);
+emailMockRouter.delete('/clear/all', EmailMockController.clearAllEmails);
 
 /**
  * Template Management
@@ -124,34 +117,11 @@ emailMockRouter.get('/templates', EmailMockController.getAvailableTemplates);
 emailMockRouter.get('/templates/:template', EmailMockController.getEmailsByTemplate);
 
 /**
- * Test Context & Flow Management
- */
-
-/**
- * @route GET /mock/email/test/:testId
- * @desc Get all emails for a specific test ID
- * @access Public (development/test only)
- * @param testId - Test identifier
- * @query limit - Limit number of results
- */
-emailMockRouter.get('/test/:testId', EmailMockController.getEmailsByTestId);
-
-/**
- * @route GET /mock/email/flow/:flowName
- * @desc Get emails by email flow
- * @access Public (development/test only)
- * @param flowName - Email flow name
- * @query flowStep - Optional flow step filter
- * @query limit - Limit number of results
- */
-emailMockRouter.get('/flow/:flowName', EmailMockController.getEmailsByFlow);
-
-/**
  * Testing & Development
  */
 
 /**
- * @route POST /mock/email/test-send
+ * @route POST /mock/email/send
  * @desc Test email sending with metadata support
  * @access Public (development/test only)
  * @body {
@@ -173,4 +143,4 @@ emailMockRouter.get('/flow/:flowName', EmailMockController.getEmailsByFlow);
  *   }
  * }
  */
-emailMockRouter.post('/test-send', EmailMockController.testSendEmail);
+emailMockRouter.post('/send', EmailMockController.testSendEmail);

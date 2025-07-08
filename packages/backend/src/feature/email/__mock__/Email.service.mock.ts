@@ -242,41 +242,6 @@ export function searchByMetadata(filter: Record<string, any>, limit?: number) {
 }
 
 /**
- * Get emails by test context
- */
-export function getEmailsByTestContext(testId: string, limit?: number) {
-  let emails = emailMock.getEmailsByTestContext(testId);
-
-  if (limit && limit > 0) {
-    emails = emails.slice(-limit);
-  }
-
-  return {
-    testId,
-    emails,
-    count: emails.length,
-  };
-}
-
-/**
- * Get emails by flow
- */
-export function getEmailsByFlow(flowName: string, flowStep?: string, limit?: number) {
-  let emails = emailMock.getEmailsByFlow(flowName, flowStep);
-
-  if (limit && limit > 0) {
-    emails = emails.slice(-limit);
-  }
-
-  return {
-    flow: flowName,
-    flowStep: flowStep || 'all',
-    emails,
-    count: emails.length,
-  };
-}
-
-/**
  * Get available email templates
  */
 export function getAvailableTemplates() {
@@ -296,27 +261,6 @@ export function getAvailableTemplates() {
   return {
     templates: templateInfo,
     totalTemplates: templates.length,
-  };
-}
-
-/**
- * Get enhanced statistics with metadata breakdowns
- */
-export function getEnhancedStats() {
-  const stats = emailMock.getStats();
-
-  return {
-    ...stats,
-    summary: {
-      totalEmails: stats.totalSent + stats.totalFailed,
-      successRate:
-        stats.totalSent + stats.totalFailed > 0
-          ? ((stats.totalSent / (stats.totalSent + stats.totalFailed)) * 100).toFixed(2) + '%'
-          : '0%',
-      mostUsedTemplate: Object.entries(stats.sentByTemplate).sort(([, a], [, b]) => b - a)[0]?.[0] || 'none',
-      mostActiveTestSuite: Object.entries(stats.byMetadata.byTestSuite).sort(([, a], [, b]) => b - a)[0]?.[0] || 'none',
-      mostActiveFlow: Object.entries(stats.byMetadata.byEmailFlow).sort(([, a], [, b]) => b - a)[0]?.[0] || 'none',
-    },
   };
 }
 

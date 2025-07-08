@@ -124,18 +124,6 @@ export interface EmailServiceConfig {
   baseUrl: string;
 }
 
-export interface BulkEmailOptions {
-  batchSize?: number;
-  delayBetweenBatches?: number;
-}
-
-export interface EmailHealthCheck {
-  smtp: boolean;
-  templates: EmailTemplate[];
-  missingEnvVars: string[];
-  templateValidation: Record<EmailTemplate, boolean>;
-}
-
 export interface RetryOptions {
   maxAttempts?: number;
   delayMs?: number;
