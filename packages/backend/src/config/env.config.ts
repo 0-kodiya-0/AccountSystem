@@ -32,9 +32,6 @@ export const REQUIRED_ENV_VARS = [
   'SMTP_APP_PASSWORD',
   'SENDER_EMAIL',
   'SENDER_NAME',
-
-  'MONGODB_USERNAME',
-  'MONGODB_PASSWORD',
 ] as const;
 
 // Define optional environment variables with defaults
@@ -188,7 +185,7 @@ export const envConfig = EnvironmentConfig.getInstance();
 export const getJwtSecret = (): string => envConfig.get('JWT_SECRET');
 export const getSessionSecret = (): string => envConfig.get('SESSION_SECRET');
 export const getPort = (): number => parseInt(envConfig.get('PORT'));
-export const getNodeEnv = (): string => envConfig.get('NODE_ENV'); // BUILD_REMOVE
+export const getNodeEnv = (): string => envConfig.get('NODE_ENV');
 export const getApiBasePATH = (): string => {
   const path = envConfig.get('API_BASE_PATH');
   return path === '/' ? '' : path;
@@ -223,9 +220,6 @@ export const getSenderName = (): string => envConfig.get('SENDER_NAME');
 export const getAccessTokenExpiry = (): string => envConfig.get('ACCESS_TOKEN_EXPIRY');
 export const getRefreshTokenExpiry = (): string => envConfig.get('REFRESH_TOKEN_EXPIRY');
 export const getCookieMaxAge = (): number => parseInt(envConfig.get('COOKIE_MAX_AGE'));
-
-export const getMongodbUsername = (): string => envConfig.get('MONGODB_USERNAME');
-export const getMongodbPassword = (): string => envConfig.get('MONGODB_PASSWORD');
 
 // Internal server configuration
 export const getInternalPort = (): number => parseInt(envConfig.get('INTERNAL_PORT'));

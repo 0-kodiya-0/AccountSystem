@@ -6,9 +6,7 @@ import { applyErrorHandlers, asyncHandler } from './utils/response';
 import { registerServer, registerCustomCleanup } from './utils/processCleanup';
 
 import { InternalSocketHandler, internalRouter } from './feature/internal';
-/* BUILD_REMOVE_START */
 import { internalHealthRouter } from './feature/health';
-/* BUILD_REMOVE_END */
 import { internalAuthentication } from './middleware/internal.middleware';
 
 import { ApiErrorCode, NotFoundError } from './types/response.types';
@@ -76,9 +74,7 @@ function createInternalApp(): express.Application {
   }
 
   // Health routes (no authentication required)
-  /* BUILD_REMOVE_START */
   app.use('/health', internalHealthRouter);
-  /* BUILD_REMOVE_END */
 
   // Internal API routes (with authentication)
   app.use('/internal', internalAuthentication, internalRouter);

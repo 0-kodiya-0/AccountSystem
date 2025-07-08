@@ -14,9 +14,7 @@ import * as sessionRouter from './feature/session/session.routes';
 import * as localAuthRouter from './feature/local_auth';
 import * as twoFARouter from './feature/twofa';
 import * as tokenRouter from './feature/tokens';
-/* BUILD_REMOVE_START */
 import * as healthRouter from './feature/health/Health.routes';
-/* BUILD_REMOVE_END */
 
 /* BUILD_REMOVE_START */
 import { emailMockRouter } from './feature/email/__mock__/Email.routes.mock';
@@ -60,9 +58,7 @@ function createMainApp(): Express {
     });
   }
 
-  /* BUILD_REMOVE_START */
   app.use('/health', healthRouter.healthRouter);
-  /* BUILD_REMOVE_END */
 
   /* BUILD_REMOVE_START */
   if (process.env.NODE_ENV !== 'production') {

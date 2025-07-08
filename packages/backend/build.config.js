@@ -1,20 +1,6 @@
 import esbuild from 'esbuild';
 import { removeCodePlugin } from 'esbuild-plugin-remove-code';
-import fs from 'fs';
-import path from 'path';
 import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Clean dist directory
-function cleanDist() {
-  const distPath = path.resolve(__dirname, 'dist');
-  if (fs.existsSync(distPath)) {
-    fs.rmSync(distPath, { recursive: true, force: true });
-    console.log('🧹 Cleaned dist directory');
-  }
-}
 
 // Build configuration
 const buildConfig = {
@@ -68,7 +54,7 @@ const buildConfig = {
         singleLine: 'BUILD_REMOVE',
       },
       environments: ['production'],
-      exclude: ['node_modules', '__tests__', '__test__', '__mocks__', '__mock__', 'health', 'mocks', 'test', 'tests'],
+      exclude: ['node_modules', '__tests__', '__test__', '__mocks__', '__mock__', 'mocks', 'test', 'tests'],
       debug: true,
     }),
 
@@ -90,7 +76,6 @@ const buildConfig = {
             /\/mocks\//,
             /\/test\//,
             /\/tests\//,
-            /\/health\//, // Add your health folder here
             /\/spec\//,
             /\/specs\//,
 
@@ -126,8 +111,6 @@ async function build() {
   console.log('🚀 Starting production build...');
 
   try {
-    cleanDist();
-
     // Set NODE_ENV for the plugin
     process.env.NODE_ENV = 'production';
 

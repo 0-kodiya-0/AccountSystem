@@ -1,7 +1,12 @@
 import { HealthChecker, HealthCheckResult, HealthStatus } from '../Health.types';
+/* BUILD_REMOVE_START */
 import { oauthMockService } from '../../../mocks/oauth/OAuthMockService';
 import { emailMock } from '../../../mocks/email/EmailServiceMock';
-import { getNodeEnv, isMockEnabled } from '../../../config/env.config';
+/* BUILD_REMOVE_END */
+import {
+  getNodeEnv,
+  isMockEnabled, // BUILD_REMOVE
+} from '../../../config/env.config';
 
 export class MockServicesHealthChecker implements HealthChecker {
   name = 'mock_services';
@@ -11,10 +16,12 @@ export class MockServicesHealthChecker implements HealthChecker {
     const start = Date.now();
 
     try {
+      /* BUILD_REMOVE_START */
       const isProduction = getNodeEnv() === 'production';
       const mockEnabled = isMockEnabled();
 
       if (isProduction) {
+        /* BUILD_REMOVE_END */
         return {
           status: HealthStatus.HEALTHY,
           message: 'Mock services disabled in production',
@@ -25,8 +32,9 @@ export class MockServicesHealthChecker implements HealthChecker {
           timestamp: new Date().toISOString(),
           responseTime: Date.now() - start,
         };
-      }
+      } // BUILD_REMOVE
 
+      /* BUILD_REMOVE_START */
       if (!mockEnabled) {
         return {
           status: HealthStatus.HEALTHY,
@@ -59,6 +67,7 @@ export class MockServicesHealthChecker implements HealthChecker {
         timestamp: new Date().toISOString(),
         responseTime: Date.now() - start,
       };
+      /* BUILD_REMOVE_END */
     } catch (error) {
       return {
         status: HealthStatus.DEGRADED,
