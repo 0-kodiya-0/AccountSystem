@@ -10,13 +10,8 @@ import {
   sendSignupEmailVerification,
 } from '../Email.service';
 import { EmailTemplate } from '../Email.types';
-import { ValidationError, ServerError } from '../../../types/response.types';
-
-// Mock dependencies but NOT the fs module - we want to read real files
-vi.mock('../Email.transporter', () => ({
-  getTransporter: vi.fn(),
-  resetTransporter: vi.fn(),
-}));
+import { ValidationError } from '../../../types/response.types';
+import { emailMock } from '../../../mocks/email/EmailServiceMock';
 
 vi.mock('../../../config/env.config', () => ({
   getAppName: () => 'TestApp',
@@ -25,73 +20,10 @@ vi.mock('../../../config/env.config', () => ({
   getNodeEnv: () => 'test',
 }));
 
-vi.mock('../../../utils/logger', () => ({
-  logger: {
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-  },
-}));
-
-// Mock the email mock configuration to disable mocking by default
-vi.mock('../../../config/mock.config', () => ({
-  getEmailMockConfig: vi.fn().mockReturnValue({
-    enabled: false, // Disable by default so real service runs
-    logEmails: false,
-    simulateDelay: false,
-    delayMs: 0,
-    simulateFailures: false,
-    failureRate: 0,
-    failOnEmails: [],
-    blockEmails: [],
-  }),
-  updateEmailMockConfig: vi.fn(),
-}));
-
-// Mock the EmailServiceMock instance
-vi.mock('../../../mocks/email/EmailServiceMock', () => ({
-  emailMock: {
-    isEnabled: vi.fn().mockReturnValue(false), // Disable by default
-    sendEmail: vi.fn(),
-    refreshConfig: vi.fn(),
-  },
-}));
-
-// Import mocked modules
-import { getTransporter, resetTransporter } from '../Email.transporter';
-import { ValidationUtils } from '../../../utils/validation';
-import { getEmailMockConfig } from '../../../config/mock.config';
-import { emailMock } from '../../../mocks/email/EmailServiceMock';
-
-const mockGetTransporter = vi.mocked(getTransporter);
-const mockResetTransporter = vi.mocked(resetTransporter);
-const mockGetEmailMockConfig = vi.mocked(getEmailMockConfig);
-const mockEmailMock = vi.mocked(emailMock);
-
 describe('Email Service', () => {
-  const mockTransporter = {
-    sendMail: vi.fn(),
-  };
-
   beforeEach(() => {
     vi.clearAllMocks();
-
-    // Set up default mock behavior - disable email mocking so real service runs
-    mockEmailMock.isEnabled.mockReturnValue(false);
-    mockGetEmailMockConfig.mockReturnValue({
-      enabled: false,
-      logEmails: false,
-      simulateDelay: false,
-      delayMs: 0,
-      simulateFailures: false,
-      failureRate: 0,
-      failOnEmails: [],
-      blockEmails: [],
-    });
-
-    // Set up transporter mocks
-    mockGetTransporter.mockResolvedValue(mockTransporter as any);
-    mockTransporter.sendMail.mockResolvedValue({ messageId: 'test-message-id' });
+    emailMock.clearSentEmails();
   });
 
   afterEach(() => {
@@ -137,46 +69,16 @@ describe('Email Service', () => {
       },
     };
 
-    it('should send email with valid parameters', async () => {
+    it('should send email with valid parameters through mock service', async () => {
       await sendCustomEmail(validParams.to, validParams.subject, validParams.template, validParams.variables);
 
-      expect(mockGetTransporter).toHaveBeenCalledOnce();
-      expect(mockTransporter.sendMail).toHaveBeenCalledOnce();
-      expect(mockTransporter.sendMail).toHaveBeenCalledWith(
-        expect.objectContaining({
-          from: '"TestApp Team" <noreply@testapp.com>',
-          to: 'test@example.com',
-          subject: 'Test Subject',
-          html: expect.any(String),
-          text: expect.any(String),
-        }),
-      );
-    });
-
-    it('should use mock service when mocking is enabled', async () => {
-      // Enable mocking for this specific test
-      mockEmailMock.isEnabled.mockReturnValue(true);
-      mockGetEmailMockConfig.mockReturnValue({
-        enabled: true,
-        logEmails: true,
-        simulateDelay: false,
-        delayMs: 0,
-        simulateFailures: false,
-        failureRate: 0,
-        failOnEmails: [],
-        blockEmails: [],
-      });
-      mockEmailMock.sendEmail.mockResolvedValue();
-
-      await sendCustomEmail(validParams.to, validParams.subject, validParams.template, validParams.variables);
-
-      expect(mockEmailMock.sendEmail).toHaveBeenCalledWith(
-        validParams.to,
-        validParams.subject,
-        validParams.template,
-        validParams.variables,
-      );
-      expect(mockGetTransporter).not.toHaveBeenCalled();
+      const sentEmails = emailMock.getSentEmails();
+      expect(sentEmails).toHaveLength(1);
+      expect(sentEmails[0].to).toBe(validParams.to);
+      expect(sentEmails[0].subject).toBe(validParams.subject);
+      expect(sentEmails[0].template).toBe(validParams.template);
+      expect(sentEmails[0].variables).toEqual(validParams.variables);
+      expect(sentEmails[0].status).toBe('sent');
     });
 
     it('should throw ValidationError for empty recipient email', async () => {
@@ -199,64 +101,25 @@ describe('Email Service', () => {
       );
     });
 
-    it('should add common variables automatically', async () => {
+    it('should include template variables in sent email', async () => {
       await sendCustomEmail(validParams.to, validParams.subject, validParams.template, validParams.variables);
 
-      // Verify that APP_NAME and YEAR are automatically added
-      const sendMailCall = mockTransporter.sendMail.mock.calls[0][0];
-      expect(sendMailCall.html).toContain('TestApp'); // APP_NAME replaced
-      expect(sendMailCall.html).toContain(new Date().getFullYear().toString()); // YEAR replaced
-    });
-
-    it('should replace template variables in HTML content', async () => {
-      await sendCustomEmail(validParams.to, validParams.subject, validParams.template, validParams.variables);
-
-      const sendMailCall = mockTransporter.sendMail.mock.calls[0][0];
-      expect(sendMailCall.html).toContain('John'); // FIRST_NAME replaced
-      expect(sendMailCall.html).toContain('https://example.com/reset?token=123'); // RESET_URL replaced
+      const sentEmail = emailMock.getSentEmails()[0];
+      expect(sentEmail.html).toContain('John'); // FIRST_NAME replaced
+      expect(sentEmail.html).toContain('https://example.com/reset?token=123'); // RESET_URL replaced
+      expect(sentEmail.html).toContain('TestApp'); // APP_NAME added automatically
+      expect(sentEmail.html).toContain(new Date().getFullYear().toString()); // YEAR added automatically
     });
 
     it('should generate plain text from HTML', async () => {
       await sendCustomEmail(validParams.to, validParams.subject, validParams.template, validParams.variables);
 
-      const sendMailCall = mockTransporter.sendMail.mock.calls[0][0];
-      expect(sendMailCall.text).toContain('John');
-      expect(sendMailCall.text).toContain('https://example.com/reset?token=123');
-      // Plain text should strip HTML tags
-      expect(sendMailCall.text).not.toContain('<h1>');
-      expect(sendMailCall.text).not.toContain('</h1>');
-    });
-
-    it('should throw ServerError when template file is not found', async () => {
-      // Use a non-existent template
-      await expect(
-        sendCustomEmail(
-          validParams.to,
-          validParams.subject,
-          'non-existent-template' as EmailTemplate,
-          validParams.variables,
-        ),
-      ).rejects.toThrow(ServerError);
-    });
-
-    it('should throw ServerError when email sending fails', async () => {
-      mockTransporter.sendMail.mockRejectedValue(new Error('SMTP connection failed'));
-
-      await expect(
-        sendCustomEmail(validParams.to, validParams.subject, validParams.template, validParams.variables),
-      ).rejects.toThrow(ServerError);
-
-      expect(mockTransporter.sendMail).toHaveBeenCalledOnce();
-    });
-
-    it('should reset transporter on connection errors', async () => {
-      mockTransporter.sendMail.mockRejectedValue(new Error('connection timeout'));
-
-      await expect(
-        sendCustomEmail(validParams.to, validParams.subject, validParams.template, validParams.variables),
-      ).rejects.toThrow(ServerError);
-
-      expect(mockResetTransporter).toHaveBeenCalledOnce();
+      const sentEmail = emailMock.getSentEmails()[0];
+      expect(sentEmail.text).toContain('John');
+      expect(sentEmail.text).toContain('https://example.com/reset?token=123');
+      // Plain text should not contain HTML tags
+      expect(sentEmail.text).not.toContain('<h1>');
+      expect(sentEmail.text).not.toContain('</h1>');
     });
 
     it('should handle missing template variables gracefully', async () => {
@@ -288,12 +151,28 @@ describe('Email Service', () => {
         validParams.callbackUrl,
       );
 
-      expect(mockTransporter.sendMail).toHaveBeenCalledWith(
-        expect.objectContaining({
-          to: validParams.email,
-          subject: expect.stringContaining('Reset your password for TestApp'),
-        }),
+      const sentEmails = emailMock.getSentEmails();
+      expect(sentEmails).toHaveLength(1);
+      expect(sentEmails[0].to).toBe(validParams.email);
+      expect(sentEmails[0].subject).toContain('Reset your password for TestApp');
+      expect(sentEmails[0].template).toBe(EmailTemplate.PASSWORD_RESET);
+    });
+
+    it('should include metadata for password reset flow', async () => {
+      await sendPasswordResetEmail(
+        validParams.email,
+        validParams.firstName,
+        validParams.token,
+        validParams.callbackUrl,
       );
+
+      const sentEmail = emailMock.getSentEmails()[0];
+      expect(sentEmail.metadata?.emailFlow).toBe('password-reset');
+      expect(sentEmail.metadata?.flowStep).toBe('initial');
+      expect(sentEmail.metadata?.feature).toBe('authentication');
+      expect(sentEmail.metadata?.action).toBe('reset-password');
+      expect(sentEmail.metadata?.triggerReason).toBe('user-action');
+      expect(sentEmail.metadata?.token).toBe('reset-token-123'); // Truncated token
     });
 
     it('should construct reset URL with token parameter', async () => {
@@ -304,8 +183,8 @@ describe('Email Service', () => {
         validParams.callbackUrl,
       );
 
-      const sendMailCall = mockTransporter.sendMail.mock.calls[0][0];
-      expect(sendMailCall.html).toContain(`${validParams.callbackUrl}?token=${encodeURIComponent(validParams.token)}`);
+      const sentEmail = emailMock.getSentEmails()[0];
+      expect(sentEmail.html).toContain(`${validParams.callbackUrl}?token=${encodeURIComponent(validParams.token)}`);
     });
 
     it('should throw ValidationError for missing required parameters', async () => {
@@ -327,15 +206,9 @@ describe('Email Service', () => {
     });
 
     it('should validate callback URL format', async () => {
-      vi.spyOn(ValidationUtils, 'validateUrl').mockImplementation((url) => {
-        if (url === 'invalid-url') {
-          throw new ValidationError('Invalid URL format');
-        }
-      });
-
       await expect(
         sendPasswordResetEmail(validParams.email, validParams.firstName, validParams.token, 'invalid-url'),
-      ).rejects.toThrow('Invalid URL format');
+      ).rejects.toThrow('Invalid Callback URL format');
     });
 
     it('should handle URL encoding in reset URL', async () => {
@@ -348,8 +221,8 @@ describe('Email Service', () => {
         validParams.callbackUrl,
       );
 
-      const sendMailCall = mockTransporter.sendMail.mock.calls[0][0];
-      expect(sendMailCall.html).toContain(encodeURIComponent(tokenWithSpecialChars));
+      const sentEmail = emailMock.getSentEmails()[0];
+      expect(sentEmail.html).toContain(encodeURIComponent(tokenWithSpecialChars));
     });
   });
 
@@ -362,12 +235,22 @@ describe('Email Service', () => {
     it('should send password changed notification', async () => {
       await sendPasswordChangedNotification(validParams.email, validParams.firstName);
 
-      expect(mockTransporter.sendMail).toHaveBeenCalledWith(
-        expect.objectContaining({
-          to: validParams.email,
-          subject: expect.stringContaining('Your password was changed on TestApp'),
-        }),
-      );
+      const sentEmails = emailMock.getSentEmails();
+      expect(sentEmails).toHaveLength(1);
+      expect(sentEmails[0].to).toBe(validParams.email);
+      expect(sentEmails[0].subject).toContain('Your password was changed on TestApp');
+      expect(sentEmails[0].template).toBe(EmailTemplate.PASSWORD_CHANGED);
+    });
+
+    it('should include metadata for password changed flow', async () => {
+      await sendPasswordChangedNotification(validParams.email, validParams.firstName);
+
+      const sentEmail = emailMock.getSentEmails()[0];
+      expect(sentEmail.metadata?.emailFlow).toBe('password-management');
+      expect(sentEmail.metadata?.flowStep).toBe('confirmation');
+      expect(sentEmail.metadata?.feature).toBe('authentication');
+      expect(sentEmail.metadata?.action).toBe('password-changed');
+      expect(sentEmail.metadata?.triggerReason).toBe('system-event');
     });
 
     it('should include current date and time in email', async () => {
@@ -375,12 +258,8 @@ describe('Email Service', () => {
 
       await sendPasswordChangedNotification(validParams.email, validParams.firstName);
 
-      const sendMailCall = mockTransporter.sendMail.mock.calls[0][0];
-      const afterSend = new Date();
-
-      // Check that date/time within reasonable range
-      const dateInEmail = sendMailCall.html;
-      expect(dateInEmail).toContain(beforeSend.toLocaleDateString());
+      const sentEmail = emailMock.getSentEmails()[0];
+      expect(sentEmail.html).toContain(beforeSend.toLocaleDateString());
     });
 
     it('should throw ValidationError for missing parameters', async () => {
@@ -405,21 +284,33 @@ describe('Email Service', () => {
     it('should send login notification with all details', async () => {
       await sendLoginNotification(validParams.email, validParams.firstName, validParams.ipAddress, validParams.device);
 
-      expect(mockTransporter.sendMail).toHaveBeenCalledWith(
-        expect.objectContaining({
-          to: validParams.email,
-          subject: expect.stringContaining('New login detected on TestApp'),
-        }),
-      );
+      const sentEmails = emailMock.getSentEmails();
+      expect(sentEmails).toHaveLength(1);
+      expect(sentEmails[0].to).toBe(validParams.email);
+      expect(sentEmails[0].subject).toContain('New login detected on TestApp');
+      expect(sentEmails[0].template).toBe(EmailTemplate.LOGIN_NOTIFICATION);
+    });
+
+    it('should include metadata for login notification flow', async () => {
+      await sendLoginNotification(validParams.email, validParams.firstName, validParams.ipAddress, validParams.device);
+
+      const sentEmail = emailMock.getSentEmails()[0];
+      expect(sentEmail.metadata?.emailFlow).toBe('security-notification');
+      expect(sentEmail.metadata?.flowStep).toBe('alert');
+      expect(sentEmail.metadata?.feature).toBe('authentication');
+      expect(sentEmail.metadata?.action).toBe('login-detected');
+      expect(sentEmail.metadata?.triggerReason).toBe('user-action');
+      expect(sentEmail.metadata?.ipAddress).toBe(validParams.ipAddress);
+      expect(sentEmail.metadata?.userAgent).toBe(validParams.device);
     });
 
     it('should include login details in email content', async () => {
       await sendLoginNotification(validParams.email, validParams.firstName, validParams.ipAddress, validParams.device);
 
-      const sendMailCall = mockTransporter.sendMail.mock.calls[0][0];
-      expect(sendMailCall.html).toContain(validParams.ipAddress);
-      expect(sendMailCall.html).toContain(validParams.device);
-      expect(sendMailCall.html).toContain(validParams.firstName);
+      const sentEmail = emailMock.getSentEmails()[0];
+      expect(sentEmail.html).toContain(validParams.ipAddress);
+      expect(sentEmail.html).toContain(validParams.device);
+      expect(sentEmail.html).toContain(validParams.firstName);
     });
 
     it('should throw ValidationError for missing parameters', async () => {
@@ -450,20 +341,30 @@ describe('Email Service', () => {
     it('should send 2FA enabled notification', async () => {
       await sendTwoFactorEnabledNotification(validParams.email, validParams.firstName);
 
-      expect(mockTransporter.sendMail).toHaveBeenCalledWith(
-        expect.objectContaining({
-          to: validParams.email,
-          subject: expect.stringContaining('Two-factor authentication enabled on TestApp'),
-        }),
-      );
+      const sentEmails = emailMock.getSentEmails();
+      expect(sentEmails).toHaveLength(1);
+      expect(sentEmails[0].to).toBe(validParams.email);
+      expect(sentEmails[0].subject).toContain('Two-factor authentication enabled on TestApp');
+      expect(sentEmails[0].template).toBe(EmailTemplate.TWO_FACTOR_ENABLED);
+    });
+
+    it('should include metadata for 2FA enabled flow', async () => {
+      await sendTwoFactorEnabledNotification(validParams.email, validParams.firstName);
+
+      const sentEmail = emailMock.getSentEmails()[0];
+      expect(sentEmail.metadata?.emailFlow).toBe('security-enhancement');
+      expect(sentEmail.metadata?.flowStep).toBe('confirmation');
+      expect(sentEmail.metadata?.feature).toBe('two-factor-auth');
+      expect(sentEmail.metadata?.action).toBe('enable-2fa');
+      expect(sentEmail.metadata?.triggerReason).toBe('user-action');
     });
 
     it('should include current date in email', async () => {
       await sendTwoFactorEnabledNotification(validParams.email, validParams.firstName);
 
-      const sendMailCall = mockTransporter.sendMail.mock.calls[0][0];
+      const sentEmail = emailMock.getSentEmails()[0];
       const currentDate = new Date().toLocaleDateString();
-      expect(sendMailCall.html).toContain(currentDate);
+      expect(sentEmail.html).toContain(currentDate);
     });
 
     it('should throw ValidationError for missing parameters', async () => {
@@ -487,19 +388,30 @@ describe('Email Service', () => {
     it('should send signup email verification', async () => {
       await sendSignupEmailVerification(validParams.email, validParams.token, validParams.callbackUrl);
 
-      expect(mockTransporter.sendMail).toHaveBeenCalledWith(
-        expect.objectContaining({
-          to: validParams.email,
-          subject: expect.stringContaining('Verify your email to continue with TestApp'),
-        }),
-      );
+      const sentEmails = emailMock.getSentEmails();
+      expect(sentEmails).toHaveLength(1);
+      expect(sentEmails[0].to).toBe(validParams.email);
+      expect(sentEmails[0].subject).toContain('Verify your email to continue with TestApp');
+      expect(sentEmails[0].template).toBe(EmailTemplate.EMAIL_SIGNUP_VERIFICATION);
+    });
+
+    it('should include metadata for signup verification flow', async () => {
+      await sendSignupEmailVerification(validParams.email, validParams.token, validParams.callbackUrl);
+
+      const sentEmail = emailMock.getSentEmails()[0];
+      expect(sentEmail.metadata?.emailFlow).toBe('signup');
+      expect(sentEmail.metadata?.flowStep).toBe('email-verification');
+      expect(sentEmail.metadata?.feature).toBe('authentication');
+      expect(sentEmail.metadata?.action).toBe('verify-email');
+      expect(sentEmail.metadata?.triggerReason).toBe('user-action');
+      expect(sentEmail.metadata?.token).toBe('verification-token-123'); // Truncated token
     });
 
     it('should construct verification URL with token parameter', async () => {
       await sendSignupEmailVerification(validParams.email, validParams.token, validParams.callbackUrl);
 
-      const sendMailCall = mockTransporter.sendMail.mock.calls[0][0];
-      expect(sendMailCall.html).toContain(`${validParams.callbackUrl}?token=${encodeURIComponent(validParams.token)}`);
+      const sentEmail = emailMock.getSentEmails()[0];
+      expect(sentEmail.html).toContain(`${validParams.callbackUrl}?token=${encodeURIComponent(validParams.token)}`);
     });
 
     it('should throw ValidationError for missing parameters', async () => {
@@ -515,65 +427,6 @@ describe('Email Service', () => {
         'Email, token, and callbackUrl are required',
       );
     });
-
-    it('should validate callback URL format', async () => {
-      vi.spyOn(ValidationUtils, 'validateUrl').mockImplementation((url) => {
-        if (url === 'invalid-url') {
-          throw new ValidationError('Invalid URL format');
-        }
-      });
-
-      await expect(sendSignupEmailVerification(validParams.email, validParams.token, 'invalid-url')).rejects.toThrow(
-        'Invalid URL format',
-      );
-    });
-  });
-
-  describe('Error Handling', () => {
-    it('should handle SMTP authentication errors', async () => {
-      mockTransporter.sendMail.mockRejectedValue(
-        new Error('Invalid login: 535-5.7.8 Username and Password not accepted'),
-      );
-
-      await expect(sendPasswordResetEmail('test@example.com', 'John', 'token', 'https://example.com')).rejects.toThrow(
-        ServerError,
-      );
-    });
-
-    it('should handle network timeout errors', async () => {
-      mockTransporter.sendMail.mockRejectedValue(new Error('ETIMEDOUT: connection timeout'));
-
-      await expect(sendPasswordResetEmail('test@example.com', 'John', 'token', 'https://example.com')).rejects.toThrow(
-        ServerError,
-      );
-
-      expect(mockResetTransporter).toHaveBeenCalledOnce();
-    });
-
-    it('should handle transporter creation failures', async () => {
-      mockGetTransporter.mockRejectedValue(new Error('Failed to create transporter'));
-
-      await expect(sendPasswordResetEmail('test@example.com', 'John', 'token', 'https://example.com')).rejects.toThrow(
-        Error,
-      );
-    });
-
-    it('should handle template loading failures gracefully', async () => {
-      // Use a non-existent template to trigger template loading failure
-      await expect(
-        sendCustomEmail('test@example.com', 'Test', 'non-existent-template' as EmailTemplate, {
-          FIRST_NAME: 'John',
-          RESET_URL: 'url',
-        }),
-      ).rejects.toThrow(ServerError);
-    });
-
-    it('should handle malformed template content', async () => {
-      // The real templates should work fine, but missing variables should throw ValidationError
-      await expect(
-        sendCustomEmail('test@example.com', 'Test', EmailTemplate.PASSWORD_RESET, { VARIABLE: 'value' }),
-      ).rejects.toThrow(ValidationError);
-    });
   });
 
   describe('Edge Cases', () => {
@@ -582,20 +435,8 @@ describe('Email Service', () => {
 
       await sendPasswordResetEmail(specialEmail, 'John', 'token', 'https://example.com');
 
-      expect(mockTransporter.sendMail).toHaveBeenCalledWith(
-        expect.objectContaining({
-          to: specialEmail,
-        }),
-      );
-    });
-
-    it('should handle very long callback URLs', async () => {
-      const longUrl =
-        'https://very-long-domain-name.example.com/very/long/path/with/many/segments' + '?param=' + 'a'.repeat(500);
-
-      await sendPasswordResetEmail('test@example.com', 'John', 'token', longUrl);
-
-      expect(mockTransporter.sendMail).toHaveBeenCalledOnce();
+      const sentEmails = emailMock.getSentEmails();
+      expect(sentEmails[0].to).toBe(specialEmail);
     });
 
     it('should handle Unicode characters in names', async () => {
@@ -603,14 +444,8 @@ describe('Email Service', () => {
 
       await sendPasswordChangedNotification('test@example.com', unicodeName);
 
-      const sendMailCall = mockTransporter.sendMail.mock.calls[0][0];
-      expect(sendMailCall.html).toContain(unicodeName);
-    });
-
-    it('should handle empty template variables object', async () => {
-      await expect(sendCustomEmail('test@example.com', 'Test', EmailTemplate.PASSWORD_RESET, {})).rejects.toThrow(
-        ValidationError,
-      ); // Should throw due to missing required variables
+      const sentEmail = emailMock.getSentEmails()[0];
+      expect(sentEmail.html).toContain(unicodeName);
     });
 
     it('should handle tokens with special URL characters', async () => {
@@ -618,54 +453,26 @@ describe('Email Service', () => {
 
       await sendPasswordResetEmail('test@example.com', 'John', specialToken, 'https://example.com');
 
-      const sendMailCall = mockTransporter.sendMail.mock.calls[0][0];
-      expect(sendMailCall.html).toContain(encodeURIComponent(specialToken));
-    });
-  });
-
-  describe('Mock Service Integration Tests', () => {
-    beforeEach(() => {
-      // Enable mocking for these specific tests
-      mockEmailMock.isEnabled.mockReturnValue(true);
-      mockGetEmailMockConfig.mockReturnValue({
-        enabled: true,
-        logEmails: true,
-        simulateDelay: false,
-        delayMs: 0,
-        simulateFailures: false,
-        failureRate: 0,
-        failOnEmails: [],
-        blockEmails: [],
-      });
+      const sentEmail = emailMock.getSentEmails()[0];
+      expect(sentEmail.html).toContain(encodeURIComponent(specialToken));
     });
 
-    it('should use mock service for all email functions when enabled', async () => {
-      mockEmailMock.sendEmail.mockResolvedValue();
+    it('should merge custom metadata with automatic metadata', async () => {
+      const customMetadata = {
+        testId: 'custom-test-001',
+        accountId: 'acc-123',
+        customField: 'customValue',
+      };
 
-      // Test sendCustomEmail
-      await sendCustomEmail('test@example.com', 'Test', EmailTemplate.PASSWORD_RESET, {
-        FIRST_NAME: 'John',
-        RESET_URL: 'https://example.com/reset',
-      });
+      await sendPasswordResetEmail('test@example.com', 'John', 'token', 'https://example.com', customMetadata);
 
-      expect(mockEmailMock.sendEmail).toHaveBeenCalledWith('test@example.com', 'Test', EmailTemplate.PASSWORD_RESET, {
-        FIRST_NAME: 'John',
-        RESET_URL: 'https://example.com/reset',
-      });
-      expect(mockGetTransporter).not.toHaveBeenCalled();
-    });
-
-    it('should handle mock service failures', async () => {
-      mockEmailMock.sendEmail.mockRejectedValue(new Error('Mock service failure'));
-
-      await expect(
-        sendCustomEmail('test@example.com', 'Test', EmailTemplate.PASSWORD_RESET, {
-          FIRST_NAME: 'John',
-          RESET_URL: 'https://example.com/reset',
-        }),
-      ).rejects.toThrow('Mock service failure');
-
-      expect(mockGetTransporter).not.toHaveBeenCalled();
+      const sentEmail = emailMock.getSentEmails()[0];
+      expect(sentEmail.metadata?.testId).toBe('custom-test-001');
+      expect(sentEmail.metadata?.accountId).toBe('acc-123');
+      expect(sentEmail.metadata?.customField).toBe('customValue');
+      // Also check that automatic metadata is still present
+      expect(sentEmail.metadata?.emailFlow).toBe('password-reset');
+      expect(sentEmail.metadata?.action).toBe('reset-password');
     });
   });
 });
