@@ -619,3 +619,198 @@ export interface TwoFAGenerateBackupCodesResponse {
   message: string;
   note: string;
 }
+
+/**
+ * Email template names enum
+ * This enum defines all available email templates and their corresponding file names
+ */
+export enum EmailTemplate {
+  EMAIL_VERIFICATION = 'email-verification',
+  EMAIL_SIGNUP_VERIFICATION = 'email-signup-verification', // NEW
+  PASSWORD_RESET = 'password-reset',
+  PASSWORD_CHANGED = 'password-changed',
+  LOGIN_NOTIFICATION = 'login-notification',
+  TWO_FACTOR_ENABLED = 'two-factor-enabled',
+  WELCOME = 'welcome',
+  NEWSLETTER = 'newsletter',
+  ACCOUNT_SUSPENDED = 'account-suspended',
+  ACCOUNT_REACTIVATED = 'account-reactivated',
+  PAYMENT_CONFIRMATION = 'payment-confirmation',
+  SUBSCRIPTION_EXPIRED = 'subscription-expired',
+  SECURITY_ALERT = 'security-alert',
+}
+
+export interface MockEmailMessage {
+  id: string;
+  to: string;
+  from: string;
+  subject: string;
+  html: string;
+  text: string;
+  template?: EmailTemplate;
+  variables?: Record<string, string>;
+  timestamp: Date;
+  status: 'sent' | 'failed' | 'pending';
+  error?: string;
+
+  // Enhanced metadata for testing
+  metadata?: {
+    // Test identification
+    testId?: string;
+    testName?: string;
+    testSuite?: string;
+
+    // User/Account context
+    accountId?: string;
+    userId?: string;
+    accountType?: string;
+
+    // Request context
+    requestId?: string;
+    sessionId?: string;
+    userAgent?: string;
+    ipAddress?: string;
+
+    // Email flow context
+    emailFlow?: string; // e.g., 'signup', 'password-reset', 'login-notification'
+    flowStep?: string; // e.g., 'initial', 'reminder', 'final'
+    triggerReason?: string; // e.g., 'user-action', 'scheduled', 'system-event'
+
+    // Business context
+    feature?: string; // e.g., 'authentication', 'notifications', 'billing'
+    action?: string; // e.g., 'create-account', 'reset-password', 'enable-2fa'
+
+    // Testing specific
+    tags?: string[]; // e.g., ['integration', 'e2e', 'regression']
+    testData?: Record<string, any>; // Custom test data
+
+    // Any additional custom fields can be added directly at this level
+    [key: string]: any;
+  };
+}
+
+export interface GetEmailStatusResponse {
+  enabled: boolean;
+  config: {
+    enabled: boolean;
+    logEmails: boolean;
+    simulateDelay: boolean;
+    delayMs: number;
+    simulateFailures: boolean;
+    failureRate: number;
+    failOnEmails: string[];
+    blockEmails: string[];
+  };
+  stats: {
+    totalSent: number;
+    totalFailed: number;
+    sentByTemplate: Record<string, number>;
+    failedByTemplate: Record<string, number>;
+    recentEmails: MockEmailMessage[];
+    byMetadata: {
+      byTestSuite: Record<string, number>;
+      byEmailFlow: Record<string, number>;
+      byFeature: Record<string, number>;
+      byAction: Record<string, number>;
+      byTags: Record<string, number>;
+    };
+  };
+}
+
+export interface EmailFilters {
+  email?: string;
+  template?: EmailTemplate;
+  limit?: number;
+  metadata?: {
+    testId?: string;
+    testName?: string;
+    testSuite?: string;
+    accountId?: string;
+    userId?: string;
+    emailFlow?: string;
+    flowStep?: string;
+    feature?: string;
+    action?: string;
+    tags?: string[];
+    [key: string]: any;
+  };
+}
+
+export interface GetSendEmailsResponse {
+  emails: MockEmailMessage[];
+  count: number;
+  total: number;
+  appliedFilters: EmailFilters;
+}
+
+export interface GetLatestEmailResponse {
+  email: MockEmailMessage | null;
+  found: boolean;
+}
+
+export interface ClearEmailResponse {
+  message: string;
+  cleared: boolean;
+  clearedCount: number;
+  filter: string | { [k: string]: any };
+}
+
+export interface ClearAllEmailsResponse {
+  message: string;
+  cleared: boolean;
+  clearedCount: number;
+}
+
+export interface SendTestEmailResponse {
+  message: string;
+  to: string;
+  template: EmailTemplate;
+  metadata: MockEmailMessage['metadata'];
+}
+
+export interface GetEmailsByTemplateResponse {
+  template: EmailTemplate;
+  emails: MockEmailMessage[];
+  count: number;
+  appliedFilters: { limit?: number; metadata?: any };
+}
+
+export interface EmailSearchByMetadataResponse {
+  emails: MockEmailMessage[];
+  count: number;
+  filter: Record<string, any>;
+  limit: string | number;
+}
+
+export interface GetEmailsByTestContextResponse {
+  testId: string;
+  emails: MockEmailMessage[];
+  count: number;
+}
+
+export interface GetEmailsByFlowResponse {
+  flow: string;
+  flowStep: string;
+  emails: MockEmailMessage[];
+  count: number;
+}
+
+export interface GetEmailAvailableTemplatesResponse {
+  templates: { name: EmailTemplate; displayName: string; sentCount: number; failedCount: number }[];
+  totalTemplates: number;
+}
+
+export interface GetEmailMetadataInsightsResponse {
+  totalEmails: number;
+  emailsWithMetadata: number;
+  metadataUsageRate: string;
+  uniqueValues: {
+    testSuites: (string | undefined)[];
+    emailFlows: (string | undefined)[];
+    features: (string | undefined)[];
+    actions: (string | undefined)[];
+    allTags: string[];
+  };
+  recentTestSuites: (string | undefined)[];
+  recentFlows: (string | undefined)[];
+}
