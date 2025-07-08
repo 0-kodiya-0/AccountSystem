@@ -23,25 +23,9 @@ export default [
   // Base configs
   pluginJs.configs.recommended,
   ...tseslint.configs.recommended,
-  
-  // React config
-  {
-    plugins: {
-      react: pluginReact,
-      'react-hooks': pluginReactHooks,
-    },
-    rules: {
-      ...pluginReact.configs.recommended.rules,
-      ...pluginReactHooks.configs.recommended.rules,
-      'react/react-in-jsx-scope': 'off', // React 17+
-      'react/prop-types': 'error', // Using TypeScript
-    },
-    settings: {
-      react: {
-        version: 'detect',
-      },
-    },
-  },
+
+  pluginReact.configs.recommended,
+  pluginReactHooks.configs.recommended,
   
   // Prettier (must be last)
   eslintConfigPrettier,
