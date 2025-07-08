@@ -21,6 +21,7 @@ import { emailMockRouter } from './feature/email/__mock__/Email.routes.mock';
 import { oauthMockRouter } from './feature/oauth/__mock__/OAuth.routes.mock';
 import { sessionMockRouter } from './feature/session/__mock__/Session.routes.mock';
 import { tokenMockRouter } from './feature/tokens/__mock__/Token.routes.mock';
+import { twoFactorMockRouter } from './feature/twofa/__mock__/TwoFA.routes.mock';
 /* BUILD_REMOVE_END */
 
 import notificationRouter, { NotificationSocketHandler } from './feature/notifications';
@@ -78,6 +79,10 @@ function createMainApp(): Express {
       // Token mock routes
       app.use('/mock/token', tokenMockRouter);
       logger.info('Token mock routes enabled');
+
+      // TwoFA mock routes
+      app.use('/mock/twofa', twoFactorMockRouter);
+      logger.info('TwoFA mock routes enabled');
     }
   }
   /* BUILD_REMOVE_END */
