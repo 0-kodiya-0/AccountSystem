@@ -10,10 +10,8 @@
     "abs": "dist/cli.js"
   },
   "scripts": {
-    "build": "npm run clean && npm run build:production",
-    "build:types": "tsc --emitDeclarationOnly",
-    "build:cli": "node build.config.js --cli-only",
-    "build:server": "node build.config.js --server-only",
+    "build": "npm run clean && npm run build:types && npm run build:production",
+    "build:types": "tsc",
     "build:production": "node build.config.js",
     "dev:build": "npm run build --watch",
     "dev:nodemon": "nodemon",
