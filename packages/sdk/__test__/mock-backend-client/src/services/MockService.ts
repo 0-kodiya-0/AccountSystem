@@ -3,8 +3,6 @@ import {
   AccountType,
   ApiErrorCode,
   AuthSDKError,
-  BatchCreateTokensRequest,
-  BatchCreateTokensResponse,
   ClearAllEmailsResponse,
   ClearEmailResponse,
   ClearTokensResponse,
@@ -27,9 +25,7 @@ import {
   GenerateSessionsResponse,
   GetEmailAvailableTemplatesResponse,
   GetEmailMetadataInsightsResponse,
-  GetEmailsByFlowResponse,
   GetEmailsByTemplateResponse,
-  GetEmailsByTestIdResponse,
   GetEmailStatusResponse,
   GetLatestEmailResponse,
   GetSendEmailsResponse,
@@ -38,6 +34,8 @@ import {
   MockSessionInfo,
   MockSessionStatus,
   MockTokenStatus,
+  OAuthCacheResponse,
+  ProviderInfoResponse,
   SendTestEmailResponse,
   TokenInfo,
   TwoFAAccountGenerateCodeResponse,
@@ -270,18 +268,6 @@ export class MockService {
   }
 
   /**
-   * Create tokens for multiple accounts
-   */
-  async batchCreateTokens(request: BatchCreateTokensRequest): Promise<BatchCreateTokensResponse> {
-    try {
-      this.validateBatchCreateTokensRequest(request);
-      return await this.httpClient.post<BatchCreateTokensResponse>('/mock/token/batch/create', request);
-    } catch (error) {
-      throw this.handleError(error, 'Failed to batch create tokens');
-    }
-  }
-
-  /**
    * Clear all tokens for an account
    */
   async clearTokens(accountId: string): Promise<ClearTokensResponse> {
@@ -290,6 +276,35 @@ export class MockService {
       return await this.httpClient.delete<ClearTokensResponse>(`/mock/token/clear/${accountId}`);
     } catch (error) {
       throw this.handleError(error, 'Failed to clear tokens');
+    }
+  }
+
+  // ============================================================================
+  // OAuth Mock API Methods
+  // ============================================================================
+
+  /**
+   * Get provider information
+   */
+  async getOAuthProviderInfo(provider: string): Promise<ProviderInfoResponse> {
+    try {
+      if (!provider) {
+        throw new AuthSDKError('Provider is required', ApiErrorCode.VALIDATION_ERROR);
+      }
+      return await this.httpClient.get<ProviderInfoResponse>(`/mock/oauth/${provider}/info`);
+    } catch (error) {
+      throw this.handleError(error, 'Failed to get OAuth provider info');
+    }
+  }
+
+  /**
+   * Clear OAuth mock cache
+   */
+  async clearOAuthMockCache(): Promise<OAuthCacheResponse> {
+    try {
+      return await this.httpClient.delete<OAuthCacheResponse>('/mock/oauth/clear');
+    } catch (error) {
+      throw this.handleError(error, 'Failed to clear OAuth mock cache');
     }
   }
 
@@ -435,30 +450,31 @@ export class MockService {
   // Email API Methods
   // ============================================================================
 
-  async getStatus(): Promise<GetEmailStatusResponse> {
+  /**
+   * Get sent emails with filtering
+   */
+  async getSentEmails(filters: EmailFilters = {}): Promise<GetSendEmailsResponse> {
     try {
-      return await this.httpClient.get<GetEmailStatusResponse>('/mock/email/status');
+      return await this.httpClient.get<GetSendEmailsResponse>('/mock/email/sent', { params: filters });
     } catch (error) {
-      throw this.handleError(error, 'Failed to get status for email');
+      throw this.handleError(error, `Failed to get sent emails with filter ${JSON.stringify(filters)}`);
     }
   }
 
-  async getSentEmails(filter: EmailFilters): Promise<GetSendEmailsResponse> {
-    try {
-      return await this.httpClient.get<GetSendEmailsResponse>('/mock/email/sent', { params: filter });
-    } catch (error) {
-      throw this.handleError(error, `Failed to get send email for ${JSON.stringify(filter)} filter`);
-    }
-  }
-
+  /**
+   * Get latest email for specific address
+   */
   async getLatestEmail(
     email: string,
     options?: {
       template?: EmailTemplate;
-      metadataQuery?: EmailFilters['metadata'];
+      [key: string]: any; // For metadata query params
     },
   ): Promise<GetLatestEmailResponse> {
     try {
+      if (!email) {
+        throw new AuthSDKError('Email address is required', ApiErrorCode.VALIDATION_ERROR);
+      }
       return await this.httpClient.get<GetLatestEmailResponse>(`/mock/email/latest/${email}`, {
         params: options,
       });
@@ -467,14 +483,22 @@ export class MockService {
     }
   }
 
-  async clearSentEmails(filter?: EmailFilters['metadata']): Promise<ClearEmailResponse> {
+  /**
+   * Clear sent emails with optional filtering
+   */
+  async clearSentEmails(metadataFilter?: EmailFilters['metadata']): Promise<ClearEmailResponse> {
     try {
-      return await this.httpClient.delete<ClearEmailResponse>('/mock/email/clear', { params: filter });
+      return await this.httpClient.delete<ClearEmailResponse>('/mock/email/clear', {
+        params: metadataFilter,
+      });
     } catch (error) {
-      throw this.handleError(error, `Failed to clear email for ${JSON.stringify(filter)} filter`);
+      throw this.handleError(error, `Failed to clear emails with filter ${JSON.stringify(metadataFilter)}`);
     }
   }
 
+  /**
+   * Clear all sent emails
+   */
   async clearAllEmails(): Promise<ClearAllEmailsResponse> {
     try {
       return await this.httpClient.delete<ClearAllEmailsResponse>('/mock/email/clear/all');
@@ -483,49 +507,78 @@ export class MockService {
     }
   }
 
-  async testSendEmail(emailMessage: MockEmailMessage): Promise<SendTestEmailResponse> {
+  /**
+   * Test send email
+   */
+  async testSendEmail(emailData: {
+    to: string;
+    template: EmailTemplate;
+    variables?: Record<string, string>;
+    metadata?: MockEmailMessage['metadata'];
+  }): Promise<SendTestEmailResponse> {
     try {
-      return await this.httpClient.post<SendTestEmailResponse>('/mock/email/send', emailMessage);
+      if (!emailData.to || !emailData.template) {
+        throw new AuthSDKError('Email address and template are required', ApiErrorCode.VALIDATION_ERROR);
+      }
+      return await this.httpClient.post<SendTestEmailResponse>('/mock/email/send', emailData);
     } catch (error) {
-      throw this.handleError(error, 'Failed to send a test email');
+      throw this.handleError(error, 'Failed to send test email');
     }
   }
 
+  /**
+   * Get emails by template type
+   */
   async getEmailsByTemplate(
     template: EmailTemplate,
     options?: {
       limit?: number;
-      metadataQuery?: EmailFilters['metadata'];
+      [key: string]: any; // For metadata query params
     },
   ): Promise<GetEmailsByTemplateResponse> {
     try {
+      if (!template) {
+        throw new AuthSDKError('Template is required', ApiErrorCode.VALIDATION_ERROR);
+      }
       return await this.httpClient.get<GetEmailsByTemplateResponse>(`/mock/email/templates/${template}`, {
         params: options,
       });
     } catch (error) {
-      throw this.handleError(error, 'Failed to get by template');
+      throw this.handleError(error, 'Failed to get emails by template');
     }
   }
 
+  /**
+   * Search emails by metadata criteria
+   */
   async searchEmailsByMetadata(
     filter: EmailFilters['metadata'],
     limit?: number,
   ): Promise<EmailSearchByMetadataResponse> {
     try {
+      if (!filter || typeof filter !== 'object') {
+        throw new AuthSDKError('Filter object is required', ApiErrorCode.VALIDATION_ERROR);
+      }
       return await this.httpClient.post<EmailSearchByMetadataResponse>('/mock/email/search', { filter, limit });
     } catch (error) {
-      throw this.handleError(error, 'Failed to search email by metadata');
+      throw this.handleError(error, 'Failed to search emails by metadata');
     }
   }
 
+  /**
+   * Get available email templates
+   */
   async getAvailableTemplates(): Promise<GetEmailAvailableTemplatesResponse> {
     try {
-      return await this.httpClient.get<GetEmailAvailableTemplatesResponse>('/mock/email/template');
+      return await this.httpClient.get<GetEmailAvailableTemplatesResponse>('/mock/email/templates');
     } catch (error) {
-      throw this.handleError(error, 'No available templates');
+      throw this.handleError(error, 'Failed to get available templates');
     }
   }
 
+  /**
+   * Get metadata insights
+   */
   async getMetadataInsights(): Promise<GetEmailMetadataInsightsResponse> {
     try {
       return await this.httpClient.get<GetEmailMetadataInsightsResponse>('/mock/email/metadata/insights');

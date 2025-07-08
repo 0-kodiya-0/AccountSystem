@@ -466,30 +466,6 @@ export interface TokenInfo {
     | { present: false };
 }
 
-export interface BatchCreateTokensRequest {
-  accounts: Array<{
-    accountId: string;
-    accountType: AccountType;
-    oauthAccessToken?: string;
-    oauthRefreshToken?: string;
-  }>;
-  setCookies?: boolean;
-}
-
-export interface BatchCreateTokensResponse {
-  message: string;
-  results: Array<{
-    accountId: string;
-    accountType?: AccountType;
-    success: boolean;
-    accessToken?: string;
-    refreshToken?: string;
-    error?: string;
-  }>;
-  successful: number;
-  failed: number;
-}
-
 export interface ClearTokensResponse {
   message: string;
   accountId: string;
@@ -782,19 +758,6 @@ export interface EmailSearchByMetadataResponse {
   limit: string | number;
 }
 
-export interface GetEmailsByTestContextResponse {
-  testId: string;
-  emails: MockEmailMessage[];
-  count: number;
-}
-
-export interface GetEmailsByFlowResponse {
-  flow: string;
-  flowStep: string;
-  emails: MockEmailMessage[];
-  count: number;
-}
-
 export interface GetEmailAvailableTemplatesResponse {
   templates: { name: EmailTemplate; displayName: string; sentCount: number; failedCount: number }[];
   totalTemplates: number;
@@ -813,4 +776,22 @@ export interface GetEmailMetadataInsightsResponse {
   };
   recentTestSuites: (string | undefined)[];
   recentFlows: (string | undefined)[];
+}
+
+export interface OAuthCacheResponse {
+  message: string;
+}
+
+export interface ProviderInfoResponse {
+  provider: string;
+  accountCount: number;
+  accounts: Array<{
+    id: string;
+    email: string;
+    name: string;
+    status: string;
+    twoFactorEnabled: boolean;
+  }>;
+  endpoints: Record<string, unknown>;
+  supported: boolean;
 }
