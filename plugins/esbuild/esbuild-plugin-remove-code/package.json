@@ -9,10 +9,11 @@
     "README.md"
   ],
   "scripts": {
-    "build": "npm run clean && npm run compile",
+    "build": "npm run clean && npm run compile && npm run types",
     "clean": "rimraf dist",
-    "compile": "tsc",
-    "dev": "tsc --watch",
+    "compile": "esbuild src/index.ts --bundle --platform=node --target=node16 --format=cjs --outfile=dist/index.js --external:esbuild",
+    "types": "tsc --emitDeclarationOnly",
+    "dev": "npm run compile -- --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
