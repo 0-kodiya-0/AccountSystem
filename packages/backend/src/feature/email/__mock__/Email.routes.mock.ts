@@ -8,13 +8,6 @@ export const emailMockRouter = express.Router();
  */
 
 /**
- * @route GET /mock/email/status
- * @desc Get email mock status and configuration
- * @access Public (development/test only)
- */
-emailMockRouter.get('/status', EmailMockController.getStatus);
-
-/**
  * @route GET /mock/email/metadata/insights
  * @desc Get metadata usage insights and analytics
  * @access Public (development/test only)

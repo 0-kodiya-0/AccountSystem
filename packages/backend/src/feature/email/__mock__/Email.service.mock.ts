@@ -28,17 +28,6 @@ export interface TestSendEmailParams {
 }
 
 /**
- * Get email mock status and configuration
- */
-export function getStatus() {
-  return {
-    enabled: emailMock.isEnabled(),
-    config: emailMock.getConfig(),
-    stats: emailMock.getStats(),
-  };
-}
-
-/**
  * Get sent emails with filtering
  */
 export function getSentEmails(filters: EmailFilters) {

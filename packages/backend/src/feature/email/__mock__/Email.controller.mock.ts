@@ -5,15 +5,6 @@ import { EmailTemplate } from '../Email.types';
 import * as EmailMockService from './Email.service.mock';
 
 /**
- * Get email mock status and configuration
- * GET /mock/email/status
- */
-export const getStatus = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const status = EmailMockService.getStatus();
-  next(new JsonSuccess(status));
-});
-
-/**
  * Get sent emails with enhanced filtering
  * GET /mock/email/sent
  */
