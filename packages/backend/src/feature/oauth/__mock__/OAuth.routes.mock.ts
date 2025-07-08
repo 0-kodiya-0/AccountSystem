@@ -64,15 +64,6 @@ oauthMockRouter.post('/:provider/revoke', OAuthMockController.mockOAuthRevoke);
 oauthMockRouter.get('/:provider/info', OAuthMockController.getProviderInfo);
 
 /**
- * @route GET /mock/oauth/status
- */
-oauthMockRouter.get('/status', OAuthMockController.getOAuthMockStatus);
-
-/**
  * @route GET /mock/oauth/clear
  */
 oauthMockRouter.delete('/clear', OAuthMockController.clearOAuthMockCache);
-/**
- * @route GET /mock/oauth/config
- */
-oauthMockRouter.post('/config', OAuthMockController.updateOAuthMockConfig);

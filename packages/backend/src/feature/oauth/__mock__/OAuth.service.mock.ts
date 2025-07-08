@@ -398,12 +398,3 @@ export function clearOAuthMockCache(): OAuthCacheResponse {
     message: 'OAuth mock cache cleared successfully',
   };
 }
-
-export function updateOAuthMockConfiguration(): OAuthConfigResponse {
-  oauthMockService.refreshConfig();
-
-  return {
-    message: 'OAuth mock configuration refreshed',
-    config: oauthMockService.getConfig(),
-  };
-}

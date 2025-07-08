@@ -81,12 +81,3 @@ export const clearOAuthMockCache = asyncHandler(async (req: Request, res: Respon
   const result = OAuthMockService.clearOAuthMockCache();
   next(new JsonSuccess(result));
 });
-
-/**
- * Update OAuth mock configuration
- * POST /mock/oauth/config
- */
-export const updateOAuthMockConfig = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const result = OAuthMockService.updateOAuthMockConfiguration();
-  next(new JsonSuccess(result));
-});
