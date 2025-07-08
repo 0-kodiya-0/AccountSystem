@@ -495,3 +495,127 @@ export interface ClearTokensResponse {
   accountId: string;
   cleared: string[];
 }
+
+// ============================================================================
+// TwoFA Mock API Types
+// ============================================================================
+
+export interface TwoFAGenerateCodeRequest {
+  secret: string;
+}
+
+export interface TwoFAGenerateCodeResponse {
+  token: string;
+  secret: string;
+  timeRemaining: number;
+  timeUsed: number;
+  message: string;
+  note: string;
+}
+
+export interface TwoFAAccountSecretResponse {
+  accountId: string;
+  secret: string;
+  twoFactorEnabled: boolean;
+  message: string;
+  note: string;
+}
+
+export interface TwoFAAccountGenerateCodeResponse {
+  accountId: string;
+  token: string;
+  twoFactorEnabled: boolean;
+  timeRemaining: number;
+  timeUsed: number;
+  message: string;
+  note: string;
+}
+
+export interface TwoFAValidateTokenRequest {
+  secret: string;
+  token: string;
+}
+
+export interface TwoFAValidateTokenResponse {
+  valid: boolean;
+  token: string;
+  secret: string;
+  timeRemaining: number;
+  timeUsed: number;
+  message: string;
+  note: string;
+}
+
+export interface TwoFACacheStatsResponse {
+  temp: {
+    size: number;
+    max: number;
+  };
+  setup: {
+    size: number;
+    max: number;
+  };
+  message: string;
+  note: string;
+}
+
+export interface TwoFATempTokensResponse {
+  count: number;
+  tokens: Array<{
+    token: string;
+    accountId: string;
+    email: string;
+    accountType: string;
+    expiresAt: string;
+    hasOAuthTokens: boolean;
+  }>;
+  message: string;
+  note: string;
+}
+
+export interface TwoFASetupTokensResponse {
+  count: number;
+  tokens: Array<{
+    token: string;
+    accountId: string;
+    secret: string;
+    accountType: string;
+    expiresAt: string;
+    createdAt: string;
+  }>;
+  message: string;
+  note: string;
+}
+
+export interface TwoFATempTokenDataResponse {
+  token: string;
+  accountId: string;
+  email: string;
+  accountType: string;
+  expiresAt: string;
+  oauthTokens?: any;
+  message: string;
+  note: string;
+}
+
+export interface TwoFASetupTokenDataResponse {
+  token: string;
+  accountId: string;
+  secret: string;
+  accountType: string;
+  expiresAt: string;
+  createdAt: string;
+  message: string;
+  note: string;
+}
+
+export interface TwoFAGenerateBackupCodesRequest {
+  count?: number;
+}
+
+export interface TwoFAGenerateBackupCodesResponse {
+  count: number;
+  backupCodes: string[];
+  message: string;
+  note: string;
+}

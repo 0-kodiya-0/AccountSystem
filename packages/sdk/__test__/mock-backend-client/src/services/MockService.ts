@@ -25,6 +25,17 @@ import {
   MockSessionStatus,
   MockTokenStatus,
   TokenInfo,
+  TwoFAAccountGenerateCodeResponse,
+  TwoFAAccountSecretResponse,
+  TwoFACacheStatsResponse,
+  TwoFAGenerateBackupCodesRequest,
+  TwoFAGenerateBackupCodesResponse,
+  TwoFAGenerateCodeResponse,
+  TwoFASetupTokenDataResponse,
+  TwoFASetupTokensResponse,
+  TwoFATempTokenDataResponse,
+  TwoFATempTokensResponse,
+  TwoFAValidateTokenResponse,
   UpdateSessionRequest,
   UpdateSessionResponse,
   ValidateSessionRequest,
@@ -268,128 +279,140 @@ export class MockService {
   }
 
   // ============================================================================
-  // Convenience Methods
+  // TwoFA Mock API Methods
   // ============================================================================
 
   /**
-   * Setup complete test environment with session and tokens
+   * Generate TOTP code for a given secret (simulates authenticator app)
    */
-  async setupTestEnvironment(options: {
-    accountIds: string[];
-    currentAccountId?: string;
-    accountType?: AccountType;
-    setCookies?: boolean;
-  }): Promise<{
-    session: CreateSessionResponse;
-    tokens: BatchCreateTokensResponse;
-  }> {
+  async generateTotpCode(secret: string): Promise<TwoFAGenerateCodeResponse> {
     try {
-      const { accountIds, currentAccountId, accountType = AccountType.Local, setCookies = true } = options;
-
-      // Create session
-      const session = await this.createSession({
-        accountIds,
-        currentAccountId: currentAccountId || accountIds[0],
-      });
-
-      // Create tokens for all accounts
-      const accounts = accountIds.map((id) => ({
-        accountId: id,
-        accountType,
-      }));
-
-      const tokens = await this.batchCreateTokens({
-        accounts,
-        setCookies,
-      });
-
-      return { session, tokens };
+      if (!secret) {
+        throw new AuthSDKError('Secret is required', ApiErrorCode.VALIDATION_ERROR);
+      }
+      return await this.httpClient.get<TwoFAGenerateCodeResponse>(`/mock/twofa/generate-code/${secret}`);
     } catch (error) {
-      throw this.handleError(error, 'Failed to setup test environment');
+      throw this.handleError(error, 'Failed to generate TOTP code');
     }
   }
 
   /**
-   * Clear entire test environment
+   * Get the 2FA secret for an account (for testing purposes)
    */
-  async clearTestEnvironment(accountIds: string[]): Promise<{
-    session: { message: string; cleared: boolean };
-    tokens: ClearTokensResponse[];
-  }> {
+  async getAccountSecret(accountId: string): Promise<TwoFAAccountSecretResponse> {
     try {
-      // Clear session
-      const session = await this.clearSession();
-
-      // Clear tokens for all accounts (run in parallel)
-      const tokens = await Promise.all(accountIds.map((accountId) => this.clearTokens(accountId)));
-
-      return { session, tokens };
+      this.validateAccountId(accountId);
+      return await this.httpClient.get<TwoFAAccountSecretResponse>(`/mock/twofa/account/${accountId}/secret`);
     } catch (error) {
-      throw this.handleError(error, 'Failed to clear test environment');
+      throw this.handleError(error, 'Failed to get account 2FA secret');
     }
   }
 
   /**
-   * Simulate authentication flow
+   * Generate TOTP code for an account using its stored secret
    */
-  async simulateAuth(
-    accountId: string,
-    accountType: AccountType = AccountType.Local,
-    options: {
-      includeRefreshToken?: boolean;
-      setCookies?: boolean;
-      oauthTokens?: {
-        accessToken: string;
-        refreshToken: string;
-      };
-    } = {},
-  ): Promise<{
-    session: CreateSessionResponse;
-    accessToken: CreateTokenResponse;
-    refreshToken?: CreateTokenResponse;
-  }> {
+  async generateAccountTotpCode(accountId: string): Promise<TwoFAAccountGenerateCodeResponse> {
     try {
-      const { includeRefreshToken = true, setCookies = true, oauthTokens } = options;
-
-      // Create session
-      const session = await this.createSession({
-        accountIds: [accountId],
-        currentAccountId: accountId,
-      });
-
-      // Create access token
-      const accessTokenRequest: CreateTokenRequest = {
-        accountId,
-        accountType,
-        setCookie: setCookies,
-      };
-
-      if (accountType === AccountType.OAuth && oauthTokens) {
-        accessTokenRequest.oauthAccessToken = oauthTokens.accessToken;
-      }
-
-      const accessToken = await this.createAccessToken(accessTokenRequest);
-
-      const result: any = { session, accessToken };
-
-      // Create refresh token if requested
-      if (includeRefreshToken) {
-        const refreshTokenRequest: CreateTokenRequest = {
-          accountId,
-          accountType,
-          setCookie: setCookies,
-        };
-
-        if (accountType === AccountType.OAuth && oauthTokens) {
-          refreshTokenRequest.oauthRefreshToken = oauthTokens.refreshToken;
-        }
-
-        result.refreshToken = await this.createRefreshToken(refreshTokenRequest);
-      }
-
-      return result;
+      this.validateAccountId(accountId);
+      return await this.httpClient.get<TwoFAAccountGenerateCodeResponse>(
+        `/mock/twofa/account/${accountId}/generate-code`,
+      );
     } catch (error) {
-      throw this.handleError(error, 'Failed to simulate auth');
+      throw this.handleError(error, 'Failed to generate account TOTP code');
+    }
+  }
+
+  /**
+   * Validate a TOTP token against a secret (simulates authenticator verification)
+   */
+  async validateTotpToken(secret: string, token: string): Promise<TwoFAValidateTokenResponse> {
+    try {
+      if (!secret || !token) {
+        throw new AuthSDKError('Secret and token are required', ApiErrorCode.VALIDATION_ERROR);
+      }
+      if (token.length !== 6) {
+        throw new AuthSDKError('Token must be 6 characters long', ApiErrorCode.VALIDATION_ERROR);
+      }
+      return await this.httpClient.get<TwoFAValidateTokenResponse>(`/mock/twofa/validate-token/${secret}/${token}`);
+    } catch (error) {
+      throw this.handleError(error, 'Failed to validate TOTP token');
+    }
+  }
+
+  /**
+   * Get 2FA cache statistics (temp tokens, setup tokens)
+   */
+  async getTwoFACacheStats(): Promise<TwoFACacheStatsResponse> {
+    try {
+      return await this.httpClient.get<TwoFACacheStatsResponse>('/mock/twofa/cache/stats');
+    } catch (error) {
+      throw this.handleError(error, 'Failed to get 2FA cache stats');
+    }
+  }
+
+  /**
+   * Get all temporary tokens (for debugging login flows)
+   */
+  async getTwoFATempTokens(): Promise<TwoFATempTokensResponse> {
+    try {
+      return await this.httpClient.get<TwoFATempTokensResponse>('/mock/twofa/cache/temp-tokens');
+    } catch (error) {
+      throw this.handleError(error, 'Failed to get 2FA temp tokens');
+    }
+  }
+
+  /**
+   * Get all setup tokens (for debugging setup flows)
+   */
+  async getTwoFASetupTokens(): Promise<TwoFASetupTokensResponse> {
+    try {
+      return await this.httpClient.get<TwoFASetupTokensResponse>('/mock/twofa/cache/setup-tokens');
+    } catch (error) {
+      throw this.handleError(error, 'Failed to get 2FA setup tokens');
+    }
+  }
+
+  /**
+   * Get specific temporary token data
+   */
+  async getTwoFATempTokenData(token: string): Promise<TwoFATempTokenDataResponse> {
+    try {
+      if (!token) {
+        throw new AuthSDKError('Token is required', ApiErrorCode.VALIDATION_ERROR);
+      }
+      return await this.httpClient.get<TwoFATempTokenDataResponse>(`/mock/twofa/cache/temp-token/${token}`);
+    } catch (error) {
+      throw this.handleError(error, 'Failed to get temp token data');
+    }
+  }
+
+  /**
+   * Get specific setup token data
+   */
+  async getTwoFASetupTokenData(token: string): Promise<TwoFASetupTokenDataResponse> {
+    try {
+      if (!token) {
+        throw new AuthSDKError('Token is required', ApiErrorCode.VALIDATION_ERROR);
+      }
+      return await this.httpClient.get<TwoFASetupTokenDataResponse>(`/mock/twofa/cache/setup-token/${token}`);
+    } catch (error) {
+      throw this.handleError(error, 'Failed to get setup token data');
+    }
+  }
+
+  /**
+   * Generate mock backup codes (for testing backup code flows)
+   */
+  async generateTwoFABackupCodes(
+    request: TwoFAGenerateBackupCodesRequest = {},
+  ): Promise<TwoFAGenerateBackupCodesResponse> {
+    try {
+      if (request.count && (request.count < 1 || request.count > 20)) {
+        throw new AuthSDKError('Count must be between 1 and 20', ApiErrorCode.VALIDATION_ERROR);
+      }
+      return await this.httpClient.post<TwoFAGenerateBackupCodesResponse>('/mock/twofa/generate-backup-codes', request);
+    } catch (error) {
+      throw this.handleError(error, 'Failed to generate backup codes');
     }
   }
 
