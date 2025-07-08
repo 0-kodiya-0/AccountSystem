@@ -67,25 +67,34 @@ function formatMessage(level: LogLevel, message: string | unknown, meta?: LogMet
   const timestamp = new Date().toISOString();
   const prefix = `[${timestamp}] [${level.toUpperCase()}] [BACKEND]`;
 
+  let formattedMessage = '';
+
   // Handle the main message
-  let formattedMessage = message instanceof Error ? `${message.name}: ${message.message}` : String(message);
+  if (message instanceof Error) {
+    // For errors as main message, use the formatted error with stack
+    formattedMessage = `${message.name}: ${message.message}`;
+    if (message.stack) {
+      formattedMessage += `\n${message.stack}`;
+    }
+  } else {
+    formattedMessage = String(message);
+  }
 
   // Handle meta information
   if (meta !== undefined) {
     if (typeof meta === 'string') {
       formattedMessage += ` | ${meta}`;
     } else if (meta instanceof Error) {
-      formattedMessage += `\n${safeStringify(meta)}`;
+      // For errors as meta, show them with proper formatting
+      formattedMessage += `\n${meta.name}: ${meta.message}`;
+      if (meta.stack) {
+        formattedMessage += `\n${meta.stack}`;
+      }
     } else if (typeof meta === 'object' && meta !== null && Object.keys(meta).length > 0) {
       formattedMessage += `\n${safeStringify(meta)}`;
     } else if (meta !== undefined) {
       formattedMessage += ` | ${String(meta)}`;
     }
-  }
-
-  // For errors, include stack trace if available
-  if (message instanceof Error && message.stack) {
-    formattedMessage += `\n${message.stack}`;
   }
 
   return `${prefix} ${formattedMessage}`;
