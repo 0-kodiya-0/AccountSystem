@@ -18,7 +18,7 @@ import {
 import { getTransporter, resetTransporter } from './Email.transporter';
 import { logger } from '../../utils/logger';
 import { ValidationUtils } from '../../utils/validation';
-import { emailMock } from '../../mocks/email/EmailServiceMock'; // BUILD_REMOVE
+import { emailMock, type SendEmailOptions } from '../../mocks/email/EmailServiceMock'; // BUILD_REMOVE
 
 // Template cache to avoid reading files repeatedly
 const templateCache = new Map<EmailTemplate, string>();
@@ -67,14 +67,6 @@ export async function sendCustomEmail(
   template: EmailTemplate,
   variables: Record<string, string>,
 ): Promise<void> {
-  /* BUILD_REMOVE_START */
-  // Check if mocking is enabled
-  if (emailMock.isEnabled()) {
-    logger.info('Using mock email service for sendCustomEmail');
-    return sendCustomEmailMock(to, subject, template, variables);
-  }
-  /* BUILD_REMOVE_END */
-
   // Original implementation continues here...
   // Input validation
   if (!to || !to.trim()) {
@@ -83,6 +75,14 @@ export async function sendCustomEmail(
   if (!subject || !subject.trim()) {
     throw new ValidationError('Email subject is required');
   }
+
+  /* BUILD_REMOVE_START */
+  // Check if mocking is enabled
+  if (emailMock.isEnabled()) {
+    logger.info('Using mock email service for sendCustomEmail');
+    return sendCustomEmailMock(to, subject, template, variables);
+  }
+  /* BUILD_REMOVE_END */
 
   const transporter = await getTransporter();
 
@@ -150,30 +150,41 @@ export async function sendPasswordResetEmailMock(
   firstName: string,
   token: string,
   callbackUrl: string,
+  metadata?: SendEmailOptions['metadata'],
 ): Promise<void> {
-  return sendCustomEmailMock(email, `Reset your password for AccountSystem`, EmailTemplate.PASSWORD_RESET, {
-    FIRST_NAME: firstName,
-    RESET_URL: `${callbackUrl}?token=${encodeURIComponent(token)}`,
-  });
+  const enhancedMetadata = {
+    emailFlow: 'password-reset',
+    flowStep: 'initial',
+    feature: 'authentication',
+    action: 'reset-password',
+    triggerReason: 'user-action',
+    token: token, // Store truncated token for security
+    ...metadata,
+  };
+
+  return emailMock.sendEmail(
+    email,
+    `Reset your password for ${getAppName()}`,
+    EmailTemplate.PASSWORD_RESET,
+    {
+      FIRST_NAME: firstName,
+      RESET_URL: `${callbackUrl}?token=${encodeURIComponent(token)}`,
+    },
+    { metadata: enhancedMetadata },
+  );
 }
 /* BUILD_REMOVE_END */
 
 /**
- * Send password reset email with callback URL - UPDATED with mocking support
+ * Send password reset email with callback URL - UPDATED with metadata support
  */
 export async function sendPasswordResetEmail(
   email: string,
   firstName: string,
   token: string,
   callbackUrl: string,
+  metadata?: SendEmailOptions['metadata'],
 ): Promise<void> {
-  /* BUILD_REMOVE_START */
-  if (emailMock.isEnabled()) {
-    logger.info('Using mock email service for sendPasswordResetEmail');
-    return sendPasswordResetEmailMock(email, firstName, token, callbackUrl);
-  }
-  /* BUILD_REMOVE_END */
-
   // Original implementation continues here...
   if (!email || !firstName || !token || !callbackUrl) {
     throw new ValidationError('Email, firstName, token, and callbackUrl are required for password reset email');
@@ -181,6 +192,13 @@ export async function sendPasswordResetEmail(
 
   // Validate callback URL
   ValidationUtils.validateUrl(callbackUrl, 'Callback URL');
+
+  /* BUILD_REMOVE_START */
+  if (emailMock.isEnabled()) {
+    logger.info('Using mock email service for sendPasswordResetEmail');
+    return sendPasswordResetEmailMock(email, firstName, token, callbackUrl, metadata);
+  }
+  /* BUILD_REMOVE_END */
 
   // Construct reset URL with token as query parameter
   const resetUrl = `${callbackUrl}?token=${encodeURIComponent(token)}`;
@@ -192,31 +210,54 @@ export async function sendPasswordResetEmail(
 }
 
 /* BUILD_REMOVE_START */
-export async function sendPasswordChangedNotificationMock(email: string, firstName: string): Promise<void> {
+export async function sendPasswordChangedNotificationMock(
+  email: string,
+  firstName: string,
+  metadata?: SendEmailOptions['metadata'],
+): Promise<void> {
   const now = new Date();
-  return sendCustomEmailMock(email, `Your password was changed on AccountSystem`, EmailTemplate.PASSWORD_CHANGED, {
-    FIRST_NAME: firstName,
-    DATE: now.toLocaleDateString(),
-    TIME: now.toLocaleTimeString(),
-  });
+  const enhancedMetadata = {
+    emailFlow: 'password-management',
+    flowStep: 'confirmation',
+    feature: 'authentication',
+    action: 'password-changed',
+    triggerReason: 'system-event',
+    ...metadata,
+  };
+
+  return emailMock.sendEmail(
+    email,
+    `Your password was changed on ${getAppName()}`,
+    EmailTemplate.PASSWORD_CHANGED,
+    {
+      FIRST_NAME: firstName,
+      DATE: now.toLocaleDateString(),
+      TIME: now.toLocaleTimeString(),
+    },
+    { metadata: enhancedMetadata },
+  );
 }
 /* BUILD_REMOVE_END */
 
 /**
- * Send password changed notification - now supports mocking
+ * Send password changed notification - now supports metadata
  */
-export async function sendPasswordChangedNotification(email: string, firstName: string): Promise<void> {
-  /* BUILD_REMOVE_START */
-  if (emailMock.isEnabled()) {
-    logger.info('Using mock email service for sendPasswordChangedNotification');
-    return sendPasswordChangedNotificationMock(email, firstName);
-  }
-  /* BUILD_REMOVE_END */
-
+export async function sendPasswordChangedNotification(
+  email: string,
+  firstName: string,
+  metadata?: SendEmailOptions['metadata'],
+): Promise<void> {
   // Original implementation continues here...
   if (!email || !firstName) {
     throw new ValidationError('Email and firstName are required for password changed notification');
   }
+
+  /* BUILD_REMOVE_START */
+  if (emailMock.isEnabled()) {
+    logger.info('Using mock email service for sendPasswordChangedNotification');
+    return sendPasswordChangedNotificationMock(email, firstName, metadata);
+  }
+  /* BUILD_REMOVE_END */
 
   const now = new Date();
 
@@ -233,37 +274,56 @@ export async function sendLoginNotificationMock(
   firstName: string,
   ipAddress: string,
   device: string,
+  metadata?: SendEmailOptions['metadata'],
 ): Promise<void> {
   const now = new Date();
-  return sendCustomEmailMock(email, `New login detected on AccountSystem`, EmailTemplate.LOGIN_NOTIFICATION, {
-    FIRST_NAME: firstName,
-    LOGIN_TIME: now.toLocaleString(),
-    IP_ADDRESS: ipAddress,
-    DEVICE: device,
-  });
+  const enhancedMetadata = {
+    emailFlow: 'security-notification',
+    flowStep: 'alert',
+    feature: 'authentication',
+    action: 'login-detected',
+    triggerReason: 'user-action',
+    ipAddress,
+    userAgent: device,
+    ...metadata,
+  };
+
+  return emailMock.sendEmail(
+    email,
+    `New login detected on ${getAppName()}`,
+    EmailTemplate.LOGIN_NOTIFICATION,
+    {
+      FIRST_NAME: firstName,
+      LOGIN_TIME: now.toLocaleString(),
+      IP_ADDRESS: ipAddress,
+      DEVICE: device,
+    },
+    { metadata: enhancedMetadata },
+  );
 }
 /* BUILD_REMOVE_END */
 
 /**
- * Send login notification - now supports mocking
+ * Send login notification - now supports metadata
  */
 export async function sendLoginNotification(
   email: string,
   firstName: string,
   ipAddress: string,
   device: string,
+  metadata?: SendEmailOptions['metadata'],
 ): Promise<void> {
-  /* BUILD_REMOVE_START */
-  if (emailMock.isEnabled()) {
-    logger.info('Using mock email service for sendLoginNotification');
-    return sendLoginNotificationMock(email, firstName, ipAddress, device);
-  }
-  /* BUILD_REMOVE_END */
-
   // Original implementation continues here...
   if (!email || !firstName || !ipAddress || !device) {
     throw new ValidationError('Email, firstName, ipAddress, and device are required for login notification');
   }
+
+  /* BUILD_REMOVE_START */
+  if (emailMock.isEnabled()) {
+    logger.info('Using mock email service for sendLoginNotification');
+    return sendLoginNotificationMock(email, firstName, ipAddress, device, metadata);
+  }
+  /* BUILD_REMOVE_END */
 
   const now = new Date();
 
@@ -276,35 +336,53 @@ export async function sendLoginNotification(
 }
 
 /* BUILD_REMOVE_START */
-export async function sendTwoFactorEnabledNotificationMock(email: string, firstName: string): Promise<void> {
+export async function sendTwoFactorEnabledNotificationMock(
+  email: string,
+  firstName: string,
+  metadata?: SendEmailOptions['metadata'],
+): Promise<void> {
   const now = new Date();
-  return sendCustomEmailMock(
+  const enhancedMetadata = {
+    emailFlow: 'security-enhancement',
+    flowStep: 'confirmation',
+    feature: 'two-factor-auth',
+    action: 'enable-2fa',
+    triggerReason: 'user-action',
+    ...metadata,
+  };
+
+  return emailMock.sendEmail(
     email,
-    `Two-factor authentication enabled on AccountSystem`,
+    `Two-factor authentication enabled on ${getAppName()}`,
     EmailTemplate.TWO_FACTOR_ENABLED,
     {
       FIRST_NAME: firstName,
       DATE: now.toLocaleDateString(),
     },
+    { metadata: enhancedMetadata },
   );
 }
 /* BUILD_REMOVE_END */
 
 /**
- * Send two-factor authentication enabled notification - now supports mocking
+ * Send two-factor authentication enabled notification - now supports metadata
  */
-export async function sendTwoFactorEnabledNotification(email: string, firstName: string): Promise<void> {
-  /* BUILD_REMOVE_START */
-  if (emailMock.isEnabled()) {
-    logger.info('Using mock email service for sendTwoFactorEnabledNotification');
-    return sendTwoFactorEnabledNotificationMock(email, firstName);
-  }
-  /* BUILD_REMOVE_END */
-
+export async function sendTwoFactorEnabledNotification(
+  email: string,
+  firstName: string,
+  metadata?: SendEmailOptions['metadata'],
+): Promise<void> {
   // Original implementation continues here...
   if (!email || !firstName) {
     throw new ValidationError('Email and firstName are required for 2FA enabled notification');
   }
+
+  /* BUILD_REMOVE_START */
+  if (emailMock.isEnabled()) {
+    logger.info('Using mock email service for sendTwoFactorEnabledNotification');
+    return sendTwoFactorEnabledNotificationMock(email, firstName, metadata);
+  }
+  /* BUILD_REMOVE_END */
 
   const now = new Date();
 
@@ -324,30 +402,40 @@ export async function sendSignupEmailVerificationMock(
   email: string,
   token: string,
   callbackUrl: string,
+  metadata?: SendEmailOptions['metadata'],
 ): Promise<void> {
-  return sendCustomEmailMock(
+  const enhancedMetadata = {
+    emailFlow: 'signup',
+    flowStep: 'email-verification',
+    feature: 'authentication',
+    action: 'verify-email',
+    triggerReason: 'user-action',
+    token: token, // Store truncated token for security
+    ...metadata,
+  };
+
+  return emailMock.sendEmail(
     email,
-    `Verify your email to continue with AccountSystem`,
+    `Verify your email to continue with ${getAppName()}`,
     EmailTemplate.EMAIL_SIGNUP_VERIFICATION,
     {
       EMAIL: email,
       VERIFICATION_URL: `${callbackUrl}?token=${encodeURIComponent(token)}`,
     },
+    { metadata: enhancedMetadata },
   );
 }
 /* BUILD_REMOVE_END */
 
 /**
- * Send email verification for two-step signup with callback URL - UPDATED with mocking support
+ * Send email verification for two-step signup with callback URL - UPDATED with metadata support
  */
-export async function sendSignupEmailVerification(email: string, token: string, callbackUrl: string): Promise<void> {
-  /* BUILD_REMOVE_START */
-  if (emailMock.isEnabled()) {
-    logger.info('Using mock email service for sendSignupEmailVerification');
-    return sendSignupEmailVerificationMock(email, token, callbackUrl);
-  }
-  /* BUILD_REMOVE_END */
-
+export async function sendSignupEmailVerification(
+  email: string,
+  token: string,
+  callbackUrl: string,
+  metadata?: SendEmailOptions['metadata'],
+): Promise<void> {
   // Original implementation continues here...
   if (!email || !token || !callbackUrl) {
     throw new ValidationError('Email, token, and callbackUrl are required for signup email verification');
@@ -355,6 +443,13 @@ export async function sendSignupEmailVerification(email: string, token: string, 
 
   // Validate callback URL
   ValidationUtils.validateUrl(callbackUrl, 'Callback URL');
+
+  /* BUILD_REMOVE_START */
+  if (emailMock.isEnabled()) {
+    logger.info('Using mock email service for sendSignupEmailVerification');
+    return sendSignupEmailVerificationMock(email, token, callbackUrl, metadata);
+  }
+  /* BUILD_REMOVE_END */
 
   // Construct verification URL with token as query parameter
   const verificationUrl = `${callbackUrl}?token=${encodeURIComponent(token)}`;

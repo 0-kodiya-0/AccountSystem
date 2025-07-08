@@ -1,7 +1,9 @@
 import { EmailTemplate } from '../../feature/email/Email.types';
 import { logger } from '../../utils/logger';
 import { getEmailMockConfig, type EmailMockConfig } from '../../config/mock.config';
-import { loadTemplate } from '../../feature/email';
+import { loadTemplate, validateTemplateVariables } from '../../feature/email';
+import { getAppName } from '../../config/env.config';
+import { ValidationError } from '../../types/response.types';
 
 export interface MockEmailMessage {
   id: string;
@@ -15,6 +17,45 @@ export interface MockEmailMessage {
   timestamp: Date;
   status: 'sent' | 'failed' | 'pending';
   error?: string;
+
+  // Enhanced metadata for testing
+  metadata?: {
+    // Test identification
+    testId?: string;
+    testName?: string;
+    testSuite?: string;
+
+    // User/Account context
+    accountId?: string;
+    userId?: string;
+    accountType?: string;
+
+    // Request context
+    requestId?: string;
+    sessionId?: string;
+    userAgent?: string;
+    ipAddress?: string;
+
+    // Email flow context
+    emailFlow?: string; // e.g., 'signup', 'password-reset', 'login-notification'
+    flowStep?: string; // e.g., 'initial', 'reminder', 'final'
+    triggerReason?: string; // e.g., 'user-action', 'scheduled', 'system-event'
+
+    // Business context
+    feature?: string; // e.g., 'authentication', 'notifications', 'billing'
+    action?: string; // e.g., 'create-account', 'reset-password', 'enable-2fa'
+
+    // Testing specific
+    tags?: string[]; // e.g., ['integration', 'e2e', 'regression']
+    testData?: Record<string, any>; // Custom test data
+
+    // Any additional custom fields can be added directly at this level
+    [key: string]: any;
+  };
+}
+
+export interface SendEmailOptions {
+  metadata?: MockEmailMessage['metadata'];
 }
 
 class EmailServiceMock {
@@ -52,11 +93,13 @@ class EmailServiceMock {
     return { ...this.config };
   }
 
+  // Enhanced sendEmail method with metadata support
   async sendEmail(
     to: string,
     subject: string,
     template: EmailTemplate,
     variables: Record<string, string>,
+    options?: SendEmailOptions,
   ): Promise<void> {
     if (!this.isEnabled()) {
       throw new Error('Email mock is not enabled');
@@ -64,6 +107,13 @@ class EmailServiceMock {
 
     // Refresh config in case it was updated
     this.refreshConfig();
+
+    if (!to || !to.trim()) {
+      throw new ValidationError('Recipient email is required');
+    }
+    if (!subject || !subject.trim()) {
+      throw new ValidationError('Email subject is required');
+    }
 
     // Check if email should be blocked
     if (this.config.blockEmails.includes(to)) {
@@ -73,7 +123,7 @@ class EmailServiceMock {
     // Check if we should simulate failure
     if (this.shouldSimulateFailure(to)) {
       const error = `Simulated email failure for ${to}`;
-      this.logFailedEmail(to, subject, template, variables, error);
+      this.logFailedEmail(to, subject, template, variables, error, options?.metadata);
       throw new Error(error);
     }
 
@@ -96,6 +146,7 @@ class EmailServiceMock {
       variables,
       timestamp: new Date(),
       status: 'sent',
+      metadata: options?.metadata,
     };
 
     this.sentEmails.push(message);
@@ -106,8 +157,20 @@ class EmailServiceMock {
         template,
         to,
         subject,
+        metadata: message.metadata,
       });
     }
+  }
+
+  // Enhanced method for convenience - directly pass metadata
+  async sendEmailWithMetadata(
+    to: string,
+    subject: string,
+    template: EmailTemplate,
+    variables: Record<string, string>,
+    metadata: MockEmailMessage['metadata'],
+  ): Promise<void> {
+    return this.sendEmail(to, subject, template, variables, { metadata });
   }
 
   private shouldSimulateFailure(email: string): boolean {
@@ -128,6 +191,7 @@ class EmailServiceMock {
     template: EmailTemplate,
     variables: Record<string, string>,
     error: string,
+    metadata?: MockEmailMessage['metadata'],
   ): void {
     const failedMessage: MockEmailMessage = {
       id: this.generateMessageId(),
@@ -141,6 +205,7 @@ class EmailServiceMock {
       timestamp: new Date(),
       status: 'failed',
       error,
+      metadata,
     };
 
     this.sentEmails.push(failedMessage);
@@ -149,6 +214,7 @@ class EmailServiceMock {
       logger.error(`Mock email failed: ${template} to ${to}`, {
         messageId: failedMessage.id,
         error,
+        metadata,
       });
     }
   }
@@ -165,32 +231,9 @@ class EmailServiceMock {
     template: EmailTemplate,
     variables: Record<string, string>,
   ): Promise<{ html: string; text: string }> {
+    let htmlTemplate: string | null = '';
     try {
-      const htmlTemplate = await loadTemplate(template);
-
-      // Add common variables
-      const allVariables = {
-        APP_NAME: 'AccountSystem',
-        YEAR: new Date().getFullYear().toString(),
-        ...variables,
-      };
-
-      // Replace template variables with actual values
-      let html = htmlTemplate;
-      Object.entries(allVariables).forEach(([key, value]) => {
-        const regex = new RegExp(`{{${key}}}`, 'g');
-        html = html.replace(regex, value || '');
-      });
-
-      // Generate plain text version from HTML
-      const text = html
-        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-        .replace(/<[^>]*>/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-      return { html, text };
+      htmlTemplate = await loadTemplate(template);
     } catch (error) {
       // Fallback to simple template if loading fails
       logger.warn(`Failed to load email template ${template}, using fallback`, error);
@@ -216,9 +259,35 @@ class EmailServiceMock {
 
       return { html, text };
     }
+
+    // Add common variables
+    const allVariables = {
+      APP_NAME: getAppName(),
+      YEAR: new Date().getFullYear().toString(),
+      ...variables,
+    };
+
+    validateTemplateVariables(template, allVariables);
+
+    // Replace template variables with actual values
+    let html = htmlTemplate;
+    Object.entries(allVariables).forEach(([key, value]) => {
+      const regex = new RegExp(`{{${key}}}`, 'g');
+      html = html.replace(regex, value || '');
+    });
+
+    // Generate plain text version from HTML
+    const text = html
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<[^>]*>/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return { html, text };
   }
 
-  // API methods for E2E testing
+  // Basic API methods for E2E testing
   getSentEmails(): MockEmailMessage[] {
     return [...this.sentEmails];
   }
@@ -236,11 +305,118 @@ class EmailServiceMock {
     return emails.length > 0 ? emails[emails.length - 1] : null;
   }
 
+  // Enhanced filtering methods using metadata
+  getEmailsByMetadata(filter: {
+    testId?: string;
+    testName?: string;
+    testSuite?: string;
+    accountId?: string;
+    userId?: string;
+    emailFlow?: string;
+    flowStep?: string;
+    feature?: string;
+    action?: string;
+    tags?: string[];
+    [key: string]: any; // Support for custom fields
+  }): MockEmailMessage[] {
+    return this.sentEmails.filter((email) => {
+      if (!email.metadata) return false;
+
+      // Check each filter criteria
+      if (filter.testId && email.metadata.testId !== filter.testId) return false;
+      if (filter.testName && email.metadata.testName !== filter.testName) return false;
+      if (filter.testSuite && email.metadata.testSuite !== filter.testSuite) return false;
+      if (filter.accountId && email.metadata.accountId !== filter.accountId) return false;
+      if (filter.userId && email.metadata.userId !== filter.userId) return false;
+      if (filter.emailFlow && email.metadata.emailFlow !== filter.emailFlow) return false;
+      if (filter.flowStep && email.metadata.flowStep !== filter.flowStep) return false;
+      if (filter.feature && email.metadata.feature !== filter.feature) return false;
+      if (filter.action && email.metadata.action !== filter.action) return false;
+
+      // Check tags (if any of the filter tags exist in email tags)
+      if (filter.tags && filter.tags.length > 0) {
+        if (!email.metadata.tags || !filter.tags.some((tag) => email.metadata.tags!.includes(tag))) {
+          return false;
+        }
+      }
+
+      // Check custom fields
+      for (const [key, value] of Object.entries(filter)) {
+        if (
+          [
+            'testId',
+            'testName',
+            'testSuite',
+            'accountId',
+            'userId',
+            'emailFlow',
+            'flowStep',
+            'feature',
+            'action',
+            'tags',
+          ].includes(key)
+        ) {
+          continue; // Skip already handled fields
+        }
+        if (email.metadata[key] !== value) return false;
+      }
+
+      return true;
+    });
+  }
+
+  // Get emails by test context
+  getEmailsByTestContext(testId?: string, testName?: string, testSuite?: string): MockEmailMessage[] {
+    return this.getEmailsByMetadata({ testId, testName, testSuite });
+  }
+
+  // Get emails by user/account context
+  getEmailsByUserContext(accountId?: string, userId?: string): MockEmailMessage[] {
+    return this.getEmailsByMetadata({ accountId, userId });
+  }
+
+  // Get emails by flow context
+  getEmailsByFlow(emailFlow: string, flowStep?: string): MockEmailMessage[] {
+    return this.getEmailsByMetadata({ emailFlow, flowStep });
+  }
+
+  // Get emails by feature/action
+  getEmailsByFeature(feature: string, action?: string): MockEmailMessage[] {
+    return this.getEmailsByMetadata({ feature, action });
+  }
+
+  // Get emails by tags
+  getEmailsByTags(tags: string[]): MockEmailMessage[] {
+    return this.getEmailsByMetadata({ tags });
+  }
+
+  // Get latest email with metadata filter
+  getLatestEmailByMetadata(filter: Parameters<EmailServiceMock['getEmailsByMetadata']>[0]): MockEmailMessage | null {
+    const emails = this.getEmailsByMetadata(filter);
+    return emails.length > 0 ? emails[emails.length - 1] : null;
+  }
+
+  // Clear all emails
   clearSentEmails(): void {
     this.sentEmails = [];
     if (this.config.logEmails) {
       logger.info('Mock email history cleared');
     }
+  }
+
+  // Clear emails by metadata filter
+  clearEmailsByMetadata(filter: Parameters<EmailServiceMock['getEmailsByMetadata']>[0]): number {
+    const emailsToRemove = this.getEmailsByMetadata(filter);
+    const countToRemove = emailsToRemove.length;
+
+    // Remove emails that match the filter
+    this.sentEmails = this.sentEmails.filter((email) => !emailsToRemove.includes(email));
+
+    if (this.config.logEmails && countToRemove > 0) {
+      logger.info(`Cleared ${countToRemove} emails matching metadata filter`, filter);
+    }
+
+    return countToRemove;
   }
 
   getStats(): {
@@ -249,6 +425,14 @@ class EmailServiceMock {
     sentByTemplate: Record<string, number>;
     failedByTemplate: Record<string, number>;
     recentEmails: MockEmailMessage[];
+    // Enhanced stats with metadata breakdowns
+    byMetadata: {
+      byTestSuite: Record<string, number>;
+      byEmailFlow: Record<string, number>;
+      byFeature: Record<string, number>;
+      byAction: Record<string, number>;
+      byTags: Record<string, number>;
+    };
   } {
     const sentEmails = this.sentEmails.filter((email) => email.status === 'sent');
     const failedEmails = this.sentEmails.filter((email) => email.status === 'failed');
@@ -259,8 +443,16 @@ class EmailServiceMock {
       sentByTemplate: {} as Record<string, number>,
       failedByTemplate: {} as Record<string, number>,
       recentEmails: this.sentEmails.slice(-10), // Last 10 emails
+      byMetadata: {
+        byTestSuite: {} as Record<string, number>,
+        byEmailFlow: {} as Record<string, number>,
+        byFeature: {} as Record<string, number>,
+        byAction: {} as Record<string, number>,
+        byTags: {} as Record<string, number>,
+      },
     };
 
+    // Existing template stats
     sentEmails.forEach((email) => {
       if (email.template) {
         stats.sentByTemplate[email.template] = (stats.sentByTemplate[email.template] || 0) + 1;
@@ -270,6 +462,42 @@ class EmailServiceMock {
     failedEmails.forEach((email) => {
       if (email.template) {
         stats.failedByTemplate[email.template] = (stats.failedByTemplate[email.template] || 0) + 1;
+      }
+    });
+
+    // Metadata stats
+    this.sentEmails.forEach((email) => {
+      if (email.metadata) {
+        // Test suite stats
+        if (email.metadata.testSuite) {
+          stats.byMetadata.byTestSuite[email.metadata.testSuite] =
+            (stats.byMetadata.byTestSuite[email.metadata.testSuite] || 0) + 1;
+        }
+
+        // Email flow stats
+        if (email.metadata.emailFlow) {
+          stats.byMetadata.byEmailFlow[email.metadata.emailFlow] =
+            (stats.byMetadata.byEmailFlow[email.metadata.emailFlow] || 0) + 1;
+        }
+
+        // Feature stats
+        if (email.metadata.feature) {
+          stats.byMetadata.byFeature[email.metadata.feature] =
+            (stats.byMetadata.byFeature[email.metadata.feature] || 0) + 1;
+        }
+
+        // Action stats
+        if (email.metadata.action) {
+          stats.byMetadata.byAction[email.metadata.action] =
+            (stats.byMetadata.byAction[email.metadata.action] || 0) + 1;
+        }
+
+        // Tags stats
+        if (email.metadata.tags) {
+          email.metadata.tags.forEach((tag) => {
+            stats.byMetadata.byTags[tag] = (stats.byMetadata.byTags[tag] || 0) + 1;
+          });
+        }
       }
     });
 

@@ -1,125 +1,84 @@
 import { Request, Response, NextFunction } from 'express';
-import { emailMock } from '../../../mocks/email/EmailServiceMock';
-import { updateEmailMockConfig, getEmailMockConfig, validateEmailMockConfig } from '../../../config/mock.config';
 import { JsonSuccess, BadRequestError, ApiErrorCode } from '../../../types/response.types';
 import { asyncHandler } from '../../../utils/response';
 import { EmailTemplate } from '../Email.types';
+import * as EmailMockService from './Email.service.mock';
 
 /**
  * Get email mock status and configuration
  * GET /mock/email/status
  */
 export const getStatus = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const config = getEmailMockConfig();
-
-  next(
-    new JsonSuccess({
-      enabled: emailMock.isEnabled(),
-      config,
-      stats: emailMock.getStats(),
-    }),
-  );
+  const status = EmailMockService.getStatus();
+  next(new JsonSuccess(status));
 });
 
 /**
- * Update email mock configuration
- * POST /mock/email/config
- */
-export const updateConfig = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const updates = req.body;
-
-  // Validate the updates
-  const validFields = [
-    'logEmails',
-    'simulateDelay',
-    'delayMs',
-    'simulateFailures',
-    'failureRate',
-    'failOnEmails',
-    'blockEmails',
-  ];
-
-  const invalidFields = Object.keys(updates).filter((key) => !validFields.includes(key));
-  if (invalidFields.length > 0) {
-    throw new BadRequestError(
-      `Invalid configuration fields: ${invalidFields.join(', ')}`,
-      400,
-      ApiErrorCode.INVALID_PARAMETERS,
-    );
-  }
-
-  // Update the configuration
-  updateEmailMockConfig(updates);
-
-  // Refresh the email mock config
-  emailMock.refreshConfig();
-
-  next(
-    new JsonSuccess({
-      message: 'Email mock configuration updated successfully',
-      config: getEmailMockConfig(),
-    }),
-  );
-});
-
-/**
- * Get sent emails (for E2E testing)
+ * Get sent emails with enhanced filtering
  * GET /mock/email/sent
  */
 export const getSentEmails = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const { email, template, limit } = req.query;
+  const {
+    email,
+    template,
+    limit,
+    // Metadata filters
+    testId,
+    testName,
+    testSuite,
+    accountId,
+    userId,
+    emailFlow,
+    flowStep,
+    feature,
+    action,
+    tags,
+    ...customFilters
+  } = req.query;
 
-  let emails = emailMock.getSentEmails();
+  const filters = {
+    email: email as string,
+    template: template as EmailTemplate,
+    limit: limit ? parseInt(limit as string) : undefined,
+    metadata: {
+      testId: testId as string,
+      testName: testName as string,
+      testSuite: testSuite as string,
+      accountId: accountId as string,
+      userId: userId as string,
+      emailFlow: emailFlow as string,
+      flowStep: flowStep as string,
+      feature: feature as string,
+      action: action as string,
+      tags: tags ? (tags as string).split(',').map((tag) => tag.trim()) : undefined,
+      ...customFilters,
+    },
+  };
 
-  if (email && typeof email === 'string') {
-    emails = emails.filter((msg) => msg.to === email);
-  }
-
-  if (template && typeof template === 'string') {
-    emails = emails.filter((msg) => msg.template === template);
-  }
-
-  if (limit && typeof limit === 'string') {
-    const limitNum = parseInt(limit);
-    if (!isNaN(limitNum)) {
-      emails = emails.slice(-limitNum);
-    }
-  }
-
-  next(
-    new JsonSuccess({
-      emails,
-      count: emails.length,
-      total: emailMock.getSentEmails().length,
-    }),
-  );
+  const result = EmailMockService.getSentEmails(filters);
+  next(new JsonSuccess(result));
 });
 
 /**
- * Get latest email for specific address (useful for E2E tests)
+ * Get latest email for specific address
  * GET /mock/email/latest/:email
  */
 export const getLatestEmail = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { email } = req.params;
-  const { template } = req.query;
+  const { template, ...metadataQuery } = req.query;
 
-  let latestEmail = emailMock.getLatestEmailForAddress(email);
+  const filters = {
+    template: template as EmailTemplate,
+    metadata: metadataQuery,
+  };
 
-  if (template && latestEmail && latestEmail.template !== template) {
-    const templateEmails = emailMock.getEmailsByTemplate(template as EmailTemplate).filter((msg) => msg.to === email);
-    latestEmail = templateEmails.length > 0 ? templateEmails[templateEmails.length - 1] : null;
-  }
+  const result = EmailMockService.getLatestEmail(email, filters);
 
-  if (!latestEmail) {
+  if (!result.found) {
     throw new BadRequestError(`No email found for ${email}`, 404, ApiErrorCode.RESOURCE_NOT_FOUND);
   }
 
-  next(
-    new JsonSuccess({
-      email: latestEmail,
-      found: true,
-    }),
-  );
+  next(new JsonSuccess(result));
 });
 
 /**
@@ -127,41 +86,57 @@ export const getLatestEmail = asyncHandler(async (req: Request, res: Response, n
  * DELETE /mock/email/clear
  */
 export const clearSentEmails = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  emailMock.clearSentEmails();
+  const { testId, testName, testSuite, accountId, userId, emailFlow, feature, action, ...customFilters } = req.query;
 
-  next(
-    new JsonSuccess({
-      message: 'Email history cleared successfully',
-      cleared: true,
-    }),
-  );
+  const metadataFilter = {
+    testId: testId as string,
+    testName: testName as string,
+    testSuite: testSuite as string,
+    accountId: accountId as string,
+    userId: userId as string,
+    emailFlow: emailFlow as string,
+    feature: feature as string,
+    action: action as string,
+    ...customFilters,
+  };
+
+  const result = EmailMockService.clearEmails(metadataFilter);
+  next(new JsonSuccess(result));
 });
 
 /**
- * Test email sending (for E2E testing)
+ * Clear all emails
+ * DELETE /mock/email/clear-all
+ */
+export const clearAllEmails = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  const result = EmailMockService.clearAllEmails();
+  next(new JsonSuccess(result));
+});
+
+/**
+ * Test email sending with metadata support
  * POST /mock/email/test-send
  */
 export const testSendEmail = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const { to, template, variables } = req.body;
+  const { to, template, variables, metadata } = req.body;
 
   if (!to || !template) {
     throw new BadRequestError('Missing required fields: to, template', 400, ApiErrorCode.MISSING_DATA);
   }
 
-  if (!emailMock.isEnabled()) {
-    throw new BadRequestError('Email mock is not enabled', 400, ApiErrorCode.INVALID_REQUEST);
-  }
+  const result = await EmailMockService.testSendEmail({
+    to,
+    template: template as EmailTemplate,
+    variables: variables || {},
+    metadata: metadata || {
+      testId: `test-${Date.now()}`,
+      testName: 'Manual Test Send',
+      feature: 'email-testing',
+      action: 'test-send',
+    },
+  });
 
-  // Send test email through the mock system
-  await emailMock.sendEmail(to, `Test Email - ${template}`, template as EmailTemplate, variables || {});
-
-  next(
-    new JsonSuccess({
-      message: 'Test email sent successfully',
-      to,
-      template,
-    }),
-  );
+  next(new JsonSuccess(result));
 });
 
 /**
@@ -170,51 +145,58 @@ export const testSendEmail = asyncHandler(async (req: Request, res: Response, ne
  */
 export const getEmailsByTemplate = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { template } = req.params;
-  const { limit } = req.query;
+  const { limit, ...metadataQuery } = req.query;
 
-  let emails = emailMock.getEmailsByTemplate(template as EmailTemplate);
+  const filters = {
+    limit: limit ? parseInt(limit as string) : undefined,
+    metadata: metadataQuery,
+  };
 
-  if (limit && typeof limit === 'string') {
-    const limitNum = parseInt(limit);
-    if (!isNaN(limitNum)) {
-      emails = emails.slice(-limitNum);
-    }
-  }
-
-  next(
-    new JsonSuccess({
-      template,
-      emails,
-      count: emails.length,
-    }),
-  );
+  const result = EmailMockService.getEmailsByTemplate(template as EmailTemplate, filters);
+  next(new JsonSuccess(result));
 });
 
 /**
- * Validate email mock configuration
- * POST /mock/email/validate-config
+ * Search emails by metadata criteria
+ * POST /mock/email/search
  */
-export const validateConfig = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const config = req.body;
+export const searchEmailsByMetadata = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  const { filter, limit } = req.body;
 
-  try {
-    // Validate the provided config
-    const validatedConfig = validateEmailMockConfig(config);
-
-    next(
-      new JsonSuccess({
-        valid: true,
-        message: 'Configuration is valid',
-        validatedConfig,
-      }),
-    );
-  } catch (error) {
-    throw new BadRequestError(
-      `Invalid configuration: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      400,
-      ApiErrorCode.VALIDATION_ERROR,
-    );
+  if (!filter || typeof filter !== 'object') {
+    throw new BadRequestError('Filter object is required', 400, ApiErrorCode.MISSING_DATA);
   }
+
+  const result = EmailMockService.searchByMetadata(filter, limit);
+  next(new JsonSuccess(result));
+});
+
+/**
+ * Get emails by test context
+ * GET /mock/email/test/:testId
+ */
+export const getEmailsByTestId = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  const { testId } = req.params;
+  const { limit } = req.query;
+
+  const result = EmailMockService.getEmailsByTestContext(testId, limit ? parseInt(limit as string) : undefined);
+  next(new JsonSuccess(result));
+});
+
+/**
+ * Get emails by flow
+ * GET /mock/email/flow/:flowName
+ */
+export const getEmailsByFlow = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  const { flowName } = req.params;
+  const { flowStep, limit } = req.query;
+
+  const result = EmailMockService.getEmailsByFlow(
+    flowName,
+    flowStep as string,
+    limit ? parseInt(limit as string) : undefined,
+  );
+  next(new JsonSuccess(result));
 });
 
 /**
@@ -222,23 +204,24 @@ export const validateConfig = asyncHandler(async (req: Request, res: Response, n
  * GET /mock/email/templates
  */
 export const getAvailableTemplates = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  // Get all available email templates
-  const templates = Object.values(EmailTemplate);
+  const result = EmailMockService.getAvailableTemplates();
+  next(new JsonSuccess(result));
+});
 
-  // Get usage statistics for each template
-  const stats = emailMock.getStats();
+/**
+ * Get enhanced statistics with metadata breakdowns
+ * GET /mock/email/stats
+ */
+export const getEnhancedStats = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  const stats = EmailMockService.getEnhancedStats();
+  next(new JsonSuccess(stats));
+});
 
-  const templateInfo = templates.map((template) => ({
-    name: template,
-    displayName: template.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
-    sentCount: stats.sentByTemplate[template] || 0,
-    failedCount: stats.failedByTemplate[template] || 0,
-  }));
-
-  next(
-    new JsonSuccess({
-      templates: templateInfo,
-      totalTemplates: templates.length,
-    }),
-  );
+/**
+ * Get metadata insights
+ * GET /mock/email/metadata/insights
+ */
+export const getMetadataInsights = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  const insights = EmailMockService.getMetadataInsights();
+  next(new JsonSuccess(insights));
 });
