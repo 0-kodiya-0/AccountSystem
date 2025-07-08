@@ -391,15 +391,6 @@ export async function getProviderInformation(provider: OAuthProviders): Promise<
   };
 }
 
-export function getOAuthMockStatus(): OAuthMockStatusResponse {
-  const stats = oauthMockService.getStats();
-
-  return {
-    enabled: oauthMockService.isEnabled(),
-    ...stats,
-  };
-}
-
 export function clearOAuthMockCache(): OAuthCacheResponse {
   oauthMockService.clearCaches();
 

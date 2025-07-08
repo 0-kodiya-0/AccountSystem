@@ -106,29 +106,3 @@ export interface GetTokenInfoResponse {
   accessToken: TokenInfo;
   refreshToken: TokenInfo;
 }
-
-export interface BatchCreateTokensRequest {
-  accounts: Array<{
-    accountId: string;
-    accountType: AccountType;
-    oauthAccessToken?: string;
-    oauthRefreshToken?: string;
-  }>;
-  setCookies?: boolean;
-}
-
-export interface BatchTokenResult {
-  accountId: string;
-  accountType?: AccountType;
-  success: boolean;
-  accessToken?: string;
-  refreshToken?: string;
-  error?: string;
-}
-
-export interface BatchCreateTokensResponse {
-  message: string;
-  results: BatchTokenResult[];
-  successful: number;
-  failed: number;
-}

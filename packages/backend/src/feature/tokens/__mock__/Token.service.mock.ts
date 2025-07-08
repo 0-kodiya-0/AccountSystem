@@ -29,9 +29,6 @@ import {
   CreateMalformedTokenResponse,
   ClearTokensResponse,
   GetTokenInfoResponse,
-  BatchCreateTokensRequest,
-  BatchCreateTokensResponse,
-  BatchTokenResult,
 } from './Token.types.mock';
 
 export function getTokenMockStatusData(req: Request): TokenMockStatusData {
@@ -393,70 +390,4 @@ export function getMockTokenInfoForAccount(req: Request, accountId: string): Get
   }
 
   return tokenInfo;
-}
-
-export function createBatchMockTokens(
-  req: Request,
-  res: Response,
-  data: BatchCreateTokensRequest,
-): BatchCreateTokensResponse {
-  const { accounts, setCookies = false } = data;
-
-  if (!accounts || !Array.isArray(accounts)) {
-    throw new BadRequestError('accounts array is required', 400, ApiErrorCode.MISSING_DATA);
-  }
-
-  if (accounts.length > 10) {
-    throw new BadRequestError('Cannot create tokens for more than 10 accounts', 400, ApiErrorCode.INVALID_PARAMETERS);
-  }
-
-  const results: BatchTokenResult[] = [];
-
-  for (const account of accounts) {
-    const { accountId, accountType, oauthAccessToken, oauthRefreshToken } = account;
-
-    ValidationUtils.validateObjectId(accountId, 'Account ID');
-    ValidationUtils.validateEnum(accountType, AccountType, 'Account Type');
-
-    let accessToken: string;
-    let refreshToken: string;
-
-    if (accountType === AccountType.Local) {
-      accessToken = createLocalAccessToken(accountId);
-      refreshToken = createLocalRefreshToken(accountId);
-    } else {
-      if (!oauthAccessToken || !oauthRefreshToken) {
-        results.push({
-          accountId,
-          success: false,
-          error: 'OAuth tokens required for OAuth accounts',
-        });
-        continue;
-      }
-      accessToken = createOAuthAccessToken(accountId, oauthAccessToken);
-      refreshToken = createOAuthRefreshToken(accountId, oauthRefreshToken);
-    }
-
-    if (setCookies) {
-      setAccessTokenCookie(req, res, accountId, accessToken, 3600 * 1000);
-      setRefreshTokenCookie(req, res, accountId, refreshToken);
-    }
-
-    results.push({
-      accountId,
-      accountType,
-      success: true,
-      accessToken,
-      refreshToken,
-    });
-  }
-
-  logger.info('Batch mock tokens created', { accountCount: accounts.length, setCookies });
-
-  return {
-    message: `Batch token creation completed`,
-    results,
-    successful: results.filter((r) => r.success).length,
-    failed: results.filter((r) => !r.success).length,
-  };
 }

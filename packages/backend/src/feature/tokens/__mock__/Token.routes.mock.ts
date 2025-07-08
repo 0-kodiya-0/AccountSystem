@@ -91,18 +91,6 @@ tokenMockRouter.post('/expired/create', TokenMockController.createExpiredMockTok
 tokenMockRouter.post('/malformed/create', TokenMockController.createMalformedMockToken);
 
 /**
- * Batch Operations
- */
-
-/**
- * @route POST /mock/token/batch/create
- * @desc Create tokens for multiple accounts
- * @access Public (development/test only)
- * @body { accounts: Array<{accountId: string, accountType: AccountType, oauthAccessToken?: string, oauthRefreshToken?: string}>, setCookies?: boolean }
- */
-tokenMockRouter.post('/batch/create', TokenMockController.createBatchMockTokens);
-
-/**
  * Token Cleanup
  */
 

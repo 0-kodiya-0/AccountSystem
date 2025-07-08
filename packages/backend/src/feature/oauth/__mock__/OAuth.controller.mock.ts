@@ -74,15 +74,6 @@ export const getProviderInfo = asyncHandler(async (req: Request, res: Response, 
 // ============================================================================
 
 /**
- * Get OAuth mock status and configuration
- * GET /mock/oauth/status
- */
-export const getOAuthMockStatus = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const status = OAuthMockService.getOAuthMockStatus();
-  next(new JsonSuccess(status));
-});
-
-/**
  * Clear OAuth mock cache
  * DELETE /mock/oauth/clear
  */

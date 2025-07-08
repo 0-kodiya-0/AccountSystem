@@ -83,12 +83,3 @@ export const getMockTokenInfo = asyncHandler(async (req: Request, res: Response,
   const result = TokenMockService.getMockTokenInfoForAccount(req, req.params.accountId);
   next(new JsonSuccess(result));
 });
-
-/**
- * Batch create tokens for multiple accounts
- * POST /mock/token/batch/create
- */
-export const createBatchMockTokens = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const result = TokenMockService.createBatchMockTokens(req, res, req.body);
-  next(new JsonSuccess(result));
-});
