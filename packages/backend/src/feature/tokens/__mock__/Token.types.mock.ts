@@ -1,7 +1,6 @@
 import { AccountType } from '../../account/Account.types';
 
 export interface GetTokenInfoResponse {
-  enabled: boolean;
   tokenCookies: Record<string, TokenCookieInfo>;
   tokenCount: number;
 }

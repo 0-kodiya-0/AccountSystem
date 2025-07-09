@@ -65,7 +65,6 @@ export function getTokenInfoMock(req: Request): GetTokenInfoResponse {
     }, {} as Record<string, TokenCookieInfo>);
 
   return {
-    enabled: true,
     tokenCookies,
     tokenCount: Object.keys(tokenCookies).length,
   };
