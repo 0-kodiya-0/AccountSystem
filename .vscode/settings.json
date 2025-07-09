@@ -20,5 +20,6 @@
       "fileMatch": ["nodemon.json", "**/nodemon.json"],
       "url": "https://json.schemastore.org/nodemon.json"
     }
-  ]
+  ],
+  "terminal.integrated.scrollback": 5000
 }
