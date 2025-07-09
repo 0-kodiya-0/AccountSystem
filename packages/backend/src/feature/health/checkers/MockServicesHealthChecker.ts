@@ -6,6 +6,7 @@ import { emailMock } from '../../../mocks/email/EmailServiceMock';
 import * as SessionMock from '../../session/__mock__/Session.service.mock';
 import * as TokenMock from '../../tokens/__mock__/Token.service.mock';
 import * as TwoFAMock from '../../twofa/__mock__/TwoFA.service.mock';
+import * as AccountMock from '../../account/__mock__/Account.service.mock';
 /* BUILD_REMOVE_END */
 import {
   getNodeEnv,
@@ -58,6 +59,7 @@ export class MockServicesHealthChecker implements HealthChecker {
       const sessionStatus = SessionMock.getSessionMockStatus(req);
       const tokenStatus = TokenMock.getTokenInfoMock(req);
       const twoFAStatus = TwoFAMock.getTwoFAStatus();
+      const accountStatus = AccountMock.getMockAccountStats();
 
       return {
         status: HealthStatus.HEALTHY,
@@ -74,6 +76,7 @@ export class MockServicesHealthChecker implements HealthChecker {
           session_mock: { enabled: true, stats: sessionStatus },
           token_mock: { enabled: true, stats: tokenStatus },
           twofa_mock: { enabled: true, stats: twoFAStatus },
+          account_mock: { enabled: true, stats: accountStatus },
         },
         timestamp: new Date().toISOString(),
         responseTime: Date.now() - start,
