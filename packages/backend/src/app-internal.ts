@@ -74,7 +74,7 @@ function createInternalApp(): express.Application {
   }
 
   // Health routes (no authentication required)
-  app.use('/health', internalHealthRouter);
+  app.use('/internal/health', internalAuthentication, internalHealthRouter);
 
   // Internal API routes (with authentication)
   app.use('/internal', internalAuthentication, internalRouter);
