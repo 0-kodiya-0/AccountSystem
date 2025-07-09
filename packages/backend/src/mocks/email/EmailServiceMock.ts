@@ -105,9 +105,6 @@ class EmailServiceMock {
       throw new Error('Email mock is not enabled');
     }
 
-    // Refresh config in case it was updated
-    this.refreshConfig();
-
     if (!to || !to.trim()) {
       throw new ValidationError('Recipient email is required');
     }
