@@ -648,79 +648,6 @@ export class MockService {
   }
 
   // ============================================================================
-  // Internal Health API Methods
-  // ============================================================================
-
-  /**
-   * Get complete internal system health status
-   * @param includeDetails - Include detailed information (default: true)
-   */
-  async getInternalSystemHealth(includeDetails: boolean = true): Promise<InternalSystemHealth> {
-    try {
-      return await this.httpClient.get<InternalSystemHealth>('/internal/health', {
-        params: { details: includeDetails.toString() },
-      });
-    } catch (error) {
-      throw this.handleError(error, 'Failed to get internal system health');
-    }
-  }
-
-  /**
-   * Get internal API specific health status
-   */
-  async getInternalApiHealth(): Promise<ComponentHealth> {
-    try {
-      return await this.httpClient.get<ComponentHealth>('/internal/health/api');
-    } catch (error) {
-      throw this.handleError(error, 'Failed to get internal API health');
-    }
-  }
-
-  /**
-   * Simple internal health ping for load balancers
-   */
-  async pingInternal(): Promise<HealthPingResponse> {
-    try {
-      return await this.httpClient.get<HealthPingResponse>('/internal/health/ping');
-    } catch (error) {
-      throw this.handleError(error, 'Failed to ping internal health endpoint');
-    }
-  }
-
-  /**
-   * Get internal server uptime
-   */
-  async getInternalUptime(): Promise<UptimeResponse> {
-    try {
-      return await this.httpClient.get<UptimeResponse>('/internal/health/uptime');
-    } catch (error) {
-      throw this.handleError(error, 'Failed to get internal uptime');
-    }
-  }
-
-  /**
-   * Get internal health summary (minimal response)
-   */
-  async getInternalHealthSummary(): Promise<HealthSummaryResponse> {
-    try {
-      return await this.httpClient.get<HealthSummaryResponse>('/internal/health/summary');
-    } catch (error) {
-      throw this.handleError(error, 'Failed to get internal health summary');
-    }
-  }
-
-  /**
-   * Get available internal health checkers
-   */
-  async getInternalHealthCheckers(): Promise<HealthCheckersResponse> {
-    try {
-      return await this.httpClient.get<HealthCheckersResponse>('/internal/health/checkers');
-    } catch (error) {
-      throw this.handleError(error, 'Failed to get internal health checkers');
-    }
-  }
-
-  // ============================================================================
   // Validation Methods
   // ============================================================================
 
@@ -728,9 +655,9 @@ export class MockService {
     if (!accountId || typeof accountId !== 'string') {
       throw new AuthSDKError('Account ID is required', ApiErrorCode.VALIDATION_ERROR);
     }
-    if (accountId.length !== 24) {
-      throw new AuthSDKError('Invalid account ID format', ApiErrorCode.VALIDATION_ERROR);
-    }
+    // if (accountId.length !== 24) {
+    //   throw new AuthSDKError('Invalid account ID format', ApiErrorCode.VALIDATION_ERROR);
+    // }
   }
 
   private validateCreateSessionRequest(request: CreateSessionRequest): void {

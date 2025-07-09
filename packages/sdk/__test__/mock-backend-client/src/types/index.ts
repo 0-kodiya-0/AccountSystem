@@ -237,11 +237,109 @@ export class AuthSDKError extends Error {
 // Mock Client Configuration
 // ============================================================================
 
-export interface MockClientConfig {
+/**
+ * Standard HTTP headers that can be included in requests
+ */
+export interface StandardHeaders {
+  // Content headers
+  'Content-Type'?: string;
+  'Content-Length'?: string;
+  'Content-Encoding'?: string;
+  'Content-Language'?: string;
+
+  // Authentication headers
+  Authorization?: string;
+  'WWW-Authenticate'?: string;
+  'Proxy-Authorization'?: string;
+
+  // Cache headers
+  'Cache-Control'?: string;
+  ETag?: string;
+  'If-Match'?: string;
+  'If-None-Match'?: string;
+  'If-Modified-Since'?: string;
+  'If-Unmodified-Since'?: string;
+  'Last-Modified'?: string;
+  Expires?: string;
+
+  // Client information headers
+  'User-Agent'?: string;
+  Accept?: string;
+  'Accept-Language'?: string;
+  'Accept-Encoding'?: string;
+  'Accept-Charset'?: string;
+
+  // Request headers
+  Host?: string;
+  Origin?: string;
+  Referer?: string;
+  'X-Forwarded-For'?: string;
+  'X-Real-IP'?: string;
+  'X-Forwarded-Host'?: string;
+  'X-Forwarded-Proto'?: string;
+
+  // CORS headers
+  'Access-Control-Request-Method'?: string;
+  'Access-Control-Request-Headers'?: string;
+
+  // Custom application headers
+  'X-API-Key'?: string;
+  'X-Client-Version'?: string;
+  'X-Request-ID'?: string;
+  'X-Correlation-ID'?: string;
+  'X-Session-ID'?: string;
+  'X-User-ID'?: string;
+  'X-Tenant-ID'?: string;
+  'X-Application-ID'?: string;
+
+  // Security headers
+  'X-Content-Type-Options'?: string;
+  'X-Frame-Options'?: string;
+  'X-XSS-Protection'?: string;
+  'Strict-Transport-Security'?: string;
+  'Content-Security-Policy'?: string;
+
+  // Rate limiting headers
+  'X-RateLimit-Limit'?: string;
+  'X-RateLimit-Remaining'?: string;
+  'X-RateLimit-Reset'?: string;
+  'Retry-After'?: string;
+
+  // Debugging headers
+  'X-Debug'?: string;
+  'X-Trace-ID'?: string;
+  'X-Span-ID'?: string;
+
+  // Custom business headers
+  'X-Feature-Flags'?: string;
+  'X-Environment'?: string;
+  'X-Region'?: string;
+  'X-Timezone'?: string;
+}
+
+/**
+ * Internal service specific headers for backend-to-backend communication
+ */
+export interface InternalServiceHeaders {
+  'X-Internal-Service-ID': string;
+  'X-Internal-Service-Name'?: string;
+  'X-Internal-Service-Secret'?: string;
+  'X-Internal-Request-ID'?: string;
+  'X-Service-Authorization'?: string;
+}
+
+export interface MockHttpClientConfig {
   baseUrl: string;
   timeout?: number;
   enableLogging?: boolean;
   withCredentials?: boolean;
+  defaultHeaders?: Partial<StandardHeaders & Record<string, string>>;
+}
+
+export interface MockClientConfig extends MockHttpClientConfig {}
+
+export interface MockInternalClientConfig extends MockHttpClientConfig {
+  defaultHeaders: Partial<StandardHeaders & Record<string, string>> & InternalServiceHeaders;
 }
 
 // ============================================================================

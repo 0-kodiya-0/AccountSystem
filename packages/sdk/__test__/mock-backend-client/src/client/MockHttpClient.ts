@@ -1,18 +1,11 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
-import { ApiErrorCode, AuthSDKError } from '../types';
-
-export interface MockClientConfig {
-  baseUrl: string;
-  timeout?: number;
-  enableLogging?: boolean;
-  withCredentials?: boolean;
-}
+import { ApiErrorCode, AuthSDKError, MockHttpClientConfig } from '../types';
 
 export class MockHttpClient {
   private client: AxiosInstance;
-  private config: MockClientConfig;
+  private config: MockHttpClientConfig;
 
-  constructor(config: MockClientConfig) {
+  constructor(config: MockHttpClientConfig) {
     this.config = {
       timeout: 30000,
       enableLogging: false,
@@ -25,6 +18,7 @@ export class MockHttpClient {
       timeout: this.config.timeout,
       headers: {
         'Content-Type': 'application/json',
+        ...(this.config.defaultHeaders || {}),
       },
       withCredentials: this.config.withCredentials,
     });
@@ -33,6 +27,34 @@ export class MockHttpClient {
   }
 
   private setupInterceptors(): void {
+    // Request interceptor to ensure default headers are always included
+    this.client.interceptors.request.use(
+      (config) => {
+        // Merge default headers with request-specific headers
+        if (this.config.defaultHeaders) {
+          Object.entries(this.config.defaultHeaders).forEach(([key, value]) => {
+            if (value !== undefined) {
+              config.headers.set(key, value);
+            }
+          });
+        }
+
+        if (this.config.enableLogging) {
+          console.debug(`[MockClient Request] ${config.method?.toUpperCase()} ${config.url}`, {
+            headers: config.headers.toJSON(),
+          });
+        }
+
+        return config;
+      },
+      (error) => {
+        if (this.config.enableLogging) {
+          console.error(`[MockClient Request Error] ${error.message}`);
+        }
+        return Promise.reject(error);
+      },
+    );
+
     this.client.interceptors.response.use(
       (response) => {
         if (this.config.enableLogging) {
@@ -118,7 +140,7 @@ export class MockHttpClient {
   /**
    * Get current configuration
    */
-  getConfig(): MockClientConfig {
+  getConfig(): MockHttpClientConfig {
     return { ...this.config };
   }
 }
