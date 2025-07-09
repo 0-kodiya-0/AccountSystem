@@ -1,9 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "module": "CommonJS",
-    "lib": ["ES2020"],
+    "module": "ESNext",
+    "lib": ["ES2020", "DOM"],
     "declaration": true,
+    "declarationMap": true,
     "emitDeclarationOnly": false,
     "outDir": "./dist",
     "rootDir": "./src",
@@ -12,11 +13,13 @@
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
-    "declarationMap": true,
-    "sourceMap": false
+    "isolatedModules": true,
+    "noEmit": false,
+    "sourceMap": false,
+    "removeComments": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
 }
