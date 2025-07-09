@@ -1,11 +1,12 @@
 import { SessionAccount } from '../session/session.types';
 import { logger } from '../../utils/logger';
 import { Account } from './Account.types';
+import { AccountDocument } from './Account.model';
 
 /**
  * Convert account document to safe account object (full account data)
  */
-export function toSafeAccount(accountDoc: any): Account | null {
+export function toSafeAccount(accountDoc: AccountDocument): Account | null {
   if (!accountDoc) return null;
 
   try {
@@ -42,7 +43,7 @@ export function toSafeAccount(accountDoc: any): Account | null {
  * Convert account document to safe session account object (minimal data for session)
  * Only includes basic identifying information needed for session management
  */
-export function toSafeSessionAccount(accountDoc: any): SessionAccount | null {
+export function toSafeSessionAccount(accountDoc: AccountDocument): SessionAccount | null {
   if (!accountDoc) return null;
 
   try {
