@@ -310,3 +310,102 @@ export async function generateMockBackupCodes(count: number = 10): Promise<{
     backupCodes,
   };
 }
+
+export async function getTwoFAStatus() {
+  const tempTokens = TwoFaCache.getAllTempTokens();
+  const setupTokens = TwoFaCache.getAllSetupTokens();
+  const cacheStats = TwoFaCache.getTwoFactorCacheStats();
+
+  // Calculate statistics for temp tokens
+  const tempTokenStats = {
+    total: tempTokens.length,
+    byAccountType: {} as Record<string, number>,
+    withOAuthTokens: tempTokens.filter((token) => !!token.oauthTokens).length,
+    expiring: {
+      in5Minutes: 0,
+      in15Minutes: 0,
+      in30Minutes: 0,
+    },
+  };
+
+  // Calculate statistics for setup tokens
+  const setupTokenStats = {
+    total: setupTokens.length,
+    byAccountType: {} as Record<string, number>,
+    expiring: {
+      in5Minutes: 0,
+      in15Minutes: 0,
+      in30Minutes: 0,
+    },
+  };
+
+  const now = new Date();
+
+  // Process temp tokens
+  tempTokens.forEach((token) => {
+    // Count by account type
+    tempTokenStats.byAccountType[token.accountType] = (tempTokenStats.byAccountType[token.accountType] || 0) + 1;
+
+    // Count expiring tokens
+    const expiresAt = new Date(token.expiresAt);
+    const timeUntilExpiry = expiresAt.getTime() - now.getTime();
+
+    if (timeUntilExpiry <= 5 * 60 * 1000) {
+      // 5 minutes
+      tempTokenStats.expiring.in5Minutes++;
+    } else if (timeUntilExpiry <= 15 * 60 * 1000) {
+      // 15 minutes
+      tempTokenStats.expiring.in15Minutes++;
+    } else if (timeUntilExpiry <= 30 * 60 * 1000) {
+      // 30 minutes
+      tempTokenStats.expiring.in30Minutes++;
+    }
+  });
+
+  // Process setup tokens
+  setupTokens.forEach((token) => {
+    // Count by account type
+    setupTokenStats.byAccountType[token.accountType] = (setupTokenStats.byAccountType[token.accountType] || 0) + 1;
+
+    // Count expiring tokens
+    const expiresAt = new Date(token.expiresAt);
+    const timeUntilExpiry = expiresAt.getTime() - now.getTime();
+
+    if (timeUntilExpiry <= 5 * 60 * 1000) {
+      // 5 minutes
+      setupTokenStats.expiring.in5Minutes++;
+    } else if (timeUntilExpiry <= 15 * 60 * 1000) {
+      // 15 minutes
+      setupTokenStats.expiring.in15Minutes++;
+    } else if (timeUntilExpiry <= 30 * 60 * 1000) {
+      // 30 minutes
+      setupTokenStats.expiring.in30Minutes++;
+    }
+  });
+
+  return {
+    cache: {
+      temp: {
+        size: cacheStats.temp.size,
+        max: cacheStats.temp.max,
+        utilization: Math.round((cacheStats.temp.size / cacheStats.temp.max) * 100),
+      },
+      setup: {
+        size: cacheStats.setup.size,
+        max: cacheStats.setup.max,
+        utilization: Math.round((cacheStats.setup.size / cacheStats.setup.max) * 100),
+      },
+    },
+    tempTokens: tempTokenStats,
+    setupTokens: setupTokenStats,
+    summary: {
+      totalActiveTokens: tempTokens.length + setupTokens.length,
+      totalCacheUsage: cacheStats.temp.size + cacheStats.setup.size,
+      totalCacheCapacity: cacheStats.temp.max + cacheStats.setup.max,
+      overallUtilization: Math.round(
+        ((cacheStats.temp.size + cacheStats.setup.size) / (cacheStats.temp.max + cacheStats.setup.max)) * 100,
+      ),
+    },
+    timestamp: new Date().toISOString(),
+  };
+}
