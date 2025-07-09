@@ -1,11 +1,13 @@
 import { HealthChecker, HealthCheckResult, HealthStatus } from '../Health.types';
 import { envConfig, getNodeEnv } from '../../../config/env.config';
+import { Request, Response } from 'express';
 
 export class EnvironmentHealthChecker implements HealthChecker {
   name = 'environment';
   critical = true;
 
-  async check(): Promise<HealthCheckResult> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async check(req: Request, res: Response): Promise<HealthCheckResult> {
     const start = Date.now();
 
     try {

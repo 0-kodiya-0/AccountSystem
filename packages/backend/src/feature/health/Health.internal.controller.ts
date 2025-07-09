@@ -10,7 +10,7 @@ import { HealthStatus } from './Health.types';
  */
 export const getInternalSystemHealth = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const includeDetails = req.query.details !== 'false';
-  const health = await internalHealthService.checkHealth(includeDetails);
+  const health = await internalHealthService.checkHealth(req, res, includeDetails);
 
   // Add internal server specific metadata
   const enhancedHealth = {
@@ -43,7 +43,7 @@ export const getInternalSystemHealth = asyncHandler(async (req: Request, res: Re
  * GET /health/api
  */
 export const getInternalApiHealth = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const apiHealth = await internalHealthService.checkSingleComponent('internal_api');
+  const apiHealth = await internalHealthService.checkSingleComponent(req, res, 'internal_api');
 
   if (!apiHealth) {
     // If component not found, return basic status
@@ -110,7 +110,7 @@ export const getInternalUptime = asyncHandler(async (req: Request, res: Response
  * GET /health/summary
  */
 export const getInternalHealthSummary = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const health = await internalHealthService.checkHealth(false);
+  const health = await internalHealthService.checkHealth(req, res, false);
 
   const summary = {
     status: health.status,

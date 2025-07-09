@@ -1,12 +1,14 @@
 import mongoose from 'mongoose';
 import { HealthChecker, HealthCheckResult, HealthStatus } from '../Health.types';
 import { getAuthConnectionStatus, getModels } from '../../../config/db.config';
+import { Request, Response } from 'express';
 
 export class DatabaseHealthChecker implements HealthChecker {
   name = 'database';
   critical = true;
 
-  async check(): Promise<HealthCheckResult> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async check(req: Request, res: Response): Promise<HealthCheckResult> {
     const start = Date.now();
 
     try {

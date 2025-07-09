@@ -1,7 +1,11 @@
+import { Request, Response } from 'express';
 import { HealthChecker, HealthCheckResult, HealthStatus } from '../Health.types';
 /* BUILD_REMOVE_START */
 import { oauthMockService } from '../../../mocks/oauth/OAuthMockService';
 import { emailMock } from '../../../mocks/email/EmailServiceMock';
+import * as SessionMock from '../../session/__mock__/Session.service.mock';
+import * as TokenMock from '../../tokens/__mock__/Token.service.mock';
+import * as TwoFAMock from '../../twofa/__mock__/TwoFA.service.mock';
 /* BUILD_REMOVE_END */
 import {
   getNodeEnv,
@@ -12,7 +16,8 @@ export class MockServicesHealthChecker implements HealthChecker {
   name = 'mock_services';
   critical = false;
 
-  async check(): Promise<HealthCheckResult> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async check(req: Request, res: Response): Promise<HealthCheckResult> {
     const start = Date.now();
 
     try {
@@ -50,6 +55,9 @@ export class MockServicesHealthChecker implements HealthChecker {
       // Check OAuth mock service
       const oauthStats = oauthMockService.getStats();
       const emailStats = emailMock.getStats();
+      const sessionStatus = SessionMock.getSessionMockStatus(req);
+      const tokenStatus = TokenMock.getTokenInfoMock(req);
+      const twoFAStatus = TwoFAMock.getTwoFAStatus();
 
       return {
         status: HealthStatus.HEALTHY,
@@ -63,6 +71,9 @@ export class MockServicesHealthChecker implements HealthChecker {
             enabled: emailMock.isEnabled(),
             stats: emailStats,
           },
+          session_mock: { enabled: true, stats: sessionStatus },
+          token_mock: { enabled: true, stats: tokenStatus },
+          twofa_mock: { enabled: true, stats: twoFAStatus },
         },
         timestamp: new Date().toISOString(),
         responseTime: Date.now() - start,

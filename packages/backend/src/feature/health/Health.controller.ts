@@ -10,7 +10,7 @@ import { HealthStatus } from './Health.types';
  */
 export const getSystemHealth = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const includeDetails = req.query.details !== 'false';
-  const health = await mainHealthService.checkHealth(includeDetails);
+  const health = await mainHealthService.checkHealth(req, res, includeDetails);
 
   // Set appropriate HTTP status code based on health
   let statusCode = 200;
@@ -30,7 +30,7 @@ export const getSystemHealth = asyncHandler(async (req: Request, res: Response, 
 export const getComponentHealth = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { component } = req.params;
 
-  const componentHealth = await mainHealthService.checkSingleComponent(component);
+  const componentHealth = await mainHealthService.checkSingleComponent(req, res, component);
 
   if (!componentHealth) {
     throw new NotFoundError(

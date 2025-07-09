@@ -1,3 +1,5 @@
+import { Request, Response } from 'express';
+
 export enum HealthStatus {
   HEALTHY = 'healthy',
   DEGRADED = 'degraded',
@@ -41,5 +43,5 @@ export interface SystemHealth {
 export interface HealthChecker {
   name: string;
   critical: boolean;
-  check(): Promise<HealthCheckResult>;
+  check(req: Request, res: Response): Promise<HealthCheckResult>;
 }

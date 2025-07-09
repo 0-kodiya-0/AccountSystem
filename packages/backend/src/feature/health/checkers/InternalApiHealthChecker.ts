@@ -8,12 +8,14 @@ import {
 } from '../../../config/env.config';
 import socketConfig from '../../../config/socket.config';
 import { logger } from '../../../utils/logger';
+import { Request, Response } from 'express';
 
 export class InternalApiHealthChecker implements HealthChecker {
   name = 'internal_api';
   critical = false; // Internal API is not critical for main application functionality
 
-  async check(): Promise<HealthCheckResult> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async check(req: Request, res: Response): Promise<HealthCheckResult> {
     const start = Date.now();
 
     try {

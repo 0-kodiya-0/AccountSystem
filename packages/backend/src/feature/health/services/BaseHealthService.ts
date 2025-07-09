@@ -1,6 +1,7 @@
 import { HealthChecker, SystemHealth, HealthStatus, ComponentHealth } from '../Health.types';
 import { logger } from '../../../utils/logger';
 import { getNodeEnv } from '../../../config/env.config';
+import { Request, Response } from 'express';
 
 export abstract class BaseHealthService {
   protected checkers: HealthChecker[] = [];
@@ -16,7 +17,7 @@ export abstract class BaseHealthService {
     this.checkers.push(checker);
   }
 
-  public async checkHealth(includeDetails: boolean = true): Promise<SystemHealth> {
+  public async checkHealth(req: Request, res: Response, includeDetails: boolean = true): Promise<SystemHealth> {
     const timestamp = new Date().toISOString();
     const uptime = Date.now() - this.startTime;
 
@@ -25,7 +26,7 @@ export abstract class BaseHealthService {
     // Run all health checks in parallel
     const checkPromises = this.checkers.map(async (checker) => {
       try {
-        const result = await checker.check();
+        const result = await checker.check(req, res);
         return {
           checker,
           result,
@@ -114,14 +115,18 @@ export abstract class BaseHealthService {
     };
   }
 
-  public async checkSingleComponent(componentName: string): Promise<ComponentHealth | null> {
+  public async checkSingleComponent(
+    req: Request,
+    res: Response,
+    componentName: string,
+  ): Promise<ComponentHealth | null> {
     const checker = this.checkers.find((c) => c.name === componentName);
     if (!checker) {
       return null;
     }
 
     try {
-      const result = await checker.check();
+      const result = await checker.check(req, res);
       return {
         name: checker.name,
         status: result.status,

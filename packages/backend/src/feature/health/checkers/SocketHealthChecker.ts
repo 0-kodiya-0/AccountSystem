@@ -1,3 +1,4 @@
+import { Request, Response } from 'express';
 import { HealthChecker, HealthCheckResult, HealthStatus } from '../Health.types';
 import socketConfig from '../../../config/socket.config';
 import { getInternalServerEnabled } from '../../../config/env.config';
@@ -6,7 +7,8 @@ export class SocketHealthChecker implements HealthChecker {
   name = 'socket_io';
   critical = false;
 
-  async check(): Promise<HealthCheckResult> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async check(req: Request, res: Response): Promise<HealthCheckResult> {
     const start = Date.now();
 
     try {
