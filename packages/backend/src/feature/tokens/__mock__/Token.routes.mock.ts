@@ -12,7 +12,7 @@ export const tokenMockRouter = express.Router();
  * @desc Get token mock status and current token information
  * @access Public (development/test only)
  */
-tokenMockRouter.get('/status', TokenMockController.getTokenMockStatus);
+tokenMockRouter.get('/info', TokenMockController.getTokenInfoMock);
 
 /**
  * @route GET /mock/token/info/:accountId

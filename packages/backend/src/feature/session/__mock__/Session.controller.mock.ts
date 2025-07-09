@@ -4,15 +4,6 @@ import { asyncHandler } from '../../../utils/response';
 import * as SessionMockService from './Session.service.mock';
 
 /**
- * Get session mock status and information
- * GET /mock/session/status
- */
-export const getSessionMockStatus = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const status = SessionMockService.getSessionMockStatusData(req);
-  next(new JsonSuccess(status));
-});
-
-/**
  * Create a mock session token
  * POST /mock/session/create
  */

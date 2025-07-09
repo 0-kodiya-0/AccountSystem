@@ -8,13 +8,6 @@ export const sessionMockRouter = express.Router();
  */
 
 /**
- * @route GET /mock/session/status
- * @desc Get session mock status and current session information
- * @access Public (development/test only)
- */
-sessionMockRouter.get('/status', SessionMockController.getSessionMockStatus);
-
-/**
  * @route GET /mock/session/info
  * @desc Get detailed session information including cookies and metadata
  * @access Public (development/test only)

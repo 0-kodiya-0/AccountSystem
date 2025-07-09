@@ -1,4 +1,3 @@
-// packages/backend/src/feature/tokens/__mock__/Token.service.mock.ts
 import { Request, Response } from 'express';
 import { BadRequestError, ApiErrorCode } from '../../../types/response.types';
 import { ValidationUtils } from '../../../utils/validation';
@@ -16,7 +15,7 @@ import { logger } from '../../../utils/logger';
 import jwt from 'jsonwebtoken';
 import { getJwtSecret } from '../../../config/env.config';
 import {
-  TokenMockStatusData,
+  GetTokenInfoResponse,
   TokenCookieInfo,
   CreateTokenRequest,
   CreateTokenResponse,
@@ -28,10 +27,10 @@ import {
   CreateMalformedTokenRequest,
   CreateMalformedTokenResponse,
   ClearTokensResponse,
-  GetTokenInfoResponse,
+  GetTokenInfoForAccountResponse,
 } from './Token.types.mock';
 
-export function getTokenMockStatusData(req: Request): TokenMockStatusData {
+export function getTokenInfoMock(req: Request): GetTokenInfoResponse {
   const cookies = req.cookies;
 
   // Extract all token-related cookies
@@ -333,7 +332,7 @@ export function clearMockTokensForAccount(req: Request, res: Response, accountId
   };
 }
 
-export function getMockTokenInfoForAccount(req: Request, accountId: string): GetTokenInfoResponse {
+export function getMockTokenInfoForAccount(req: Request, accountId: string): GetTokenInfoForAccountResponse {
   if (!accountId) {
     throw new BadRequestError('accountId is required', 400, ApiErrorCode.MISSING_DATA);
   }
@@ -343,7 +342,7 @@ export function getMockTokenInfoForAccount(req: Request, accountId: string): Get
   const accessTokenCookie = req.cookies[`access_token_${accountId}`];
   const refreshTokenCookie = req.cookies[`refresh_token_${accountId}`];
 
-  const tokenInfo: GetTokenInfoResponse = {
+  const tokenInfo: GetTokenInfoForAccountResponse = {
     accountId,
     accessToken: { present: false },
     refreshToken: { present: false },

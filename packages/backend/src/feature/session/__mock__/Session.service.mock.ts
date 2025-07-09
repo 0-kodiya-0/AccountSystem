@@ -11,7 +11,6 @@ import {
 import { AccountSessionData } from '../session.types';
 import { logger } from '../../../utils/logger';
 import {
-  SessionMockStatusData,
   CreateSessionRequest,
   CreateSessionResponse,
   UpdateSessionRequest,
@@ -24,19 +23,6 @@ import {
   CorruptSessionResponse,
   SessionMockInfoResponse,
 } from './Session.types.mock';
-
-export function getSessionMockStatusData(req: Request): SessionMockStatusData {
-  const currentSession = getAccountSessionFromCookies(req);
-
-  return {
-    enabled: true,
-    currentSession,
-    cookies: {
-      hasAccountSession: !!req.cookies.account_session,
-      sessionToken: req.cookies.account_session ? 'present' : 'missing',
-    },
-  };
-}
 
 export function createMockSession(req: Request, res: Response, data: CreateSessionRequest): CreateSessionResponse {
   const { accountIds, currentAccountId } = data;

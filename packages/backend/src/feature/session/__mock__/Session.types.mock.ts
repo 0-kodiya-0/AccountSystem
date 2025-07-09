@@ -1,12 +1,3 @@
-export interface SessionMockStatusData {
-  enabled: boolean;
-  currentSession: unknown;
-  cookies: {
-    hasAccountSession: boolean;
-    sessionToken: string;
-  };
-}
-
 export interface CreateSessionRequest {
   accountIds: string[];
   currentAccountId?: string;

@@ -1,6 +1,6 @@
 import { AccountType } from '../../account/Account.types';
 
-export interface TokenMockStatusData {
+export interface GetTokenInfoResponse {
   enabled: boolean;
   tokenCookies: Record<string, TokenCookieInfo>;
   tokenCount: number;
@@ -101,7 +101,7 @@ export interface TokenInfo {
   error?: string;
 }
 
-export interface GetTokenInfoResponse {
+export interface GetTokenInfoForAccountResponse {
   accountId: string;
   accessToken: TokenInfo;
   refreshToken: TokenInfo;

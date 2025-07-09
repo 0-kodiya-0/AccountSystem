@@ -7,8 +7,8 @@ import * as TokenMockService from './Token.service.mock';
  * Get token mock status and information
  * GET /mock/token/status
  */
-export const getTokenMockStatus = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const status = TokenMockService.getTokenMockStatusData(req);
+export const getTokenInfoMock = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  const status = TokenMockService.getTokenInfoMock(req);
   next(new JsonSuccess(status));
 });
 
