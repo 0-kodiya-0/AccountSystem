@@ -56,7 +56,7 @@ export const getComponentHealth = asyncHandler(async (req: Request, res: Respons
  * GET /health/ping
  */
 export const getSimpleHealth = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const isHealthy = await mainHealthService.isHealthy();
+  const isHealthy = await mainHealthService.isHealthy(req, res);
 
   if (isHealthy) {
     next(new JsonSuccess({ status: 'ok', timestamp: new Date().toISOString() }));

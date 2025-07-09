@@ -74,7 +74,7 @@ export const getInternalApiHealth = asyncHandler(async (req: Request, res: Respo
  * GET /health/ping
  */
 export const getInternalHealthPing = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const isHealthy = await internalHealthService.isHealthy();
+  const isHealthy = await internalHealthService.isHealthy(req, res);
 
   const response = {
     status: isHealthy ? 'ok' : 'error',

@@ -156,8 +156,8 @@ export abstract class BaseHealthService {
     return this.checkers.map((c) => c.name);
   }
 
-  public async isHealthy(): Promise<boolean> {
-    const health = await this.checkHealth(false);
+  public async isHealthy(req: Request, res: Response): Promise<boolean> {
+    const health = await this.checkHealth(req, res, false);
     return health.status === HealthStatus.HEALTHY;
   }
 
