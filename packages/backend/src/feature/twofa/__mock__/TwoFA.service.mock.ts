@@ -31,7 +31,7 @@ export async function generateTotpCode(secret: string): Promise<{
 
     return {
       token,
-      secret: secret.substring(0, 8) + '...', // Partial secret for identification
+      secret: secret, // Partial secret for identification
       timeRemaining,
       timeUsed,
     };
@@ -149,7 +149,7 @@ export async function validateTotpToken(
     return {
       valid: isValid,
       token,
-      secret: secret.substring(0, 8) + '...', // Partial secret for identification
+      secret: secret, // Partial secret for identification
       timeRemaining,
       timeUsed,
     };
@@ -227,7 +227,7 @@ export async function getAllSetupTokens(): Promise<{
     tokens: setupTokens.map((token) => ({
       token: token.token,
       accountId: token.accountId,
-      secret: token.secret.substring(0, 8) + '...', // Partial secret
+      secret: token.secret, // Partial secret
       accountType: token.accountType,
       expiresAt: token.expiresAt,
       createdAt: token.createdAt,
