@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Request, Response, NextFunction } from 'express';
-import * as TokenMockController from '../__mocks__/Token.mock.controller';
+import * as TokenMockController from '../__mock__/Token.controller.mock';
 import { AccountType } from '../../account/Account.types';
 import * as tokenJwt from '../Token.jwt';
 import * as sessionUtils from '../../session/session.utils';
@@ -64,7 +64,7 @@ describe('Token Mock Controller', () => {
     vi.resetAllMocks();
   });
 
-  describe('getTokenMockStatus', () => {
+  describe('getMockTokenInfo', () => {
     it('should return status with token cookies information', async () => {
       const mockDecodedToken = {
         type: AccountType.Local,
@@ -82,7 +82,7 @@ describe('Token Mock Controller', () => {
 
       vi.mocked(jwt.decode).mockReturnValue(mockDecodedToken);
 
-      await TokenMockController.getTokenMockStatus(mockRequest as Request, mockResponse as Response, mockNext);
+      await TokenMockController.getMockTokenInfo(mockRequest as Request, mockResponse as Response, mockNext);
 
       expect(mockNext).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -114,7 +114,7 @@ describe('Token Mock Controller', () => {
         throw new Error('Invalid token');
       });
 
-      await TokenMockController.getTokenMockStatus(mockRequest as Request, mockResponse as Response, mockNext);
+      await TokenMockController.getMockTokenInfo(mockRequest as Request, mockResponse as Response, mockNext);
 
       expect(mockNext).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -580,98 +580,6 @@ describe('Token Mock Controller', () => {
           }),
         }),
       );
-    });
-  });
-
-  describe('createBatchMockTokens', () => {
-    it('should create tokens for multiple accounts', async () => {
-      const accounts = [
-        { accountId: '507f1f77bcf86cd799439011', accountType: AccountType.Local },
-        {
-          accountId: '507f1f77bcf86cd799439012',
-          accountType: AccountType.OAuth,
-          oauthAccessToken: 'oauth_access',
-          oauthRefreshToken: 'oauth_refresh',
-        },
-      ];
-
-      mockRequest.body = { accounts, setCookies: true };
-
-      vi.mocked(tokenJwt.createLocalAccessToken).mockReturnValue('local_access_token');
-      vi.mocked(tokenJwt.createLocalRefreshToken).mockReturnValue('local_refresh_token');
-      vi.mocked(tokenJwt.createOAuthAccessToken).mockReturnValue('oauth_access_token');
-      vi.mocked(tokenJwt.createOAuthRefreshToken).mockReturnValue('oauth_refresh_token');
-
-      await TokenMockController.createBatchMockTokens(mockRequest as Request, mockResponse as Response, mockNext);
-
-      expect(mockNext).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            message: 'Batch token creation completed',
-            results: expect.arrayContaining([
-              expect.objectContaining({
-                accountId: '507f1f77bcf86cd799439011',
-                success: true,
-                accountType: AccountType.Local,
-              }),
-              expect.objectContaining({
-                accountId: '507f1f77bcf86cd799439012',
-                success: true,
-                accountType: AccountType.OAuth,
-              }),
-            ]),
-            successful: 2,
-            failed: 0,
-          }),
-        }),
-      );
-    });
-
-    it('should handle failed token creation', async () => {
-      const accounts = [
-        {
-          accountId: '507f1f77bcf86cd799439011',
-          accountType: AccountType.OAuth,
-          // Missing OAuth tokens
-        },
-      ];
-
-      mockRequest.body = { accounts, setCookies: false };
-
-      await TokenMockController.createBatchMockTokens(mockRequest as Request, mockResponse as Response, mockNext);
-
-      expect(mockNext).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            results: expect.arrayContaining([
-              expect.objectContaining({
-                accountId: '507f1f77bcf86cd799439011',
-                success: false,
-                error: 'OAuth tokens required for OAuth accounts',
-              }),
-            ]),
-            successful: 0,
-            failed: 1,
-          }),
-        }),
-      );
-    });
-
-    it('should throw error when accounts array is missing', async () => {
-      mockRequest.body = {};
-
-      await expect(
-        TokenMockController.createBatchMockTokens(mockRequest as Request, mockResponse as Response, mockNext),
-      ).rejects.toThrow('accounts array is required');
-    });
-
-    it('should throw error when too many accounts', async () => {
-      const accounts = Array(15).fill({ accountId: '507f1f77bcf86cd799439011', accountType: AccountType.Local });
-      mockRequest.body = { accounts };
-
-      await expect(
-        TokenMockController.createBatchMockTokens(mockRequest as Request, mockResponse as Response, mockNext),
-      ).rejects.toThrow('Cannot create tokens for more than 10 accounts');
     });
   });
 });
