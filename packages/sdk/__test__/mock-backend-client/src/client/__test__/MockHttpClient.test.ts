@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
-import { MockHttpClient } from '../../../src/client/MockHttpClient';
-import { ApiErrorCode, AuthSDKError, MockHttpClientConfig } from '../../../src/types';
+import { MockHttpClient } from '../MockHttpClient';
+import { ApiErrorCode, AuthSDKError, MockHttpClientConfig } from '../../types';
 
 // Mock axios
 vi.mock('axios');
