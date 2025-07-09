@@ -337,7 +337,6 @@ export interface CorruptSessionResponse {
 // ============================================================================
 
 export interface TokenInfoResponse {
-  enabled: boolean;
   tokenCookies: Record<
     string,
     {
@@ -752,4 +751,84 @@ export interface ProviderInfoResponse {
   }>;
   endpoints: Record<string, unknown>;
   supported: boolean;
+}
+
+// Health Check Types for Mock Backend Client
+export enum HealthStatus {
+  HEALTHY = 'healthy',
+  DEGRADED = 'degraded',
+  UNHEALTHY = 'unhealthy',
+}
+
+export interface ComponentHealth {
+  name: string;
+  status: HealthStatus;
+  message?: string;
+  details?: Record<string, any>;
+  responseTime?: number;
+  lastCheck: string;
+  critical: boolean;
+}
+
+export interface SystemHealth {
+  status: HealthStatus;
+  version: string;
+  timestamp: string;
+  uptime: number;
+  environment: string;
+  components: Record<string, ComponentHealth>;
+  summary: {
+    total: number;
+    healthy: number;
+    degraded: number;
+    unhealthy: number;
+    critical_unhealthy: number;
+  };
+}
+
+export interface InternalSystemHealth extends SystemHealth {
+  server_info: {
+    type: string;
+    version: string;
+    features: {
+      httpApi: boolean;
+      socketApi: boolean;
+      authentication: string;
+      typescript: boolean;
+    };
+  };
+}
+
+export interface HealthPingResponse {
+  status: 'ok' | 'error';
+  timestamp: string;
+  server?: string;
+}
+
+export interface UptimeResponse {
+  uptime_ms: number;
+  uptime_seconds: number;
+  uptime_human: string;
+  timestamp: string;
+  server?: string;
+}
+
+export interface HealthCheckersResponse {
+  checkers: string[];
+  count: number;
+  server?: string;
+}
+
+export interface HealthSummaryResponse {
+  status: HealthStatus;
+  timestamp: string;
+  uptime: number;
+  environment: string;
+  components_summary: {
+    total: number;
+    healthy: number;
+    degraded: number;
+    unhealthy: number;
+    critical_unhealthy: number;
+  };
 }
