@@ -248,20 +248,6 @@ export interface MockClientConfig {
 // Mock Session API Types
 // ============================================================================
 
-export interface MockSessionStatus {
-  enabled: boolean;
-  currentSession: {
-    hasSession: boolean;
-    accountIds: string[];
-    currentAccountId: string | null;
-    isValid: boolean;
-  };
-  cookies: {
-    hasAccountSession: boolean;
-    sessionToken: string;
-  };
-}
-
 export interface MockSessionInfo {
   session: {
     hasSession: boolean;
@@ -350,7 +336,7 @@ export interface CorruptSessionResponse {
 // Mock Token API Types
 // ============================================================================
 
-export interface MockTokenStatus {
+export interface TokenInfoResponse {
   enabled: boolean;
   tokenCookies: Record<
     string,
@@ -444,7 +430,7 @@ export interface CreateMalformedTokenResponse {
   type: string;
 }
 
-export interface TokenInfo {
+export interface TokenInfoForAccountResponse {
   accountId: string;
   accessToken:
     | {
@@ -662,34 +648,6 @@ export interface MockEmailMessage {
 
     // Any additional custom fields can be added directly at this level
     [key: string]: any;
-  };
-}
-
-export interface GetEmailStatusResponse {
-  enabled: boolean;
-  config: {
-    enabled: boolean;
-    logEmails: boolean;
-    simulateDelay: boolean;
-    delayMs: number;
-    simulateFailures: boolean;
-    failureRate: number;
-    failOnEmails: string[];
-    blockEmails: string[];
-  };
-  stats: {
-    totalSent: number;
-    totalFailed: number;
-    sentByTemplate: Record<string, number>;
-    failedByTemplate: Record<string, number>;
-    recentEmails: MockEmailMessage[];
-    byMetadata: {
-      byTestSuite: Record<string, number>;
-      byEmailFlow: Record<string, number>;
-      byFeature: Record<string, number>;
-      byAction: Record<string, number>;
-      byTags: Record<string, number>;
-    };
   };
 }
 

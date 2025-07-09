@@ -26,18 +26,16 @@ import {
   GetEmailAvailableTemplatesResponse,
   GetEmailMetadataInsightsResponse,
   GetEmailsByTemplateResponse,
-  GetEmailStatusResponse,
   GetLatestEmailResponse,
   GetSendEmailsResponse,
   MockClientConfig,
   MockEmailMessage,
   MockSessionInfo,
-  MockSessionStatus,
-  MockTokenStatus,
+  TokenInfoResponse,
   OAuthCacheResponse,
   ProviderInfoResponse,
   SendTestEmailResponse,
-  TokenInfo,
+  TokenInfoForAccountResponse,
   TwoFAAccountGenerateCodeResponse,
   TwoFAAccountSecretResponse,
   TwoFACacheStatsResponse,
@@ -67,17 +65,6 @@ export class MockService {
   // ============================================================================
   // Session Mock API Methods
   // ============================================================================
-
-  /**
-   * Get current session mock status
-   */
-  async getSessionStatus(): Promise<MockSessionStatus> {
-    try {
-      return await this.httpClient.get<MockSessionStatus>('/mock/session/status');
-    } catch (error) {
-      throw this.handleError(error, 'Failed to get session status');
-    }
-  }
 
   /**
    * Get detailed session information
@@ -171,9 +158,9 @@ export class MockService {
   /**
    * Get current token mock status
    */
-  async getTokenStatus(): Promise<MockTokenStatus> {
+  async getTokenInfo(): Promise<TokenInfoResponse> {
     try {
-      return await this.httpClient.get<MockTokenStatus>('/mock/token/status');
+      return await this.httpClient.get<TokenInfoResponse>('/mock/token/info');
     } catch (error) {
       throw this.handleError(error, 'Failed to get token status');
     }
@@ -182,10 +169,10 @@ export class MockService {
   /**
    * Get token information for specific account
    */
-  async getTokenInfo(accountId: string): Promise<TokenInfo> {
+  async getTokenInfoForAccount(accountId: string): Promise<TokenInfoForAccountResponse> {
     try {
       this.validateAccountId(accountId);
-      return await this.httpClient.get<TokenInfo>(`/mock/token/info/${accountId}`);
+      return await this.httpClient.get<TokenInfoForAccountResponse>(`/mock/token/info/${accountId}`);
     } catch (error) {
       throw this.handleError(error, 'Failed to get token info');
     }
@@ -665,30 +652,6 @@ export class MockService {
         );
       }
     }
-  }
-
-  private validateBatchCreateTokensRequest(request: BatchCreateTokensRequest): void {
-    if (!request.accounts || !Array.isArray(request.accounts) || request.accounts.length === 0) {
-      throw new AuthSDKError('Accounts array is required', ApiErrorCode.VALIDATION_ERROR);
-    }
-
-    if (request.accounts.length > 10) {
-      throw new AuthSDKError('Cannot create tokens for more than 10 accounts', ApiErrorCode.VALIDATION_ERROR);
-    }
-
-    request.accounts.forEach((account, index) => {
-      try {
-        this.validateAccountId(account.accountId);
-        if (!Object.values(AccountType).includes(account.accountType)) {
-          throw new AuthSDKError('Invalid account type', ApiErrorCode.VALIDATION_ERROR);
-        }
-      } catch (error) {
-        throw new AuthSDKError(
-          `Invalid account at index ${index}: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          ApiErrorCode.VALIDATION_ERROR,
-        );
-      }
-    });
   }
 
   private handleError(error: any, context: string): AuthSDKError {
