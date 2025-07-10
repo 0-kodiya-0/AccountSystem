@@ -6,7 +6,15 @@ import React from 'react';
 import { ServicesProvider } from '../../../src/context/ServicesProvider';
 import { useLocalSignup } from '../../../src/hooks/useLocalSignup';
 import { useSession } from '../../../src/hooks/useSession';
-import { INTEGRATION_CONFIG, testState, generateTestData, waitForCondition, clearAllCookies } from '../setup';
+import {
+  INTEGRATION_CONFIG,
+  testState,
+  generateTestData,
+  waitForCondition,
+  clearAllCookies,
+  waitForEmail,
+  extractVerificationToken,
+} from '../setup';
 
 // Test wrapper component
 const TestWrapper = ({ children }: { children: ReactNode }) => (
@@ -66,6 +74,88 @@ describe('Local Signup Integration Tests', () => {
         expect(result.current.error).toBe(null);
       },
       INTEGRATION_CONFIG.DEFAULT_TIMEOUT,
+    );
+
+    it(
+      'should complete full signup flow with email verification',
+      async () => {
+        if (!testState.serverHealthy) {
+          console.warn('Skipping test: Server not healthy');
+          return;
+        }
+
+        const testData = generateTestData();
+        testState.createdEmails.add(testData.email);
+
+        const { result } = renderHook(() => useLocalSignup(), {
+          wrapper: TestWrapper,
+        });
+
+        // Step 1: Start signup process
+        let startResponse: any;
+        await act(async () => {
+          startResponse = await result.current.start({
+            email: testData.email,
+            callbackUrl: `${INTEGRATION_CONFIG.FRONTEND_URL}/signup/verify`,
+          });
+        });
+
+        expect(startResponse.success).toBe(true);
+        expect(result.current.isEmailSent).toBe(true);
+
+        // Step 2: Wait for verification email to be sent
+        const verificationEmail = await waitForEmail(testData.email, 'email-signup-verification');
+
+        expect(verificationEmail).toBeTruthy();
+        expect(verificationEmail.to).toBe(testData.email);
+        expect(verificationEmail.template).toBe('email-signup-verification');
+
+        // Step 3: Extract verification token from email
+        const verificationToken = extractVerificationToken(verificationEmail.html);
+        expect(verificationToken).toBeTruthy();
+
+        // Step 4: Simulate URL navigation with verification token
+        Object.defineProperty(window, 'location', {
+          value: {
+            ...window.location,
+            search: `?token=${verificationToken}`,
+          },
+          writable: true,
+        });
+
+        // Step 5: Process verification token
+        let verifyResponse: any;
+        await act(async () => {
+          verifyResponse = await result.current.processTokenFromUrl();
+        });
+
+        expect(verifyResponse.success).toBe(true);
+        expect(result.current.isEmailVerified).toBe(true);
+        expect(result.current.canComplete).toBe(true);
+
+        // Step 6: Complete profile
+        let completeResponse: any;
+        await act(async () => {
+          completeResponse = await result.current.complete({
+            firstName: INTEGRATION_CONFIG.TEST_USER.firstName,
+            lastName: INTEGRATION_CONFIG.TEST_USER.lastName,
+            username: testData.username,
+            password: INTEGRATION_CONFIG.TEST_USER.password,
+            confirmPassword: INTEGRATION_CONFIG.TEST_USER.password,
+            agreeToTerms: true,
+          });
+        });
+
+        expect(completeResponse.success).toBe(true);
+        expect(completeResponse.accountId).toBeTruthy();
+        expect(result.current.isCompleted).toBe(true);
+
+        // Track created account for cleanup
+        if (completeResponse.accountId) {
+          testState.createdAccountIds.add(completeResponse.accountId);
+        }
+      },
+      INTEGRATION_CONFIG.LONG_TIMEOUT,
     );
   });
 
@@ -176,6 +266,73 @@ describe('Local Signup Integration Tests', () => {
 
         expect(response.success).toBe(false);
         expect(result.current.isFailed).toBe(true);
+      },
+      INTEGRATION_CONFIG.DEFAULT_TIMEOUT,
+    );
+  });
+
+  describe('Profile Completion Validation', () => {
+    it(
+      'should validate profile completion data',
+      async () => {
+        const { result } = renderHook(() => useLocalSignup(), {
+          wrapper: TestWrapper,
+        });
+
+        // Test missing required fields
+        let response: any;
+
+        // Missing firstName
+        await act(async () => {
+          response = await result.current.complete({
+            firstName: '',
+            lastName: INTEGRATION_CONFIG.TEST_USER.lastName,
+            password: INTEGRATION_CONFIG.TEST_USER.password,
+            confirmPassword: INTEGRATION_CONFIG.TEST_USER.password,
+            agreeToTerms: true,
+          });
+        });
+        expect(response.success).toBe(false);
+        expect(response.message).toContain('firstName');
+
+        // Password mismatch
+        await act(async () => {
+          response = await result.current.complete({
+            firstName: INTEGRATION_CONFIG.TEST_USER.firstName,
+            lastName: INTEGRATION_CONFIG.TEST_USER.lastName,
+            password: INTEGRATION_CONFIG.TEST_USER.password,
+            confirmPassword: 'differentpassword',
+            agreeToTerms: true,
+          });
+        });
+        expect(response.success).toBe(false);
+        expect(response.message).toContain('match');
+
+        // Terms not agreed
+        await act(async () => {
+          response = await result.current.complete({
+            firstName: INTEGRATION_CONFIG.TEST_USER.firstName,
+            lastName: INTEGRATION_CONFIG.TEST_USER.lastName,
+            password: INTEGRATION_CONFIG.TEST_USER.password,
+            confirmPassword: INTEGRATION_CONFIG.TEST_USER.password,
+            agreeToTerms: false,
+          });
+        });
+        expect(response.success).toBe(false);
+        expect(response.message).toContain('terms');
+
+        // Short password
+        await act(async () => {
+          response = await result.current.complete({
+            firstName: INTEGRATION_CONFIG.TEST_USER.firstName,
+            lastName: INTEGRATION_CONFIG.TEST_USER.lastName,
+            password: '123',
+            confirmPassword: '123',
+            agreeToTerms: true,
+          });
+        });
+        expect(response.success).toBe(false);
+        expect(response.message).toContain('8 characters');
       },
       INTEGRATION_CONFIG.DEFAULT_TIMEOUT,
     );
@@ -412,216 +569,91 @@ describe('Local Signup Integration Tests', () => {
       INTEGRATION_CONFIG.DEFAULT_TIMEOUT,
     );
   });
-});
 
-describe('Profile Completion Flow', () => {
-  it(
-    'should complete profile after email verification',
-    async () => {
-      if (!testState.serverHealthy) {
-        console.warn('Skipping test: Server not healthy');
-        return;
-      }
+  describe('Signup Cancellation', () => {
+    it(
+      'should cancel signup process',
+      async () => {
+        if (!testState.serverHealthy) {
+          console.warn('Skipping test: Server not healthy');
+          return;
+        }
 
-      // Note: This test requires a valid profile token from email verification
-      // In a real integration test environment, you would:
-      // 1. Have a test email service that captures verification emails
-      // 2. Extract the profile token from the verification email
-      // 3. Use that token to complete the profile
+        const testData = generateTestData();
+        testState.createdEmails.add(testData.email);
 
-      console.warn('Profile completion test incomplete: Requires valid profile token from email verification');
-
-      const { result } = renderHook(() => useLocalSignup(), {
-        wrapper: TestWrapper,
-      });
-
-      // For demonstration, we'll test the validation logic
-      let completeResponse: any;
-      await act(async () => {
-        completeResponse = await result.current.complete({
-          firstName: INTEGRATION_CONFIG.TEST_USER.firstName,
-          lastName: INTEGRATION_CONFIG.TEST_USER.lastName,
-          username: generateTestData().username,
-          password: INTEGRATION_CONFIG.TEST_USER.password,
-          confirmPassword: INTEGRATION_CONFIG.TEST_USER.password,
-          agreeToTerms: true,
+        const { result } = renderHook(() => useLocalSignup(), {
+          wrapper: TestWrapper,
         });
-      });
 
-      // Should fail without valid profile token
-      expect(completeResponse.success).toBe(false);
-      expect(completeResponse.message).toContain('profile token');
-    },
-    INTEGRATION_CONFIG.DEFAULT_TIMEOUT,
-  );
-
-  it(
-    'should validate profile completion data',
-    async () => {
-      const { result } = renderHook(() => useLocalSignup(), {
-        wrapper: TestWrapper,
-      });
-
-      // Test missing required fields
-      let response: any;
-
-      // Missing firstName
-      await act(async () => {
-        response = await result.current.complete({
-          firstName: '',
-          lastName: INTEGRATION_CONFIG.TEST_USER.lastName,
-          password: INTEGRATION_CONFIG.TEST_USER.password,
-          confirmPassword: INTEGRATION_CONFIG.TEST_USER.password,
-          agreeToTerms: true,
+        // Start signup
+        await act(async () => {
+          await result.current.start({
+            email: testData.email,
+            callbackUrl: `${INTEGRATION_CONFIG.FRONTEND_URL}/signup/verify`,
+          });
         });
-      });
-      expect(response.success).toBe(false);
-      expect(response.message).toContain('firstName');
 
-      // Password mismatch
-      await act(async () => {
-        response = await result.current.complete({
-          firstName: INTEGRATION_CONFIG.TEST_USER.firstName,
-          lastName: INTEGRATION_CONFIG.TEST_USER.lastName,
-          password: INTEGRATION_CONFIG.TEST_USER.password,
-          confirmPassword: 'differentpassword',
-          agreeToTerms: true,
+        expect(result.current.isEmailSent).toBe(true);
+        expect(result.current.canCancel).toBe(true);
+
+        // Cancel signup
+        let cancelResponse: any;
+        await act(async () => {
+          cancelResponse = await result.current.cancel();
         });
-      });
-      expect(response.success).toBe(false);
-      expect(response.message).toContain('match');
 
-      // Terms not agreed
-      await act(async () => {
-        response = await result.current.complete({
-          firstName: INTEGRATION_CONFIG.TEST_USER.firstName,
-          lastName: INTEGRATION_CONFIG.TEST_USER.lastName,
-          password: INTEGRATION_CONFIG.TEST_USER.password,
-          confirmPassword: INTEGRATION_CONFIG.TEST_USER.password,
-          agreeToTerms: false,
+        expect(cancelResponse.success).toBe(true);
+        expect(result.current.isCanceled).toBe(true);
+      },
+      INTEGRATION_CONFIG.DEFAULT_TIMEOUT,
+    );
+  });
+
+  describe('Email Template Verification', () => {
+    it(
+      'should send correctly formatted verification email',
+      async () => {
+        if (!testState.serverHealthy) {
+          console.warn('Skipping test: Server not healthy');
+          return;
+        }
+
+        const testData = generateTestData();
+        testState.createdEmails.add(testData.email);
+
+        const { result } = renderHook(() => useLocalSignup(), {
+          wrapper: TestWrapper,
         });
-      });
-      expect(response.success).toBe(false);
-      expect(response.message).toContain('terms');
 
-      // Short password
-      await act(async () => {
-        response = await result.current.complete({
-          firstName: INTEGRATION_CONFIG.TEST_USER.firstName,
-          lastName: INTEGRATION_CONFIG.TEST_USER.lastName,
-          password: '123',
-          confirmPassword: '123',
-          agreeToTerms: true,
+        // Start signup
+        await act(async () => {
+          await result.current.start({
+            email: testData.email,
+            callbackUrl: `${INTEGRATION_CONFIG.FRONTEND_URL}/signup/verify`,
+          });
         });
-      });
-      expect(response.success).toBe(false);
-      expect(response.message).toContain('8 characters');
-    },
-    INTEGRATION_CONFIG.DEFAULT_TIMEOUT,
-  );
-});
 
-describe('Signup Cancellation', () => {
-  it(
-    'should cancel signup process',
-    async () => {
-      if (!testState.serverHealthy) {
-        console.warn('Skipping test: Server not healthy');
-        return;
-      }
+        // Get and verify email content
+        const verificationEmail = await waitForEmail(testData.email, 'email-signup-verification');
 
-      const testData = generateTestData();
-      testState.createdEmails.add(testData.email);
+        // Verify email structure
+        expect(verificationEmail.to).toBe(testData.email);
+        expect(verificationEmail.subject).toBeTruthy();
+        expect(verificationEmail.html).toBeTruthy();
+        expect(verificationEmail.text).toBeTruthy();
+        expect(verificationEmail.template).toBe('email-signup-verification');
 
-      const { result } = renderHook(() => useLocalSignup(), {
-        wrapper: TestWrapper,
-      });
+        // Verify email contains verification link
+        expect(verificationEmail.html).toContain('token=');
+        expect(verificationEmail.html).toContain(INTEGRATION_CONFIG.FRONTEND_URL);
 
-      // Start signup
-      await act(async () => {
-        await result.current.start({
-          email: testData.email,
-          callbackUrl: `${INTEGRATION_CONFIG.FRONTEND_URL}/signup/verify`,
-        });
-      });
-
-      expect(result.current.isEmailSent).toBe(true);
-      expect(result.current.canCancel).toBe(true);
-
-      // Cancel signup
-      let cancelResponse: any;
-      await act(async () => {
-        cancelResponse = await result.current.cancel();
-      });
-
-      expect(cancelResponse.success).toBe(true);
-      expect(result.current.isCanceled).toBe(true);
-    },
-    INTEGRATION_CONFIG.DEFAULT_TIMEOUT,
-  );
-
-  it(
-    'should handle email verification with token',
-    async () => {
-      if (!testState.serverHealthy) {
-        console.warn('Skipping test: Server not healthy');
-        return;
-      }
-
-      const testData = generateTestData();
-      testState.createdEmails.add(testData.email);
-
-      const { result } = renderHook(() => useLocalSignup(), {
-        wrapper: TestWrapper,
-      });
-
-      // Start signup first
-      await act(async () => {
-        await result.current.start({
-          email: testData.email,
-          callbackUrl: `${INTEGRATION_CONFIG.FRONTEND_URL}/signup/verify`,
-        });
-      });
-
-      expect(result.current.isEmailSent).toBe(true);
-
-      // Note: In a real integration test, you would need:
-      // 1. Access to the email that was sent (test email service)
-      // 2. Extract the verification token from the email
-      // 3. Or a test endpoint that can provide the verification token
-
-      // For now, we'll test the token processing flow with a mock token
-      // This demonstrates the limitation of integration testing email flows
-      console.warn('Email verification integration test incomplete: Need access to sent emails or test endpoint');
-
-      // Simulate token processing (this would normally come from email link)
-      // Mock a verification token scenario
-      const mockToken = 'mock-verification-token';
-
-      // Mock the URL with token
-      Object.defineProperty(window, 'location', {
-        value: {
-          ...window.location,
-          search: `?token=${mockToken}`,
-        },
-        writable: true,
-      });
-
-      // Process token from URL
-      let processResponse: any;
-      await act(async () => {
-        processResponse = await result.current.processTokenFromUrl();
-      });
-
-      // This will likely fail with mock token, which is expected
-      if (processResponse.success) {
-        expect(result.current.isEmailVerified).toBe(true);
-        expect(result.current.canComplete).toBe(true);
-      } else {
-        console.warn('Token verification failed (expected with mock token):', processResponse.message);
-        expect(result.current.isFailed).toBe(true);
-      }
-    },
-    INTEGRATION_CONFIG.DEFAULT_TIMEOUT,
-  );
+        // Verify metadata is properly set
+        expect(verificationEmail.metadata).toBeTruthy();
+        expect(verificationEmail.metadata.emailFlow).toBe('signup');
+        expect(verificationEmail.metadata.flowStep).toBe('initial');
+      },
+      INTEGRATION_CONFIG.DEFAULT_TIMEOUT,
+    );
+  });
 });

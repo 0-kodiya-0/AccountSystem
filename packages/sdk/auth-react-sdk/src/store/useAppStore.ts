@@ -58,6 +58,8 @@ interface AppActions {
   shouldLoadAccount: (accountId: string, maxAge?: number) => boolean;
   shouldLoadSession: (maxAge?: number) => boolean;
   shouldLoadSessionAccounts: (maxAge?: number) => boolean;
+
+  resetStore: () => void;
 }
 
 // STATIC DEFAULT STATES - These are created once and reused
@@ -442,6 +444,18 @@ export const useAppStore = create<AppState & AppActions>()(
 
         return false;
       },
+
+      resetStore: () => {
+        set((state) => {
+          state.session = createDefaultSessionState();
+          state.accounts = {};
+          state.sessionAccounts = createDefaultSessionAccountsState();
+        });
+      },
     })),
   ),
 );
+
+export const resetAppStore = () => {
+  useAppStore.getState().resetStore();
+};
