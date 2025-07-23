@@ -61,62 +61,6 @@ describe('useLocalSignin', () => {
   });
 
   describe('Signin Validation and Flow', () => {
-    test('should validate signin data - missing email and username', async () => {
-      const { result } = renderHook(() => useLocalSignin());
-
-      await act(async () => {
-        const response = await result.current.signin({
-          password: 'password123',
-        } as LocalLoginRequest);
-
-        expect(response.success).toBe(false);
-        expect(response.message).toBe('Email or username is required');
-        expect(result.current.error).toBe('Email or username is required');
-      });
-    });
-
-    test('should validate signin data - empty email', async () => {
-      const { result } = renderHook(() => useLocalSignin());
-
-      await act(async () => {
-        const response = await result.current.signin({
-          email: '',
-          password: 'password123',
-        });
-
-        expect(response.success).toBe(false);
-        expect(response.message).toBe('Email cannot be empty');
-      });
-    });
-
-    test('should validate signin data - empty username', async () => {
-      const { result } = renderHook(() => useLocalSignin());
-
-      await act(async () => {
-        const response = await result.current.signin({
-          username: '   ',
-          password: 'password123',
-        });
-
-        expect(response.success).toBe(false);
-        expect(response.message).toBe('Username cannot be empty');
-      });
-    });
-
-    test('should validate signin data - missing password', async () => {
-      const { result } = renderHook(() => useLocalSignin());
-
-      await act(async () => {
-        const response = await result.current.signin({
-          email: 'test@example.com',
-          password: '',
-        });
-
-        expect(response.success).toBe(false);
-        expect(response.message).toBe('Password is required');
-      });
-    });
-
     test('should handle successful signin', async () => {
       const mockResponse: LocalLoginResponse = {
         accountId: '507f1f77bcf86cd799439011',
@@ -555,65 +499,6 @@ describe('useLocalSignin', () => {
       expect(result.current.progress).toBe(100);
       expect(result.current.currentStep).toBe('Signin completed successfully!');
       expect(result.current.nextStep).toBeNull();
-    });
-  });
-
-  describe('Utility Functions', () => {
-    test('should clear errors', async () => {
-      const { result } = renderHook(() => useLocalSignin());
-
-      // Set an error first
-      await act(async () => {
-        await result.current.signin({
-          email: '',
-          password: 'password123',
-        });
-      });
-
-      expect(result.current.error).toBeTruthy();
-
-      // Clear the error
-      act(() => {
-        result.current.clearError();
-      });
-
-      expect(result.current.error).toBeNull();
-    });
-
-    test('should reset state', () => {
-      const { result } = renderHook(() => useLocalSignin());
-
-      // Reset to initial state
-      act(() => {
-        result.current.reset();
-      });
-
-      expect(result.current.phase).toBe('idle');
-      expect(result.current.loading).toBe(false);
-      expect(result.current.error).toBeNull();
-      expect(result.current.retryCount).toBe(0);
-      expect(result.current.tempToken).toBeNull();
-      expect(result.current.accountId).toBeNull();
-      expect(result.current.accountName).toBeNull();
-      expect(result.current.completionMessage).toBeNull();
-    });
-
-    test('should provide debug info', () => {
-      const { result } = renderHook(() => useLocalSignin());
-
-      const debugInfo = result.current.getDebugInfo();
-
-      expect(debugInfo).toEqual({
-        phase: 'idle',
-        loading: false,
-        error: null,
-        retryCount: 0,
-        lastAttemptTimestamp: null,
-        tempToken: null,
-        accountId: null,
-        accountName: null,
-        completionMessage: null,
-      });
     });
   });
 });

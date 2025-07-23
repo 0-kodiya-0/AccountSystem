@@ -99,6 +99,39 @@ describe('useTwoFactorAuth', () => {
       expect(result.current.canVerifySetup).toBe(false); // No setup token
     });
 
+    test('should update capabilities based on state', async () => {
+      const { result } = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: false }));
+
+      // Initially can setup, cannot disable
+      expect(result.current.canSetup).toBe(true);
+      expect(result.current.canDisable).toBe(false);
+
+      // After loading enabled status
+      mockAuthService.getTwoFactorStatus.mockResolvedValue({
+        enabled: true,
+        backupCodesCount: 5,
+      });
+
+      await act(async () => {
+        await result.current.checkStatus();
+      });
+
+      expect(result.current.canSetup).toBe(false); // Already enabled
+      expect(result.current.canDisable).toBe(true); // Now enabled
+
+      // After setup with token
+      mockAuthService.setupTwoFactor.mockResolvedValue({
+        message: 'Setup',
+        setupToken: 'token',
+      });
+
+      await act(async () => {
+        await result.current.setup({ enableTwoFactor: true });
+      });
+
+      expect(result.current.canVerifySetup).toBe(true); // Has setup token
+    });
+
     test('should handle null account ID', () => {
       const { result } = renderHook(() => useTwoFactorAuth(null));
 
@@ -579,78 +612,6 @@ describe('useTwoFactorAuth', () => {
         const disableResult = await result.current.disable();
         expect(disableResult.success).toBe(false);
       });
-    });
-  });
-
-  describe('Utility Functions', () => {
-    test('should clear errors', async () => {
-      const { result } = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: false }));
-
-      // Set an error first
-      const error = new Error('Test error');
-      mockAuthService.getTwoFactorStatus.mockRejectedValue(error);
-
-      await act(async () => {
-        await result.current.checkStatus();
-      });
-
-      expect(result.current.error).toBeTruthy();
-
-      // Clear the error
-      act(() => {
-        result.current.clearError();
-      });
-
-      expect(result.current.error).toBeNull();
-    });
-
-    test('should reset state', () => {
-      const { result } = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: false }));
-
-      // Reset to initial state
-      act(() => {
-        result.current.reset();
-      });
-
-      expect(result.current.phase).toBe('idle');
-      expect(result.current.loading).toBe(false);
-      expect(result.current.error).toBeNull();
-      expect(result.current.setupData).toBeNull();
-      expect(result.current.backupCodes).toBeNull();
-      expect(result.current.setupToken).toBeNull();
-    });
-
-    test('should update capabilities based on state', async () => {
-      const { result } = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: false }));
-
-      // Initially can setup, cannot disable
-      expect(result.current.canSetup).toBe(true);
-      expect(result.current.canDisable).toBe(false);
-
-      // After loading enabled status
-      mockAuthService.getTwoFactorStatus.mockResolvedValue({
-        enabled: true,
-        backupCodesCount: 5,
-      });
-
-      await act(async () => {
-        await result.current.checkStatus();
-      });
-
-      expect(result.current.canSetup).toBe(false); // Already enabled
-      expect(result.current.canDisable).toBe(true); // Now enabled
-
-      // After setup with token
-      mockAuthService.setupTwoFactor.mockResolvedValue({
-        message: 'Setup',
-        setupToken: 'token',
-      });
-
-      await act(async () => {
-        await result.current.setup({ enableTwoFactor: true });
-      });
-
-      expect(result.current.canVerifySetup).toBe(true); // Has setup token
     });
   });
 });

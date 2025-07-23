@@ -412,13 +412,6 @@ export const useOAuthSignup = (options: UseOAuthSignupOptions = {}): UseOAuthSig
     }
   }, [state.phase]);
 
-  // Expose internal methods for callback handling (optional)
-  const internal = {
-    markCompleted,
-    markFailed,
-    handleOAuthCallback,
-  };
-
   return {
     // Main actions
     startSignup,
@@ -456,8 +449,5 @@ export const useOAuthSignup = (options: UseOAuthSignupOptions = {}): UseOAuthSig
     clearError,
     reset,
     getDebugInfo,
-
-    // Internal methods (for callback handling)
-    ...internal,
   };
 };

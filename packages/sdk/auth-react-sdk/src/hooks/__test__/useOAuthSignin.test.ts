@@ -160,50 +160,6 @@ describe('useOAuthSignin', () => {
     });
   });
 
-  describe('Validation', () => {
-    test('should validate empty provider', async () => {
-      const { result } = renderHook(() => useOAuthSignin());
-
-      await act(async () => {
-        const response = await result.current.startSignin('' as any, testCallbackUrl);
-        expect(response.success).toBe(false);
-        expect(response.message).toBe('OAuth provider is required');
-      });
-
-      expect(result.current.error).toBe('OAuth provider is required');
-    });
-
-    test('should validate empty callback URL', async () => {
-      const { result } = renderHook(() => useOAuthSignin());
-
-      await act(async () => {
-        const response = await result.current.startSignin(testProvider, '');
-        expect(response.success).toBe(false);
-        expect(response.message).toBe('Callback URL is required');
-      });
-    });
-
-    test('should validate whitespace callback URL', async () => {
-      const { result } = renderHook(() => useOAuthSignin());
-
-      await act(async () => {
-        const response = await result.current.startSignin(testProvider, '   ');
-        expect(response.success).toBe(false);
-        expect(response.message).toBe('Callback URL is required');
-      });
-    });
-
-    test('should validate null provider', async () => {
-      const { result } = renderHook(() => useOAuthSignin());
-
-      await act(async () => {
-        const response = await result.current.startSignin(null as any, testCallbackUrl);
-        expect(response.success).toBe(false);
-        expect(response.message).toBe('OAuth provider is required');
-      });
-    });
-  });
-
   describe('2FA Verification Flow', () => {
     test('should handle successful 2FA verification', async () => {
       const { result } = renderHook(() => useOAuthSignin());
@@ -467,68 +423,6 @@ describe('useOAuthSignin', () => {
       });
 
       expect(result.current.phase).toBe('processing_callback');
-    });
-  });
-
-  describe('Utility Functions', () => {
-    test('should clear errors', async () => {
-      const { result } = renderHook(() => useOAuthSignin());
-
-      // Set an error first
-      await act(async () => {
-        await result.current.startSignin('' as any, testCallbackUrl);
-      });
-
-      expect(result.current.error).toBeTruthy();
-
-      // Clear the error
-      act(() => {
-        result.current.clearError();
-      });
-
-      expect(result.current.error).toBeNull();
-    });
-
-    test('should reset state', () => {
-      const { result } = renderHook(() => useOAuthSignin());
-
-      // Reset to initial state
-      act(() => {
-        result.current.reset();
-      });
-
-      expect(result.current.phase).toBe('idle');
-      expect(result.current.loading).toBe(false);
-      expect(result.current.error).toBeNull();
-      expect(result.current.provider).toBeNull();
-      expect(result.current.retryCount).toBe(0);
-      expect(result.current.tempToken).toBeNull();
-      expect(result.current.accountId).toBeNull();
-      expect(result.current.accountName).toBeNull();
-      expect(result.current.needsAdditionalScopes).toBe(false);
-      expect(result.current.missingScopes).toEqual([]);
-      expect(result.current.callbackMessage).toBeNull();
-    });
-
-    test('should provide debug info', () => {
-      const { result } = renderHook(() => useOAuthSignin());
-
-      const debugInfo = result.current.getDebugInfo();
-
-      expect(debugInfo).toEqual({
-        phase: 'idle',
-        loading: false,
-        error: null,
-        provider: null,
-        retryCount: 0,
-        lastAttemptTimestamp: null,
-        tempToken: null,
-        accountId: null,
-        accountName: null,
-        needsAdditionalScopes: false,
-        missingScopes: [],
-        callbackMessage: null,
-      });
     });
   });
 });

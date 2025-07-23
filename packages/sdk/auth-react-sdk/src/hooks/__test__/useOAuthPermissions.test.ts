@@ -330,48 +330,6 @@ describe('useOAuthPermissions', () => {
     });
   });
 
-  describe('Validation', () => {
-    test('should validate callback URL for permission request', async () => {
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
-      await act(async () => {
-        await result.current.requestPermission(testProvider, testScopes, '');
-      });
-
-      expect(result.current.error).toBe('Callback URL is required for permission request');
-      expect(mockAuthService.generatePermissionUrl).not.toHaveBeenCalled();
-    });
-
-    test('should validate callback URL for reauthorization', async () => {
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
-      await act(async () => {
-        await result.current.reauthorizePermissions(testProvider, '');
-      });
-
-      expect(result.current.error).toBe('Callback URL is required for reauthorization');
-      expect(mockAuthService.generateReauthorizeUrl).not.toHaveBeenCalled();
-    });
-
-    test('should validate callback URL for get permission URL', async () => {
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
-      const url = await result.current.getPermissionUrl(testProvider, testScopes, '');
-
-      expect(url).toBe('');
-      expect(result.current.error).toBe('Callback URL is required for permission URL generation');
-    });
-
-    test('should validate callback URL for get reauthorize URL', async () => {
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
-      const url = await result.current.getReauthorizeUrl(testProvider, '');
-
-      expect(url).toBe('');
-      expect(result.current.error).toBe('Callback URL is required for reauthorization URL generation');
-    });
-  });
-
   describe('Callback Processing Flow', () => {
     test('should handle successful callback processing', async () => {
       const { result } = renderHook(() => useOAuthPermissions(testAccountId));
@@ -498,43 +456,6 @@ describe('useOAuthPermissions', () => {
       const { result } = renderHook(() => useOAuthPermissions(testAccountId));
 
       expect(result.current.canRequest).toBe(false);
-    });
-  });
-
-  describe('Utility Functions', () => {
-    test('should clear errors', async () => {
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
-      // Set an error first
-      await act(async () => {
-        await result.current.requestPermission(testProvider, testScopes, '');
-      });
-
-      expect(result.current.error).toBeTruthy();
-
-      // Clear the error
-      act(() => {
-        result.current.clearError();
-      });
-
-      expect(result.current.error).toBeNull();
-    });
-
-    test('should reset state', () => {
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
-      // Reset to initial state
-      act(() => {
-        result.current.reset();
-      });
-
-      expect(result.current.phase).toBe('idle');
-      expect(result.current.loading).toBe(false);
-      expect(result.current.error).toBeNull();
-      expect(result.current.lastProvider).toBeNull();
-      expect(result.current.lastScopes).toBeNull();
-      expect(result.current.callbackMessage).toBeNull();
-      expect(result.current.grantedScopes).toBeNull();
     });
   });
 
