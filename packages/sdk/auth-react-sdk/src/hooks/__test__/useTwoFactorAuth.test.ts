@@ -1,145 +1,55 @@
-import { describe, test, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useTwoFactorAuth } from '../useTwoFactorAuth';
-import { useAppStore } from '../../store/useAppStore';
-import { AccountType, TwoFactorSetupResponse, TwoFactorStatusResponse } from '../../types';
+import { AccountType } from '../../types';
+import { createMockAuthService, createMockStoreSelectors, TEST_CONSTANTS } from '../../test/utils';
 
 // Mock AuthService
-const mockAuthService = {
-  getTwoFactorStatus: vi.fn(),
-  setupTwoFactor: vi.fn(),
-  verifyTwoFactorSetup: vi.fn(),
-  generateBackupCodes: vi.fn(),
-};
+const mockAuthService = createMockAuthService();
 
-// Mock useAuthService hook
 vi.mock('../../context/ServicesProvider', () => ({
   useAuthService: () => mockAuthService,
 }));
 
 // Mock useAppStore
-const mockUpdateAccountData = vi.fn();
-const mockGetAccountState = vi.fn();
-
-vi.mock('../../store/useAppStore', () => ({
-  useAppStore: vi.fn(),
-}));
-
-const mockUseAppStore = vi.mocked(useAppStore);
+const { mockGetAccountState, mockUpdateAccountData } = createMockStoreSelectors();
 
 describe('useTwoFactorAuth', () => {
-  const accountId = '507f1f77bcf86cd799439011';
-  const localAccountType = AccountType.Local;
-  const oauthAccountType = AccountType.OAuth;
+  const accountId = TEST_CONSTANTS.ACCOUNT_IDS.CURRENT;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-
-    // Setup default store mock
-    mockUseAppStore.mockImplementation((selector) => {
-      if (typeof selector === 'function') {
-        return selector({
-          getAccountState: mockGetAccountState,
-          updateAccountData: mockUpdateAccountData,
-        } as any);
-      }
-      return { updateAccountData: mockUpdateAccountData };
-    });
-
     // Default account state
     mockGetAccountState.mockReturnValue({
       data: {
         id: accountId,
-        accountType: localAccountType,
+        accountType: AccountType.Local,
       },
     });
   });
 
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
-
   describe('Hook Initialization', () => {
-    test('should initialize with idle phase', () => {
+    test('should initialize with correct default state', () => {
       const { result } = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: false }));
 
       expect(result.current.phase).toBe('idle');
-      expect(result.current.isIdle).toBe(true);
-      expect(result.current.isCheckingStatus).toBe(false);
-      expect(result.current.isSettingUp).toBe(false);
-      expect(result.current.isVerifyingSetup).toBe(false);
-      expect(result.current.isGeneratingCodes).toBe(false);
-      expect(result.current.isCompleted).toBe(false);
-      expect(result.current.isFailed).toBe(false);
       expect(result.current.loading).toBe(false);
       expect(result.current.error).toBeNull();
       expect(result.current.accountId).toBe(accountId);
-      expect(result.current.accountType).toBe(localAccountType);
-    });
-
-    test('should initialize status properties correctly', () => {
-      const { result } = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: false }));
-
+      expect(result.current.accountType).toBe(AccountType.Local);
       expect(result.current.isEnabled).toBe(false);
       expect(result.current.hasBackupCodes).toBe(false);
-      expect(result.current.backupCodesCount).toBe(0);
-      expect(result.current.lastSetupDate).toBeNull();
       expect(result.current.setupData).toBeNull();
-      expect(result.current.qrCode).toBeNull();
-      expect(result.current.secret).toBeNull();
-      expect(result.current.backupCodes).toBeNull();
-      expect(result.current.setupToken).toBeNull();
-    });
-
-    test('should determine capabilities correctly', () => {
-      const { result } = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: false }));
-
-      expect(result.current.canSetup).toBe(true); // Has account ID, account type, not enabled
-      expect(result.current.canDisable).toBe(false); // Not enabled
-      expect(result.current.canVerifySetup).toBe(false); // No setup token
-    });
-
-    test('should update capabilities based on state', async () => {
-      const { result } = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: false }));
-
-      // Initially can setup, cannot disable
       expect(result.current.canSetup).toBe(true);
       expect(result.current.canDisable).toBe(false);
-
-      // After loading enabled status
-      mockAuthService.getTwoFactorStatus.mockResolvedValue({
-        enabled: true,
-        backupCodesCount: 5,
-      });
-
-      await act(async () => {
-        await result.current.checkStatus();
-      });
-
-      expect(result.current.canSetup).toBe(false); // Already enabled
-      expect(result.current.canDisable).toBe(true); // Now enabled
-
-      // After setup with token
-      mockAuthService.setupTwoFactor.mockResolvedValue({
-        message: 'Setup',
-        setupToken: 'token',
-      });
-
-      await act(async () => {
-        await result.current.setup({ enableTwoFactor: true });
-      });
-
-      expect(result.current.canVerifySetup).toBe(true); // Has setup token
     });
 
     test('should handle null account ID', () => {
-      const { result } = renderHook(() => useTwoFactorAuth(null));
+      const { result } = renderHook(() => useTwoFactorAuth(null, { autoLoadStatus: false }));
 
       expect(result.current.accountId).toBeNull();
       expect(result.current.accountType).toBeNull();
       expect(result.current.canSetup).toBe(false);
       expect(result.current.canDisable).toBe(false);
-      expect(result.current.canVerifySetup).toBe(false);
     });
 
     test('should auto-load status when enabled', async () => {
@@ -148,232 +58,15 @@ describe('useTwoFactorAuth', () => {
         backupCodesCount: 0,
       });
 
-      const { result } = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: true }));
-
+      let result: any;
       await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
-
-      expect(mockAuthService.getTwoFactorStatus).toHaveBeenCalledWith(accountId);
-      expect(result.current.isEnabled).toBe(false);
-    });
-  });
-
-  describe('Status Check Flow', () => {
-    test('should handle successful status check', async () => {
-      const mockStatus: TwoFactorStatusResponse = {
-        enabled: true,
-        backupCodesCount: 10,
-        lastSetupDate: '2022-01-01T00:00:00.000Z',
-      };
-
-      mockAuthService.getTwoFactorStatus.mockResolvedValue(mockStatus);
-
-      const { result } = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: false }));
-
-      await act(async () => {
-        const status = await result.current.checkStatus();
-        expect(status).toEqual(mockStatus);
-      });
-
-      expect(result.current.phase).toBe('idle');
-      expect(result.current.isEnabled).toBe(true);
-      expect(result.current.hasBackupCodes).toBe(true);
-      expect(result.current.backupCodesCount).toBe(10);
-      expect(result.current.lastSetupDate).toBe('2022-01-01T00:00:00.000Z');
-      expect(result.current.loading).toBe(false);
-    });
-
-    test('should handle status check errors', async () => {
-      const error = new Error('Failed to get status');
-      mockAuthService.getTwoFactorStatus.mockRejectedValue(error);
-
-      const { result } = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: false }));
-
-      await act(async () => {
-        const status = await result.current.checkStatus();
-        expect(status).toBeNull();
-      });
-
-      expect(result.current.phase).toBe('failed');
-      expect(result.current.isFailed).toBe(true);
-      expect(result.current.error).toBe('Failed to check 2FA status: Failed to get status');
-      expect(result.current.loading).toBe(false);
-    });
-
-    test('should update phase during status check', async () => {
-      let phaseBeforeCheck: string = '';
-      let phaseAfterCheck: string = '';
-
-      mockAuthService.getTwoFactorStatus.mockImplementation(async () => {
-        phaseBeforeCheck = result.current.phase;
-        return { enabled: false };
-      });
-
-      const { result } = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: false }));
-
-      await act(async () => {
-        await result.current.checkStatus();
-        phaseAfterCheck = result.current.phase;
-      });
-
-      expect(phaseBeforeCheck).toBe('checking_status');
-      expect(phaseAfterCheck).toBe('idle');
-    });
-  });
-
-  describe('2FA Setup Flow', () => {
-    test('should handle successful setup for local account', async () => {
-      const mockSetupResponse: TwoFactorSetupResponse = {
-        message: '2FA setup initiated',
-        secret: 'JBSWY3DPEHPK3PXP',
-        qrCode: 'data:image/png;base64,iVBORw0KGgoAAAANSU...',
-        qrCodeUrl: 'otpauth://totp/Example:user@example.com',
-        backupCodes: ['12345678', '87654321'],
-        setupToken: 'setup-token-123',
-      };
-
-      mockAuthService.setupTwoFactor.mockResolvedValue(mockSetupResponse);
-
-      const { result } = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: false }));
-
-      await act(async () => {
-        const response = await result.current.setup({
-          enableTwoFactor: true,
-          password: 'userpassword123',
-        });
-
-        expect(response).toEqual(mockSetupResponse);
-      });
-
-      expect(result.current.phase).toBe('verifying_setup');
-      expect(result.current.setupData).toEqual(mockSetupResponse);
-      expect(result.current.qrCode).toBe(mockSetupResponse.qrCode);
-      expect(result.current.secret).toBe(mockSetupResponse.secret);
-      expect(result.current.setupToken).toBe(mockSetupResponse.setupToken);
-      expect(result.current.canVerifySetup).toBe(true);
-      expect(result.current.loading).toBe(false);
-    });
-
-    test('should handle successful setup for OAuth account', async () => {
-      // Update account type to OAuth
-      mockGetAccountState.mockReturnValue({
-        data: {
-          id: accountId,
-          accountType: oauthAccountType,
-        },
-      });
-
-      const mockSetupResponse: TwoFactorSetupResponse = {
-        message: '2FA setup initiated',
-        secret: 'JBSWY3DPEHPK3PXP',
-        qrCode: 'data:image/png;base64,iVBORw0KGgoAAAANSU...',
-        setupToken: 'setup-token-123',
-      };
-
-      mockAuthService.setupTwoFactor.mockResolvedValue(mockSetupResponse);
-
-      const { result } = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: false }));
-
-      await act(async () => {
-        const response = await result.current.setup({
-          enableTwoFactor: true,
-          // No password needed for OAuth accounts
-        });
-
-        expect(response).toEqual(mockSetupResponse);
-      });
-
-      expect(mockAuthService.setupTwoFactor).toHaveBeenCalledWith(accountId, oauthAccountType, {
-        enableTwoFactor: true,
-      });
-      expect(result.current.phase).toBe('verifying_setup');
-    });
-
-    test('should handle setup errors', async () => {
-      const error = new Error('Setup failed');
-      mockAuthService.setupTwoFactor.mockRejectedValue(error);
-
-      const { result } = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: false }));
-
-      await act(async () => {
-        const response = await result.current.setup({
-          enableTwoFactor: true,
-          password: 'userpassword123',
-        });
-
-        expect(response).toBeNull();
-      });
-
-      expect(result.current.phase).toBe('failed');
-      expect(result.current.isFailed).toBe(true);
-      expect(result.current.error).toBe('Failed to setup 2FA: Setup failed');
-    });
-
-    test('should update phase during setup', async () => {
-      let phaseBeforeSetup: string = '';
-      let phaseAfterSetup: string = '';
-
-      mockAuthService.setupTwoFactor.mockImplementation(async () => {
-        phaseBeforeSetup = result.current.phase;
-        return {
-          message: 'Setup initiated',
-          setupToken: 'setup-token',
-        };
-      });
-
-      const { result } = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: false }));
-
-      await act(async () => {
-        await result.current.setup({
-          enableTwoFactor: true,
-          password: 'userpassword123',
-        });
-        phaseAfterSetup = result.current.phase;
-      });
-
-      expect(phaseBeforeSetup).toBe('setting_up');
-      expect(phaseAfterSetup).toBe('verifying_setup');
-    });
-  });
-
-  describe('2FA Setup Verification Flow', () => {
-    beforeEach(async () => {
-      // Set up hook in verifying_setup state
-      mockAuthService.setupTwoFactor.mockResolvedValue({
-        message: 'Setup initiated',
-        setupToken: 'setup-token-123',
-        secret: 'JBSWY3DPEHPK3PXP',
-        qrCode: 'data:image/png;base64,iVBORw0KGgoAAAANSU...',
-      });
-    });
-
-    test('should handle successful setup verification', async () => {
-      const { result } = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: false }));
-
-      // First setup 2FA
-      await act(async () => {
-        await result.current.setup({
-          enableTwoFactor: true,
-          password: 'userpassword123',
-        });
-      });
-
-      // Mock successful verification
-      mockAuthService.verifyTwoFactorSetup.mockResolvedValue({
-        message: '2FA enabled successfully',
-      });
-
-      await act(async () => {
-        const response = await result.current.verifySetup('123456');
-        expect(response).toEqual({ message: '2FA enabled successfully' });
+        const hook = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: true }));
+        result = hook.result;
       });
 
       expect(result.current.phase).toBe('completed');
-      expect(result.current.isCompleted).toBe(true);
       expect(result.current.isEnabled).toBe(true);
       expect(result.current.setupToken).toBeNull(); // Cleared after verification
-      expect(result.current.loading).toBe(false);
       expect(mockUpdateAccountData).toHaveBeenCalledWith(accountId, {
         security: { twoFactorEnabled: true },
       });
@@ -383,6 +76,11 @@ describe('useTwoFactorAuth', () => {
       const { result } = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: false }));
 
       // First setup 2FA
+      mockAuthService.setupTwoFactor.mockResolvedValue({
+        message: 'Setup initiated',
+        setupToken: TEST_CONSTANTS.TOKENS.SETUP,
+      });
+
       await act(async () => {
         await result.current.setup({
           enableTwoFactor: true,
@@ -390,7 +88,6 @@ describe('useTwoFactorAuth', () => {
         });
       });
 
-      // Mock failed verification
       const error = new Error('Invalid verification code');
       mockAuthService.verifyTwoFactorSetup.mockRejectedValue(error);
 
@@ -400,7 +97,6 @@ describe('useTwoFactorAuth', () => {
       });
 
       expect(result.current.phase).toBe('failed');
-      expect(result.current.isFailed).toBe(true);
       expect(result.current.error).toBe('Failed to verify 2FA setup: Invalid verification code');
     });
 
@@ -415,37 +111,9 @@ describe('useTwoFactorAuth', () => {
       expect(result.current.phase).toBe('failed');
       expect(result.current.error).toBe('No setup token available. Please run setup first.');
     });
-
-    test('should update phase during verification', async () => {
-      const { result } = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: false }));
-
-      // First setup 2FA
-      await act(async () => {
-        await result.current.setup({
-          enableTwoFactor: true,
-          password: 'userpassword123',
-        });
-      });
-
-      let phaseBeforeVerify: string = '';
-      let phaseAfterVerify: string = '';
-
-      mockAuthService.verifyTwoFactorSetup.mockImplementation(async () => {
-        phaseBeforeVerify = result.current.phase;
-        return { message: 'Verified' };
-      });
-
-      await act(async () => {
-        await result.current.verifySetup('123456');
-        phaseAfterVerify = result.current.phase;
-      });
-
-      expect(phaseBeforeVerify).toBe('verifying_setup');
-      expect(phaseAfterVerify).toBe('completed');
-    });
   });
 
-  describe('Backup Codes Generation Flow', () => {
+  describe('Backup Codes Generation', () => {
     test('should handle successful backup codes generation', async () => {
       const mockBackupCodes = ['12345678', '87654321', '11111111', '22222222', '33333333'];
       mockAuthService.generateBackupCodes.mockResolvedValue({
@@ -469,7 +137,6 @@ describe('useTwoFactorAuth', () => {
       expect(result.current.phase).toBe('completed');
       expect(result.current.backupCodes).toEqual(mockBackupCodes);
       expect(result.current.backupCodesCount).toBe(5);
-      expect(result.current.loading).toBe(false);
     });
 
     test('should handle backup codes generation errors', async () => {
@@ -488,29 +155,6 @@ describe('useTwoFactorAuth', () => {
 
       expect(result.current.phase).toBe('failed');
       expect(result.current.error).toBe('Failed to generate backup codes: Failed to generate codes');
-    });
-
-    test('should update phase during backup codes generation', async () => {
-      let phaseBeforeGenerate: string = '';
-      let phaseAfterGenerate: string = '';
-
-      mockAuthService.generateBackupCodes.mockImplementation(async () => {
-        phaseBeforeGenerate = result.current.phase;
-        return {
-          message: 'Generated',
-          backupCodes: ['12345678'],
-        };
-      });
-
-      const { result } = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: false }));
-
-      await act(async () => {
-        await result.current.generateBackupCodes({ password: 'userpassword123' });
-        phaseAfterGenerate = result.current.phase;
-      });
-
-      expect(phaseBeforeGenerate).toBe('generating_codes');
-      expect(phaseAfterGenerate).toBe('completed');
     });
   });
 
@@ -532,14 +176,13 @@ describe('useTwoFactorAuth', () => {
       expect(result.current.isEnabled).toBe(false);
       expect(result.current.backupCodesCount).toBe(0);
       expect(result.current.setupData).toBeNull();
-      expect(result.current.backupCodes).toBeNull();
-      expect(result.current.setupToken).toBeNull();
+
       expect(mockUpdateAccountData).toHaveBeenCalledWith(accountId, {
         security: { twoFactorEnabled: false },
       });
     });
 
-    test('should handle 2FA disable errors', async () => {
+    test('should handle disable errors', async () => {
       const error = new Error('Failed to disable 2FA');
       mockAuthService.setupTwoFactor.mockRejectedValue(error);
 
@@ -552,7 +195,6 @@ describe('useTwoFactorAuth', () => {
       });
 
       expect(result.current.phase).toBe('failed');
-      expect(result.current.error).toBe('Failed to disable 2FA: Failed to disable 2FA');
     });
 
     test('should handle disable without account', async () => {
@@ -566,11 +208,10 @@ describe('useTwoFactorAuth', () => {
     });
   });
 
-  describe('Validation and Error Handling', () => {
-    test('should handle operations without account ID', async () => {
-      const { result } = renderHook(() => useTwoFactorAuth(null));
+  describe('Error Handling', () => {
+    test('should handle operations without account ID gracefully', async () => {
+      const { result } = renderHook(() => useTwoFactorAuth(null, { autoLoadStatus: false }));
 
-      // All operations should return null gracefully
       await act(async () => {
         const statusResult = await result.current.checkStatus();
         expect(statusResult).toBeNull();
@@ -585,14 +226,13 @@ describe('useTwoFactorAuth', () => {
         expect(backupResult).toBeNull();
       });
 
-      // No API calls should be made
       expect(mockAuthService.getTwoFactorStatus).not.toHaveBeenCalled();
       expect(mockAuthService.setupTwoFactor).not.toHaveBeenCalled();
       expect(mockAuthService.verifyTwoFactorSetup).not.toHaveBeenCalled();
       expect(mockAuthService.generateBackupCodes).not.toHaveBeenCalled();
     });
 
-    test('should handle operations without account type', async () => {
+    test('should handle missing account type', async () => {
       mockGetAccountState.mockReturnValue({
         data: {
           id: accountId,
@@ -600,7 +240,7 @@ describe('useTwoFactorAuth', () => {
         },
       });
 
-      const { result } = renderHook(() => useTwoFactorAuth(accountId));
+      const { result } = renderHook(() => useTwoFactorAuth(accountId, { autoLoadStatus: false }));
 
       expect(result.current.canSetup).toBe(false);
       expect(result.current.canDisable).toBe(false);

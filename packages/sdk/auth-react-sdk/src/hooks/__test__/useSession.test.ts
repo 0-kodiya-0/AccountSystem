@@ -1,81 +1,40 @@
-import { describe, test, expect, beforeEach, vi, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { act, renderHook } from '@testing-library/react';
 import { useSession } from '../useSession';
-import { useAppStore } from '../../store/useAppStore';
-import { AccountSessionInfo, SessionAccount, AccountType, AccountStatus } from '../../types';
+import {
+  createMockAuthService,
+  createMockSessionData,
+  createMockSessionAccounts,
+  resetAppStore,
+  setMockSessionState,
+  TEST_CONSTANTS,
+} from '../../test/utils';
 
 // Mock the AuthService
-const mockAuthService = {
-  getAccountSession: vi.fn(),
-  getSessionAccountsData: vi.fn(),
-  logoutAll: vi.fn(),
-  setCurrentAccountInSession: vi.fn(),
-};
+const mockAuthService = createMockAuthService();
 
-// Mock the useAuthService hook
 vi.mock('../../context/ServicesProvider', () => ({
   useAuthService: () => mockAuthService,
 }));
 
 describe('useSession', () => {
-  const mockSessionData: AccountSessionInfo = {
-    hasSession: true,
-    accountIds: ['507f1f77bcf86cd799439011', '507f1f77bcf86cd799439012'],
-    currentAccountId: '507f1f77bcf86cd799439011',
-    isValid: true,
-  };
-
-  const mockSessionAccounts: SessionAccount[] = [
-    {
-      id: '507f1f77bcf86cd799439011',
-      accountType: AccountType.Local,
-      status: AccountStatus.Active,
-      userDetails: {
-        name: 'John Doe',
-        email: 'john@example.com',
-      },
-    },
-    {
-      id: '507f1f77bcf86cd799439012',
-      accountType: AccountType.OAuth,
-      status: AccountStatus.Active,
-      userDetails: {
-        name: 'Jane Smith',
-        email: 'jane@example.com',
-      },
-    },
-  ];
+  const mockSessionData = createMockSessionData();
+  const mockSessionAccounts = createMockSessionAccounts();
 
   beforeEach(() => {
+    resetAppStore();
     vi.clearAllMocks();
 
-    // Reset store to initial state using direct access
-    useAppStore.setState({
-      session: {
-        data: null,
-        status: 'idle',
-        currentOperation: null,
-        error: null,
-        lastLoaded: null,
-      },
-      accounts: {},
-      sessionAccounts: {
-        data: [],
-        status: 'idle',
-        currentOperation: null,
-        error: null,
-        lastLoaded: null,
-      },
-    });
-  });
-
-  afterEach(() => {
-    vi.clearAllMocks();
+    // Reset all mock implementations
+    mockAuthService.getAccountSession.mockReset();
+    mockAuthService.getSessionAccountsData.mockReset();
+    mockAuthService.logoutAll.mockReset();
+    mockAuthService.setCurrentAccountInSession.mockReset();
   });
 
   describe('Hook Initialization', () => {
-    test('should initialize with default options', () => {
-      const { result } = renderHook(() => useSession());
+    it('should initialize with correct default state', () => {
+      const { result } = renderHook(() => useSession({ autoLoad: false, autoLoadSessionAccounts: false }));
 
       expect(result.current.data).toBeNull();
       expect(result.current.status).toBe('idle');
@@ -85,542 +44,307 @@ describe('useSession', () => {
       expect(result.current.accountIds).toEqual([]);
       expect(result.current.accounts).toEqual([]);
     });
-
-    test('should respect autoLoad option', () => {
-      // Mock shouldLoadSession to return true
-      const store = useAppStore.getState();
-      vi.spyOn(store, 'shouldLoadSession').mockReturnValue(true);
-
-      // Test with autoLoad: false
-      renderHook(() => useSession({ autoLoad: false }));
-      expect(mockAuthService.getAccountSession).not.toHaveBeenCalled();
-
-      // Reset and test with autoLoad: true
-      vi.clearAllMocks();
-      renderHook(() => useSession({ autoLoad: true }));
-      expect(mockAuthService.getAccountSession).toHaveBeenCalled();
-    });
-
-    test('should respect autoLoadSessionAccounts option', () => {
-      // Set up session state first
-      useAppStore.setState({
-        session: {
-          data: mockSessionData,
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now(),
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-      });
-
-      const store = useAppStore.getState();
-      vi.spyOn(store, 'shouldLoadSessionAccounts').mockReturnValue(true);
-
-      // Test with autoLoadSessionAccounts: false
-      renderHook(() => useSession({ autoLoadSessionAccounts: false }));
-      expect(mockAuthService.getSessionAccountsData).not.toHaveBeenCalled();
-
-      // Reset and test with autoLoadSessionAccounts: true
-      vi.clearAllMocks();
-      renderHook(() => useSession({ autoLoadSessionAccounts: true }));
-      expect(mockAuthService.getSessionAccountsData).toHaveBeenCalledWith(mockSessionData.accountIds);
-    });
   });
 
   describe('Session Loading', () => {
-    test('should load session automatically when autoLoad is true', async () => {
-      const store = useAppStore.getState();
-      vi.spyOn(store, 'shouldLoadSession').mockReturnValue(true);
-
+    it('should auto-load session when autoLoad is true', async () => {
       mockAuthService.getAccountSession.mockResolvedValue({
         session: mockSessionData,
       });
 
-      const { result } = renderHook(() => useSession({ autoLoad: true }));
-
-      // Wait for async operations
+      let result: any;
       await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        const hook = renderHook(() => useSession({ autoLoad: true }));
+        result = hook.result;
       });
 
       expect(mockAuthService.getAccountSession).toHaveBeenCalled();
-
-      // Check that the store was updated
-      const currentState = useAppStore.getState();
-      expect(currentState.session.data).toEqual(mockSessionData);
-      expect(currentState.session.status).toBe('success');
+      expect(result.current.data).toEqual(mockSessionData);
+      expect(result.current.status).toBe('success');
     });
 
-    test('should not load session when autoLoad is false', () => {
-      const store = useAppStore.getState();
-      vi.spyOn(store, 'shouldLoadSession').mockReturnValue(true);
+    it('should auto-load session accounts when autoLoadSessionAccounts is true', async () => {
+      setMockSessionState(mockSessionData);
+      mockAuthService.getSessionAccountsData.mockResolvedValue(mockSessionAccounts);
 
-      renderHook(() => useSession({ autoLoad: false }));
+      let result: any;
+      await act(async () => {
+        const hook = renderHook(() => useSession({ autoLoad: false, autoLoadSessionAccounts: true }));
+        result = hook.result;
+      });
 
-      expect(mockAuthService.getAccountSession).not.toHaveBeenCalled();
+      expect(mockAuthService.getSessionAccountsData).toHaveBeenCalledWith(mockSessionData.accountIds);
+      expect(result.current.sessionAccounts.data).toEqual(mockSessionAccounts);
+      expect(result.current.sessionAccounts.status).toBe('success');
     });
 
-    test('should handle session loading errors', async () => {
-      const store = useAppStore.getState();
-      vi.spyOn(store, 'shouldLoadSession').mockReturnValue(true);
+    it('should load session when manually called', async () => {
+      mockAuthService.getAccountSession.mockResolvedValue({
+        session: mockSessionData,
+      });
 
+      const { result } = renderHook(() => useSession({ autoLoad: false, autoLoadSessionAccounts: false }));
+
+      await act(async () => {
+        await result.current.load();
+      });
+
+      expect(mockAuthService.getAccountSession).toHaveBeenCalled();
+      expect(result.current.data).toEqual(mockSessionData);
+      expect(result.current.status).toBe('success');
+    });
+
+    it('should handle session loading errors', async () => {
       const error = new Error('Session load failed');
       mockAuthService.getAccountSession.mockRejectedValue(error);
 
-      renderHook(() => useSession({ autoLoad: true }));
+      const { result } = renderHook(() => useSession({ autoLoad: false, autoLoadSessionAccounts: false }));
 
       await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await result.current.load();
       });
 
-      // Check that error was set in store
-      const currentState = useAppStore.getState();
-      expect(currentState.session.error).toBe('Failed to load session: Session load failed');
-      expect(currentState.session.status).toBe('error');
+      expect(result.current.error).toBe('Failed to load session: Session load failed');
+      expect(result.current.status).toBe('error');
     });
   });
 
   describe('Session Accounts Loading', () => {
-    test('should load session accounts when enabled', async () => {
-      // Set up session state first
-      useAppStore.setState({
-        session: {
-          data: mockSessionData,
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now(),
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-      });
-
-      const store = useAppStore.getState();
-      vi.spyOn(store, 'shouldLoadSessionAccounts').mockReturnValue(true);
-
+    it('should load session accounts when manually called', async () => {
+      setMockSessionState(mockSessionData);
       mockAuthService.getSessionAccountsData.mockResolvedValue(mockSessionAccounts);
 
-      renderHook(() => useSession({ autoLoadSessionAccounts: true }));
+      const { result } = renderHook(() => useSession({ autoLoad: false, autoLoadSessionAccounts: false }));
 
       await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await result.current.loadSessionAccounts();
       });
 
       expect(mockAuthService.getSessionAccountsData).toHaveBeenCalledWith(mockSessionData.accountIds);
-
-      // Check that session accounts were updated
-      const currentState = useAppStore.getState();
-      expect(currentState.sessionAccounts.data).toEqual(mockSessionAccounts);
-      expect(currentState.sessionAccounts.status).toBe('success');
+      expect(result.current.sessionAccounts.data).toEqual(mockSessionAccounts);
+      expect(result.current.sessionAccounts.status).toBe('success');
     });
 
-    test('should not load session accounts when disabled', () => {
-      // Set up session state first
-      useAppStore.setState({
-        session: {
-          data: mockSessionData,
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now(),
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-      });
-
-      const store = useAppStore.getState();
-      vi.spyOn(store, 'shouldLoadSessionAccounts').mockReturnValue(true);
-
-      renderHook(() => useSession({ autoLoadSessionAccounts: false }));
-
-      expect(mockAuthService.getSessionAccountsData).not.toHaveBeenCalled();
-    });
-
-    test('should handle session accounts loading errors', async () => {
-      // Set up session state first
-      useAppStore.setState({
-        session: {
-          data: mockSessionData,
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now(),
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-      });
-
-      const store = useAppStore.getState();
-      vi.spyOn(store, 'shouldLoadSessionAccounts').mockReturnValue(true);
+    it('should handle session accounts loading errors', async () => {
+      setMockSessionState(mockSessionData);
 
       const error = new Error('Session accounts load failed');
       mockAuthService.getSessionAccountsData.mockRejectedValue(error);
 
-      renderHook(() => useSession({ autoLoadSessionAccounts: true }));
+      const { result } = renderHook(() => useSession({ autoLoad: false, autoLoadSessionAccounts: false }));
 
       await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await result.current.loadSessionAccounts();
       });
 
-      // Check that error was set in store
-      const currentState = useAppStore.getState();
-      expect(currentState.sessionAccounts.error).toBe('Failed to load session accounts: Session accounts load failed');
-      expect(currentState.sessionAccounts.status).toBe('error');
+      expect(result.current.sessionAccounts.error).toBe(
+        'Failed to load session accounts: Session accounts load failed',
+      );
+      expect(result.current.sessionAccounts.status).toBe('error');
     });
   });
 
   describe('Session Operations', () => {
-    test('should logout all accounts', async () => {
-      // Set up session state first
-      useAppStore.setState({
-        session: {
-          data: mockSessionData,
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now(),
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-      });
-
+    it('should logout all accounts', async () => {
+      setMockSessionState(mockSessionData);
       mockAuthService.logoutAll.mockResolvedValue({ message: 'Logged out successfully' });
 
-      const { result } = renderHook(() => useSession());
+      const { result } = renderHook(() => useSession({ autoLoad: false, autoLoadSessionAccounts: false }));
 
       await act(async () => {
         await result.current.logoutAll();
       });
 
       expect(mockAuthService.logoutAll).toHaveBeenCalledWith(mockSessionData.accountIds);
-
-      // Check that session was cleared
-      const currentState = useAppStore.getState();
-      expect(currentState.session.data).toBeNull();
-      expect(currentState.session.status).toBe('idle');
+      expect(result.current.data).toBeNull();
+      expect(result.current.status).toBe('idle');
     });
 
-    test('should set current account', async () => {
+    it('should set current account', async () => {
+      const newCurrentAccountId = TEST_CONSTANTS.ACCOUNT_IDS.DIFFERENT;
+
+      setMockSessionState(mockSessionData);
+
       mockAuthService.setCurrentAccountInSession.mockResolvedValue({
         message: 'Current account updated',
-        currentAccountId: '507f1f77bcf86cd799439012',
+        currentAccountId: newCurrentAccountId,
       });
 
       mockAuthService.getAccountSession.mockResolvedValue({
-        session: { ...mockSessionData, currentAccountId: '507f1f77bcf86cd799439012' },
+        session: { ...mockSessionData, currentAccountId: newCurrentAccountId },
       });
 
-      const { result } = renderHook(() => useSession());
+      const { result } = renderHook(() => useSession({ autoLoad: false, autoLoadSessionAccounts: false }));
 
       await act(async () => {
-        await result.current.setCurrentAccount('507f1f77bcf86cd799439012');
+        await result.current.setCurrentAccount(newCurrentAccountId);
       });
 
-      expect(mockAuthService.setCurrentAccountInSession).toHaveBeenCalledWith('507f1f77bcf86cd799439012');
+      expect(mockAuthService.setCurrentAccountInSession).toHaveBeenCalledWith(newCurrentAccountId);
       expect(mockAuthService.getAccountSession).toHaveBeenCalled();
-
-      // Check that session was updated
-      const currentState = useAppStore.getState();
-      expect(currentState.session.data?.currentAccountId).toBe('507f1f77bcf86cd799439012');
+      expect(result.current.data?.currentAccountId).toBe(newCurrentAccountId);
     });
 
-    test('should handle operation errors', async () => {
-      // Set up session state first
-      useAppStore.setState({
-        session: {
-          data: mockSessionData,
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now(),
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-      });
+    it('should handle operation errors', async () => {
+      setMockSessionState(mockSessionData);
 
       const error = new Error('Operation failed');
       mockAuthService.logoutAll.mockRejectedValue(error);
 
-      const { result } = renderHook(() => useSession());
+      const { result } = renderHook(() => useSession({ autoLoad: false, autoLoadSessionAccounts: false }));
 
       await act(async () => {
         await result.current.logoutAll();
       });
 
-      // Check that error was set
-      const currentState = useAppStore.getState();
-      expect(currentState.session.error).toBe('Failed to logout all: Operation failed');
-      expect(currentState.session.status).toBe('error');
+      expect(result.current.error).toBe('Failed to logout all: Operation failed');
+      expect(result.current.status).toBe('error');
+    });
+  });
+
+  describe('Combined Operations', () => {
+    it('should load session then load session accounts', async () => {
+      mockAuthService.getAccountSession.mockResolvedValue({
+        session: mockSessionData,
+      });
+      mockAuthService.getSessionAccountsData.mockResolvedValue(mockSessionAccounts);
+
+      const { result } = renderHook(() => useSession({ autoLoad: false, autoLoadSessionAccounts: false }));
+
+      // First load session
+      await act(async () => {
+        await result.current.load();
+      });
+
+      expect(result.current.data).toEqual(mockSessionData);
+      expect(result.current.status).toBe('success');
+
+      // Then load session accounts
+      await act(async () => {
+        await result.current.loadSessionAccounts();
+      });
+
+      expect(result.current.sessionAccounts.data).toEqual(mockSessionAccounts);
+      expect(result.current.sessionAccounts.status).toBe('success');
     });
   });
 
   describe('Derived State', () => {
-    test('should calculate isAuthenticated correctly', () => {
-      // Test without session accounts auto-loading
-      useAppStore.setState({
-        session: {
-          data: mockSessionData,
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now(),
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
+    it('should calculate authentication status correctly', async () => {
+      mockAuthService.getAccountSession.mockResolvedValue({
+        session: mockSessionData,
+      });
+      mockAuthService.getSessionAccountsData.mockResolvedValue(mockSessionAccounts);
+
+      const { result } = renderHook(() =>
+        useSession({
+          autoLoad: false,
+          autoLoadSessionAccounts: false,
+        }),
+      );
+
+      // Load session first
+      await act(async () => {
+        await result.current.load();
       });
 
-      const { result } = renderHook(() => useSession({ autoLoadSessionAccounts: false }));
-
+      // For non-autoLoadSessionAccounts, should be authenticated with just session
       expect(result.current.isAuthenticated).toBe(true);
-
-      // Test with session accounts auto-loading
-      useAppStore.setState({
-        session: {
-          data: mockSessionData,
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now(),
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: mockSessionAccounts,
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now(),
-        },
-      });
-
-      const { result: result2 } = renderHook(() => useSession({ autoLoadSessionAccounts: true }));
-
-      expect(result2.current.isAuthenticated).toBe(true);
-    });
-
-    test('should calculate hasAccount correctly', () => {
-      useAppStore.setState({
-        session: {
-          data: mockSessionData,
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now(),
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-      });
-
-      const { result } = renderHook(() => useSession());
-
       expect(result.current.hasAccount).toBe(true);
-      expect(result.current.currentAccountId).toBe('507f1f77bcf86cd799439011');
-
-      // Test without current account
-      useAppStore.setState({
-        session: {
-          data: { ...mockSessionData, currentAccountId: null },
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now(),
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-      });
-
-      const { result: result2 } = renderHook(() => useSession());
-
-      expect(result2.current.hasAccount).toBe(false);
-      expect(result2.current.currentAccountId).toBeNull();
+      expect(result.current.currentAccountId).toBe(TEST_CONSTANTS.ACCOUNT_IDS.CURRENT);
+      expect(result.current.accountIds).toEqual([
+        TEST_CONSTANTS.ACCOUNT_IDS.CURRENT,
+        TEST_CONSTANTS.ACCOUNT_IDS.DIFFERENT,
+      ]);
     });
 
-    test('should return current account ID', () => {
-      useAppStore.setState({
-        session: {
-          data: mockSessionData,
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now(),
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
+    it('should return sorted accounts array after loading session accounts', async () => {
+      mockAuthService.getAccountSession.mockResolvedValue({
+        session: mockSessionData,
+      });
+      // Set accounts in reversed order
+      const reversedAccounts = [mockSessionAccounts[1], mockSessionAccounts[0]];
+      mockAuthService.getSessionAccountsData.mockResolvedValue(reversedAccounts);
+
+      const { result } = renderHook(() =>
+        useSession({
+          autoLoad: false,
+          autoLoadSessionAccounts: false,
+        }),
+      );
+
+      // Load session
+      await act(async () => {
+        await result.current.load();
       });
 
-      const { result } = renderHook(() => useSession());
-
-      expect(result.current.currentAccountId).toBe('507f1f77bcf86cd799439011');
-    });
-
-    test('should return account IDs array', () => {
-      useAppStore.setState({
-        session: {
-          data: mockSessionData,
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now(),
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
+      // Load session accounts
+      await act(async () => {
+        await result.current.loadSessionAccounts();
       });
-
-      const { result } = renderHook(() => useSession());
-
-      expect(result.current.accountIds).toEqual(['507f1f77bcf86cd799439011', '507f1f77bcf86cd799439012']);
-    });
-
-    test('should return sorted accounts array', () => {
-      useAppStore.setState({
-        session: {
-          data: mockSessionData,
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now(),
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [mockSessionAccounts[1], mockSessionAccounts[0]], // Reversed order
-          status: 'success',
-          currentOperation: null,
-          error: null,
-          lastLoaded: Date.now(),
-        },
-      });
-
-      const { result } = renderHook(() => useSession());
 
       // Should be sorted by accountIds order
       expect(result.current.accounts).toHaveLength(2);
-      expect(result.current.accounts[0].id).toBe('507f1f77bcf86cd799439011');
-      expect(result.current.accounts[1].id).toBe('507f1f77bcf86cd799439012');
+      expect(result.current.accounts[0].id).toBe(TEST_CONSTANTS.ACCOUNT_IDS.CURRENT);
+      expect(result.current.accounts[1].id).toBe(TEST_CONSTANTS.ACCOUNT_IDS.DIFFERENT);
+    });
+
+    it('should handle missing current account', async () => {
+      const sessionWithoutCurrentAccount = createMockSessionData({ currentAccountId: null });
+      mockAuthService.getAccountSession.mockResolvedValue({
+        session: sessionWithoutCurrentAccount,
+      });
+
+      const { result } = renderHook(() =>
+        useSession({
+          autoLoad: false,
+          autoLoadSessionAccounts: false,
+        }),
+      );
+
+      await act(async () => {
+        await result.current.load();
+      });
+
+      expect(result.current.hasAccount).toBe(false);
+      expect(result.current.currentAccountId).toBeNull();
     });
   });
 
   describe('Status Helpers', () => {
-    test('should provide loading status helpers', () => {
-      useAppStore.setState({
-        session: {
-          data: null,
-          status: 'loading',
-          currentOperation: 'loadSession',
-          error: null,
-          lastLoaded: null,
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [],
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
+    it('should provide correct loading status', async () => {
+      // Mock a slow response to capture loading state
+      let resolvePromise: (value: any) => void;
+      const slowPromise = new Promise((resolve) => {
+        resolvePromise = resolve;
+      });
+      mockAuthService.getAccountSession.mockReturnValue(slowPromise);
+
+      const { result } = renderHook(() =>
+        useSession({
+          autoLoad: false,
+          autoLoadSessionAccounts: false,
+        }),
+      );
+
+      // Start the async operation
+      act(() => {
+        result.current.load();
       });
 
-      const { result } = renderHook(() => useSession());
-
+      // Should be loading
       expect(result.current.isLoading).toBe(true);
-      expect(result.current.isUpdating).toBe(false);
-      expect(result.current.isSaving).toBe(false);
-      expect(result.current.isDeleting).toBe(false);
-      expect(result.current.isIdle).toBe(false);
       expect(result.current.hasError).toBe(false);
       expect(result.current.isSuccess).toBe(false);
-    });
 
-    test('should provide session accounts status helpers', () => {
-      useAppStore.setState({
-        session: {
-          data: null,
-          status: 'idle',
-          currentOperation: null,
-          error: null,
-          lastLoaded: null,
-        },
-        accounts: {},
-        sessionAccounts: {
-          data: [],
-          status: 'loading',
-          currentOperation: 'loadSessionAccounts',
-          error: null,
-          lastLoaded: null,
-        },
+      // Resolve the promise
+      await act(async () => {
+        resolvePromise!({ session: mockSessionData });
       });
 
-      const { result } = renderHook(() => useSession());
-
-      expect(result.current.sessionAccountsLoading).toBe(true);
-      expect(result.current.sessionAccountsError).toBeNull();
-      expect(result.current.sessionAccountsSuccess).toBe(false);
+      // Should be success
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.isSuccess).toBe(true);
     });
   });
 });

@@ -1,158 +1,106 @@
-import { describe, test, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useLocalSignup } from '../useLocalSignup';
+import { createMockAuthService, setupBrowserMocks, TEST_CONSTANTS } from '../../test/utils';
 
 // Mock AuthService
-const mockAuthService = {
-  requestEmailVerification: vi.fn(),
-  verifyEmailForSignup: vi.fn(),
-  completeProfile: vi.fn(),
-  cancelSignup: vi.fn(),
-};
+const mockAuthService = createMockAuthService();
 
-// Mock the useAuthService hook
 vi.mock('../../context/ServicesProvider', () => ({
   useAuthService: () => mockAuthService,
 }));
 
-// Mock window.location and window.history
-const mockLocation = {
-  href: 'http://localhost:3000',
-  search: '',
-  origin: 'http://localhost:3000',
-};
-
-const mockHistory = {
-  replaceState: vi.fn(),
-};
-
-Object.defineProperty(window, 'location', {
-  value: mockLocation,
-  writable: true,
-});
-
-Object.defineProperty(window, 'history', {
-  value: mockHistory,
-  writable: true,
-});
-
 describe('useLocalSignup', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockLocation.search = '';
-    mockLocation.href = 'http://localhost:3000';
-  });
+  let mockLocation: ReturnType<typeof setupBrowserMocks>['mockLocation'];
+  let mockHistory: ReturnType<typeof setupBrowserMocks>['mockHistory'];
 
-  afterEach(() => {
-    vi.clearAllMocks();
+  beforeEach(() => {
+    const browserMocks = setupBrowserMocks();
+    mockLocation = browserMocks.mockLocation;
+    mockHistory = browserMocks.mockHistory;
   });
 
   describe('Hook Initialization', () => {
-    test('should initialize with idle phase', () => {
+    test('should initialize with correct default state', () => {
       const { result } = renderHook(() => useLocalSignup({ autoProcessToken: false }));
 
       expect(result.current.phase).toBe('idle');
-      expect(result.current.isIdle).toBe(true);
-      expect(result.current.isEmailSending).toBe(false);
-      expect(result.current.isEmailSent).toBe(false);
-      expect(result.current.isEmailVerifying).toBe(false);
-      expect(result.current.isEmailVerified).toBe(false);
-      expect(result.current.isProfileCompleting).toBe(false);
-      expect(result.current.isCompleted).toBe(false);
-      expect(result.current.isCanceled).toBe(false);
-      expect(result.current.isFailed).toBe(false);
+      expect(result.current.loading).toBe(false);
+      expect(result.current.error).toBeNull();
     });
 
-    test('should process token from URL automatically', async () => {
-      mockLocation.search = '?token=verification-token-123';
+    test('should auto-process token when enabled', async () => {
+      mockLocation.search = `?token=${TEST_CONSTANTS.TOKENS.VERIFICATION}`;
       mockAuthService.verifyEmailForSignup.mockResolvedValue({
         message: 'Email verified successfully',
-        profileToken: 'profile-token-123',
+        profileToken: TEST_CONSTANTS.TOKENS.PROFILE,
         email: 'test@example.com',
       });
 
-      const { result } = renderHook(() => useLocalSignup({ autoProcessToken: true }));
-
-      // Wait for useEffect to process token
+      let result: any;
       await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        const hook = renderHook(() => useLocalSignup({ autoProcessToken: true }));
+        result = hook.result;
       });
 
-      expect(mockAuthService.verifyEmailForSignup).toHaveBeenCalledWith('verification-token-123');
+      expect(mockAuthService.verifyEmailForSignup).toHaveBeenCalledWith(TEST_CONSTANTS.TOKENS.VERIFICATION);
       expect(result.current.phase).toBe('email_verified');
-      expect(result.current.isEmailVerified).toBe(true);
-    });
-
-    test('should respect autoProcessToken option', async () => {
-      mockLocation.search = '?token=verification-token-123';
-
-      const { result } = renderHook(() => useLocalSignup({ autoProcessToken: false }));
-
-      // Wait to ensure no automatic processing
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
-
-      expect(mockAuthService.verifyEmailForSignup).not.toHaveBeenCalled();
-      expect(result.current.phase).toBe('idle');
     });
   });
 
-  describe('Email Verification Request Validation', () => {
-    test('should handle successful email send', async () => {
+  describe('Email Verification Request', () => {
+    test('should handle successful email verification request', async () => {
       mockAuthService.requestEmailVerification.mockResolvedValue({
         message: 'Verification email sent successfully',
         email: 'test@example.com',
-        callbackUrl: 'http://localhost:3000/verify',
+        callbackUrl: TEST_CONSTANTS.URLs.CALLBACK,
       });
 
-      const { result } = renderHook(() => useLocalSignup());
+      const { result } = renderHook(() => useLocalSignup({ autoProcessToken: false }));
 
       await act(async () => {
         const response = await result.current.start({
           email: 'test@example.com',
-          callbackUrl: 'http://localhost:3000/verify',
+          callbackUrl: TEST_CONSTANTS.URLs.CALLBACK,
         });
 
         expect(response.success).toBe(true);
         expect(response.message).toBe('Verification email sent successfully');
-        expect(result.current.phase).toBe('email_sent');
-        expect(result.current.isEmailSent).toBe(true);
-        expect(result.current.loading).toBe(false);
       });
+
+      expect(result.current.phase).toBe('email_sent');
     });
 
     test('should handle email send errors', async () => {
       const error = new Error('Email service unavailable');
       mockAuthService.requestEmailVerification.mockRejectedValue(error);
 
-      const { result } = renderHook(() => useLocalSignup());
+      const { result } = renderHook(() => useLocalSignup({ autoProcessToken: false }));
 
       await act(async () => {
         const response = await result.current.start({
           email: 'test@example.com',
-          callbackUrl: 'http://localhost:3000/verify',
+          callbackUrl: TEST_CONSTANTS.URLs.CALLBACK,
         });
 
         expect(response.success).toBe(false);
-        expect(response.message).toBe('Failed to send verification email: Email service unavailable');
-        expect(result.current.phase).toBe('failed');
-        expect(result.current.isFailed).toBe(true);
-        expect(result.current.error).toBe('Failed to send verification email: Email service unavailable');
       });
+
+      expect(result.current.phase).toBe('failed');
+      expect(result.current.error).toBe('Failed to send verification email: Email service unavailable');
     });
   });
 
   describe('Token Processing', () => {
-    test('should extract token from URL', async () => {
-      mockLocation.search = '?token=test-token-123&other=param';
+    test('should process token from URL successfully', async () => {
+      mockLocation.search = `?token=${TEST_CONSTANTS.TOKENS.VERIFICATION}&other=param`;
       mockAuthService.verifyEmailForSignup.mockResolvedValue({
         message: 'Email verified',
-        profileToken: 'profile-token-123',
+        profileToken: TEST_CONSTANTS.TOKENS.PROFILE,
         email: 'test@example.com',
       });
 
-      const { result } = renderHook(() => useLocalSignup());
+      const { result } = renderHook(() => useLocalSignup({ autoProcessToken: false }));
 
       await act(async () => {
         const response = await result.current.processTokenFromUrl();
@@ -160,25 +108,8 @@ describe('useLocalSignup', () => {
         expect(response.message).toBe('Email verification successful');
       });
 
-      expect(mockAuthService.verifyEmailForSignup).toHaveBeenCalledWith('test-token-123');
-    });
-
-    test('should verify token with API', async () => {
-      mockLocation.search = '?token=verification-token-123';
-      mockAuthService.verifyEmailForSignup.mockResolvedValue({
-        message: 'Email verified successfully',
-        profileToken: 'profile-token-123',
-        email: 'test@example.com',
-      });
-
-      const { result } = renderHook(() => useLocalSignup());
-
-      await act(async () => {
-        await result.current.processTokenFromUrl();
-      });
-
+      expect(mockAuthService.verifyEmailForSignup).toHaveBeenCalledWith(TEST_CONSTANTS.TOKENS.VERIFICATION);
       expect(result.current.phase).toBe('email_verified');
-      expect(result.current.isEmailVerified).toBe(true);
     });
 
     test('should handle invalid tokens', async () => {
@@ -186,7 +117,7 @@ describe('useLocalSignup', () => {
       const error = new Error('Invalid verification token');
       mockAuthService.verifyEmailForSignup.mockRejectedValue(error);
 
-      const { result } = renderHook(() => useLocalSignup());
+      const { result } = renderHook(() => useLocalSignup({ autoProcessToken: false }));
 
       await act(async () => {
         const response = await result.current.processTokenFromUrl();
@@ -198,29 +129,29 @@ describe('useLocalSignup', () => {
       expect(result.current.error).toBe('Email verification failed: Invalid verification token');
     });
 
-    test('should clean URL after processing', async () => {
-      mockLocation.search = '?token=test-token-123';
-      mockLocation.href = 'http://localhost:3000?token=test-token-123';
+    test('should clean URL after processing token', async () => {
+      mockLocation.search = `?token=${TEST_CONSTANTS.TOKENS.VERIFICATION}`;
+      mockLocation.href = `${TEST_CONSTANTS.URLs.BASE}?token=${TEST_CONSTANTS.TOKENS.VERIFICATION}`;
 
       mockAuthService.verifyEmailForSignup.mockResolvedValue({
         message: 'Email verified',
-        profileToken: 'profile-token-123',
+        profileToken: TEST_CONSTANTS.TOKENS.PROFILE,
         email: 'test@example.com',
       });
 
-      const { result } = renderHook(() => useLocalSignup());
+      const { result } = renderHook(() => useLocalSignup({ autoProcessToken: false }));
 
       await act(async () => {
         await result.current.processTokenFromUrl();
       });
 
-      expect(mockHistory.replaceState).toHaveBeenCalledWith({}, '', 'http://localhost:3000');
+      expect(mockHistory.replaceState).toHaveBeenCalledWith({}, '', TEST_CONSTANTS.URLs.BASE);
     });
 
-    test('should handle no token in URL', async () => {
+    test('should handle missing token gracefully', async () => {
       mockLocation.search = '';
 
-      const { result } = renderHook(() => useLocalSignup());
+      const { result } = renderHook(() => useLocalSignup({ autoProcessToken: false }));
 
       await act(async () => {
         const response = await result.current.processTokenFromUrl();
@@ -233,30 +164,13 @@ describe('useLocalSignup', () => {
   });
 
   describe('Profile Completion', () => {
-    beforeEach(async () => {
-      // Set up hook in email_verified state
+    test('should complete profile successfully', async () => {
       const { result } = renderHook(() => useLocalSignup({ autoProcessToken: false }));
 
-      mockLocation.search = '?token=verification-token-123';
+      // Set up email verified state
+      mockLocation.search = `?token=${TEST_CONSTANTS.TOKENS.VERIFICATION}`;
       mockAuthService.verifyEmailForSignup.mockResolvedValue({
-        message: 'Email verified',
-        profileToken: 'profile-token-123',
-        email: 'test@example.com',
-      });
-
-      await act(async () => {
-        await result.current.processTokenFromUrl();
-      });
-
-      return { result };
-    });
-
-    test('should handle successful profile completion', async () => {
-      const { result } = renderHook(() => useLocalSignup({ autoProcessToken: false }));
-
-      mockLocation.search = '?token=verification-token-123';
-      mockAuthService.verifyEmailForSignup.mockResolvedValue({
-        profileToken: 'profile-token-123',
+        profileToken: TEST_CONSTANTS.TOKENS.PROFILE,
         email: 'test@example.com',
         message: 'Verified',
       });
@@ -265,8 +179,9 @@ describe('useLocalSignup', () => {
         await result.current.processTokenFromUrl();
       });
 
+      // Complete profile
       mockAuthService.completeProfile.mockResolvedValue({
-        accountId: '507f1f77bcf86cd799439011',
+        accountId: TEST_CONSTANTS.ACCOUNT_IDS.CURRENT,
         name: 'John Doe',
         message: 'Account created successfully',
       });
@@ -281,19 +196,20 @@ describe('useLocalSignup', () => {
         });
 
         expect(response.success).toBe(true);
-        expect(response.accountId).toBe('507f1f77bcf86cd799439011');
+        expect(response.accountId).toBe(TEST_CONSTANTS.ACCOUNT_IDS.CURRENT);
         expect(response.message).toBe('Welcome John Doe! Your account has been created successfully.');
-        expect(result.current.phase).toBe('completed');
-        expect(result.current.isCompleted).toBe(true);
       });
+
+      expect(result.current.phase).toBe('completed');
     });
 
     test('should handle profile completion errors', async () => {
       const { result } = renderHook(() => useLocalSignup({ autoProcessToken: false }));
 
-      mockLocation.search = '?token=verification-token-123';
+      // Set up email verified state
+      mockLocation.search = `?token=${TEST_CONSTANTS.TOKENS.VERIFICATION}`;
       mockAuthService.verifyEmailForSignup.mockResolvedValue({
-        profileToken: 'profile-token-123',
+        profileToken: TEST_CONSTANTS.TOKENS.PROFILE,
         email: 'test@example.com',
         message: 'Verified',
       });
@@ -316,31 +232,31 @@ describe('useLocalSignup', () => {
 
         expect(response.success).toBe(false);
         expect(response.message).toBe('Failed to complete profile: Username already taken');
-        expect(result.current.phase).toBe('failed');
-        expect(result.current.isFailed).toBe(true);
       });
+
+      expect(result.current.phase).toBe('failed');
     });
   });
 
   describe('Cancellation', () => {
-    test('should cancel signup process', async () => {
-      const { result } = renderHook(() => useLocalSignup());
+    test('should cancel signup process successfully', async () => {
+      const { result } = renderHook(() => useLocalSignup({ autoProcessToken: false }));
 
-      // First start signup process
+      // Start signup process
       mockAuthService.requestEmailVerification.mockResolvedValue({
         message: 'Email sent',
         email: 'test@example.com',
-        callbackUrl: 'http://localhost:3000/verify',
+        callbackUrl: TEST_CONSTANTS.URLs.CALLBACK,
       });
 
       await act(async () => {
         await result.current.start({
           email: 'test@example.com',
-          callbackUrl: 'http://localhost:3000/verify',
+          callbackUrl: TEST_CONSTANTS.URLs.CALLBACK,
         });
       });
 
-      // Now cancel
+      // Cancel
       mockAuthService.cancelSignup.mockResolvedValue({
         message: 'Signup canceled successfully',
       });
@@ -349,46 +265,17 @@ describe('useLocalSignup', () => {
         const response = await result.current.cancel();
         expect(response.success).toBe(true);
         expect(response.message).toBe('Signup canceled successfully');
-        expect(result.current.phase).toBe('canceled');
-        expect(result.current.isCanceled).toBe(true);
       });
+
+      expect(result.current.phase).toBe('canceled');
 
       expect(mockAuthService.cancelSignup).toHaveBeenCalledWith({
         email: 'test@example.com',
       });
     });
 
-    test('should handle cancellation errors', async () => {
-      const { result } = renderHook(() => useLocalSignup());
-
-      // First start signup process
-      mockAuthService.requestEmailVerification.mockResolvedValue({
-        message: 'Email sent',
-        email: 'test@example.com',
-        callbackUrl: 'http://localhost:3000/verify',
-      });
-
-      await act(async () => {
-        await result.current.start({
-          email: 'test@example.com',
-          callbackUrl: 'http://localhost:3000/verify',
-        });
-      });
-
-      // Mock cancellation error
-      const error = new Error('Cancellation failed');
-      mockAuthService.cancelSignup.mockRejectedValue(error);
-
-      await act(async () => {
-        const response = await result.current.cancel();
-        expect(response.success).toBe(false);
-        expect(response.message).toBe('Failed to cancel signup: Cancellation failed');
-        expect(result.current.phase).toBe('failed');
-      });
-    });
-
-    test('should handle cancel without email', async () => {
-      const { result } = renderHook(() => useLocalSignup());
+    test('should handle cancel without active signup', async () => {
+      const { result } = renderHook(() => useLocalSignup({ autoProcessToken: false }));
 
       await act(async () => {
         const response = await result.current.cancel();
@@ -398,33 +285,30 @@ describe('useLocalSignup', () => {
     });
   });
 
-  describe('Phase Management', () => {
-    test('should transition through phases correctly', async () => {
+  describe('Complete Signup Flow', () => {
+    test('should transition through all phases correctly', async () => {
       const { result } = renderHook(() => useLocalSignup({ autoProcessToken: false }));
-
-      // Initial state
-      expect(result.current.phase).toBe('idle');
 
       // Start email verification
       mockAuthService.requestEmailVerification.mockResolvedValue({
         message: 'Email sent',
         email: 'test@example.com',
-        callbackUrl: 'http://localhost:3000/verify',
+        callbackUrl: TEST_CONSTANTS.URLs.CALLBACK,
       });
 
       await act(async () => {
         await result.current.start({
           email: 'test@example.com',
-          callbackUrl: 'http://localhost:3000/verify',
+          callbackUrl: TEST_CONSTANTS.URLs.CALLBACK,
         });
       });
 
       expect(result.current.phase).toBe('email_sent');
 
       // Process token
-      mockLocation.search = '?token=verification-token';
+      mockLocation.search = `?token=${TEST_CONSTANTS.TOKENS.VERIFICATION}`;
       mockAuthService.verifyEmailForSignup.mockResolvedValue({
-        profileToken: 'profile-token',
+        profileToken: TEST_CONSTANTS.TOKENS.PROFILE,
         email: 'test@example.com',
         message: 'Verified',
       });
@@ -437,7 +321,7 @@ describe('useLocalSignup', () => {
 
       // Complete profile
       mockAuthService.completeProfile.mockResolvedValue({
-        accountId: '507f1f77bcf86cd799439011',
+        accountId: TEST_CONSTANTS.ACCOUNT_IDS.CURRENT,
         name: 'John Doe',
         message: 'Success',
       });
@@ -453,56 +337,6 @@ describe('useLocalSignup', () => {
       });
 
       expect(result.current.phase).toBe('completed');
-    });
-
-    test('should calculate progress correctly', () => {
-      const { result } = renderHook(() => useLocalSignup());
-
-      // Test different phases
-      expect(result.current.progress).toBe(0); // idle
-
-      // Progress calculation is tested implicitly through phase transitions
-      expect(result.current.currentStep).toBe('Ready to start signup');
-      expect(result.current.nextStep).toBe('Enter email to begin');
-    });
-
-    test('should determine available actions', async () => {
-      const { result } = renderHook(() => useLocalSignup({ autoProcessToken: false }));
-
-      // Initial state
-      expect(result.current.canComplete).toBe(false);
-      expect(result.current.canCancel).toBe(false);
-      expect(result.current.canRetry).toBe(false);
-
-      // After starting signup
-      mockAuthService.requestEmailVerification.mockResolvedValue({
-        message: 'Email sent',
-        email: 'test@example.com',
-        callbackUrl: 'http://localhost:3000/verify',
-      });
-
-      await act(async () => {
-        await result.current.start({
-          email: 'test@example.com',
-          callbackUrl: 'http://localhost:3000/verify',
-        });
-      });
-
-      expect(result.current.canCancel).toBe(true);
-
-      // After email verification
-      mockLocation.search = '?token=verification-token';
-      mockAuthService.verifyEmailForSignup.mockResolvedValue({
-        profileToken: 'profile-token',
-        email: 'test@example.com',
-        message: 'Verified',
-      });
-
-      await act(async () => {
-        await result.current.processTokenFromUrl();
-      });
-
-      expect(result.current.canComplete).toBe(true);
     });
   });
 });

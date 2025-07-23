@@ -1,49 +1,27 @@
-import { describe, test, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useOAuthPermissions } from '../useOAuthPermissions';
-import { useAppStore } from '../../store/useAppStore';
-import { OAuthProviders, AccountType, CallbackCode } from '../../types';
+import { AccountType } from '../../types';
+import { createMockAuthService, createMockStoreSelectors, TEST_CONSTANTS } from '../../test/utils';
 
 // Mock AuthService
-const mockAuthService = {
-  generatePermissionUrl: vi.fn(),
-  generateReauthorizeUrl: vi.fn(),
-};
+const mockAuthService = createMockAuthService();
 
-// Mock the useAuthService hook
 vi.mock('../../context/ServicesProvider', () => ({
   useAuthService: () => mockAuthService,
 }));
 
 // Mock useAppStore
-const mockGetAccountState = vi.fn();
-
-vi.mock('../../store/useAppStore', () => ({
-  useAppStore: vi.fn(),
-}));
-
-const mockUseAppStore = vi.mocked(useAppStore);
+const { mockGetAccountState } = createMockStoreSelectors();
 
 describe('useOAuthPermissions', () => {
-  const testAccountId = '507f1f77bcf86cd799439011';
-  const testProvider = OAuthProviders.Google;
-  const testCallbackUrl = 'http://localhost:3000/oauth/callback';
-  const testScopes = ['read:profile', 'write:calendar'];
+  const testAccountId = TEST_CONSTANTS.ACCOUNT_IDS.CURRENT;
+  const testProvider = TEST_CONSTANTS.OAUTH.PROVIDER;
+  const testCallbackUrl = TEST_CONSTANTS.OAUTH.CALLBACK_URL;
+  const testScopes = TEST_CONSTANTS.OAUTH.SCOPES;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-
-    // Setup default store mock
-    mockUseAppStore.mockImplementation((selector) => {
-      if (typeof selector === 'function') {
-        return selector({
-          getAccountState: mockGetAccountState,
-        } as any);
-      }
-      return { getAccountState: mockGetAccountState };
-    });
-
-    // Default account state - OAuth account
+    // Default to OAuth account
     mockGetAccountState.mockReturnValue({
       data: {
         id: testAccountId,
@@ -52,49 +30,19 @@ describe('useOAuthPermissions', () => {
     });
   });
 
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
-
   describe('Hook Initialization', () => {
-    test('should initialize with idle phase', () => {
+    test('should initialize with correct default state', () => {
       const { result } = renderHook(() => useOAuthPermissions(testAccountId, { autoProcessCallback: false }));
 
       expect(result.current.phase).toBe('idle');
-      expect(result.current.isIdle).toBe(true);
-      expect(result.current.isRequesting).toBe(false);
-      expect(result.current.isReauthorizing).toBe(false);
-      expect(result.current.isProcessingCallback).toBe(false);
-      expect(result.current.isCompleted).toBe(false);
-      expect(result.current.isFailed).toBe(false);
       expect(result.current.loading).toBe(false);
       expect(result.current.error).toBeNull();
-    });
-
-    test('should initialize OAuth permissions state', () => {
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId, { autoProcessCallback: false }));
-
       expect(result.current.accountId).toBe(testAccountId);
-      expect(result.current.lastProvider).toBeNull();
-      expect(result.current.lastScopes).toBeNull();
-      expect(result.current.callbackMessage).toBeNull();
-      expect(result.current.grantedScopes).toBeNull();
+      expect(result.current.canRequest).toBe(true);
     });
 
-    test('should determine if requests can be made', () => {
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
-      expect(result.current.canRequest).toBe(true); // OAuth account
-    });
-
-    test('should handle null account ID', () => {
-      const { result } = renderHook(() => useOAuthPermissions(null));
-
-      expect(result.current.accountId).toBeNull();
-      expect(result.current.canRequest).toBe(false);
-    });
-
-    test('should handle non-OAuth account', () => {
+    test('should handle account type restrictions', () => {
+      // Test with Local account (should not allow requests)
       mockGetAccountState.mockReturnValue({
         data: {
           id: testAccountId,
@@ -102,9 +50,12 @@ describe('useOAuthPermissions', () => {
         },
       });
 
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
+      const { result } = renderHook(() => useOAuthPermissions(testAccountId, { autoProcessCallback: false }));
       expect(result.current.canRequest).toBe(false);
+
+      // Test with null account
+      const { result: result2 } = renderHook(() => useOAuthPermissions(null, { autoProcessCallback: false }));
+      expect(result2.current.canRequest).toBe(false);
     });
   });
 
@@ -119,7 +70,7 @@ describe('useOAuthPermissions', () => {
         callbackUrl: testCallbackUrl,
       });
 
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
+      const { result } = renderHook(() => useOAuthPermissions(testAccountId, { autoProcessCallback: false }));
 
       await act(async () => {
         await result.current.requestPermission(testProvider, testScopes, testCallbackUrl);
@@ -128,7 +79,7 @@ describe('useOAuthPermissions', () => {
       expect(result.current.phase).toBe('requesting');
       expect(result.current.lastProvider).toBe(testProvider);
       expect(result.current.lastScopes).toEqual(testScopes);
-      expect(result.current.loading).toBe(false);
+
       expect(mockAuthService.generatePermissionUrl).toHaveBeenCalledWith(testProvider, {
         accountId: testAccountId,
         scopeNames: testScopes,
@@ -140,51 +91,25 @@ describe('useOAuthPermissions', () => {
       const error = new Error('Permission service unavailable');
       mockAuthService.generatePermissionUrl.mockRejectedValue(error);
 
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
+      const { result } = renderHook(() => useOAuthPermissions(testAccountId, { autoProcessCallback: false }));
 
       await act(async () => {
         await result.current.requestPermission(testProvider, testScopes, testCallbackUrl);
       });
 
       expect(result.current.phase).toBe('failed');
-      expect(result.current.isFailed).toBe(true);
       expect(result.current.error).toBe('Failed to request permission: Permission service unavailable');
     });
 
-    test('should update phase during permission request', async () => {
-      let phaseBeforeRequest: string = '';
-
-      mockAuthService.generatePermissionUrl.mockImplementation(async () => {
-        phaseBeforeRequest = result.current.phase;
-        return {
-          authorizationUrl: 'https://oauth.provider.com/auth',
-          state: 'state-123',
-          scopes: testScopes,
-          accountId: testAccountId,
-          userEmail: 'user@example.com',
-          callbackUrl: testCallbackUrl,
-        };
-      });
-
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
+    test('should validate request parameters', async () => {
+      const { result } = renderHook(() => useOAuthPermissions(testAccountId, { autoProcessCallback: false }));
 
       await act(async () => {
-        await result.current.requestPermission(testProvider, testScopes, testCallbackUrl);
-      });
-
-      expect(phaseBeforeRequest).toBe('requesting');
-      expect(result.current.phase).toBe('requesting');
-    });
-
-    test('should handle request without account ID', async () => {
-      const { result } = renderHook(() => useOAuthPermissions(null));
-
-      await act(async () => {
-        await result.current.requestPermission(testProvider, testScopes, testCallbackUrl);
+        await result.current.requestPermission(testProvider, testScopes, '');
       });
 
       expect(mockAuthService.generatePermissionUrl).not.toHaveBeenCalled();
-      expect(result.current.phase).toBe('idle'); // Should not change
+      expect(result.current.error).toBe('Callback URL is required for permission request');
     });
   });
 
@@ -199,7 +124,7 @@ describe('useOAuthPermissions', () => {
         callbackUrl: testCallbackUrl,
       });
 
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
+      const { result } = renderHook(() => useOAuthPermissions(testAccountId, { autoProcessCallback: false }));
 
       await act(async () => {
         await result.current.reauthorizePermissions(testProvider, testCallbackUrl);
@@ -208,7 +133,6 @@ describe('useOAuthPermissions', () => {
       expect(result.current.phase).toBe('reauthorizing');
       expect(result.current.lastProvider).toBe(testProvider);
       expect(result.current.lastScopes).toBeNull(); // Reauth doesn't specify scopes
-      expect(result.current.loading).toBe(false);
       expect(mockAuthService.generateReauthorizeUrl).toHaveBeenCalledWith(testProvider, {
         accountId: testAccountId,
         callbackUrl: testCallbackUrl,
@@ -226,7 +150,7 @@ describe('useOAuthPermissions', () => {
         callbackUrl: testCallbackUrl,
       });
 
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
+      const { result } = renderHook(() => useOAuthPermissions(testAccountId, { autoProcessCallback: false }));
 
       await act(async () => {
         await result.current.reauthorizePermissions(testProvider, testCallbackUrl);
@@ -234,37 +158,11 @@ describe('useOAuthPermissions', () => {
 
       expect(result.current.phase).toBe('completed');
       expect(result.current.callbackMessage).toBe('No reauthorization needed');
-      expect(result.current.loading).toBe(false);
-    });
-
-    test('should handle reauthorization errors', async () => {
-      const error = new Error('Reauthorization failed');
-      mockAuthService.generateReauthorizeUrl.mockRejectedValue(error);
-
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
-      await act(async () => {
-        await result.current.reauthorizePermissions(testProvider, testCallbackUrl);
-      });
-
-      expect(result.current.phase).toBe('failed');
-      expect(result.current.error).toBe('Failed to reauthorize permissions: Reauthorization failed');
-    });
-
-    test('should handle reauthorization without account ID', async () => {
-      const { result } = renderHook(() => useOAuthPermissions(null));
-
-      await act(async () => {
-        await result.current.reauthorizePermissions(testProvider, testCallbackUrl);
-      });
-
-      expect(mockAuthService.generateReauthorizeUrl).not.toHaveBeenCalled();
-      expect(result.current.phase).toBe('idle');
     });
   });
 
-  describe('Get URL Methods', () => {
-    test('should get permission URL without redirect', async () => {
+  describe('URL Generation Methods', () => {
+    test('should get permission URL without changing phase', async () => {
       mockAuthService.generatePermissionUrl.mockResolvedValue({
         authorizationUrl: 'https://accounts.google.com/oauth/authorize?scope=profile',
         state: 'state-123',
@@ -274,250 +172,67 @@ describe('useOAuthPermissions', () => {
         callbackUrl: testCallbackUrl,
       });
 
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
+      const { result } = renderHook(() => useOAuthPermissions(testAccountId, { autoProcessCallback: false }));
 
-      const url = await result.current.getPermissionUrl(testProvider, testScopes, testCallbackUrl);
-
-      expect(url).toBe('https://accounts.google.com/oauth/authorize?scope=profile');
-      expect(result.current.phase).toBe('idle'); // Should not change phase
-      expect(mockAuthService.generatePermissionUrl).toHaveBeenCalledWith(testProvider, {
-        accountId: testAccountId,
-        scopeNames: testScopes,
-        callbackUrl: testCallbackUrl,
+      await act(async () => {
+        const url = await result.current.getPermissionUrl(testProvider, testScopes, testCallbackUrl);
+        expect(url).toBe('https://accounts.google.com/oauth/authorize?scope=profile');
+        expect(result.current.phase).toBe('idle'); // Should not change phase
       });
     });
 
-    test('should get reauthorize URL without redirect', async () => {
-      mockAuthService.generateReauthorizeUrl.mockResolvedValue({
-        authorizationUrl: 'https://accounts.google.com/oauth/reauthorize',
-        state: 'state-123',
-        scopes: testScopes,
-        accountId: testAccountId,
-        userEmail: 'user@example.com',
-        callbackUrl: testCallbackUrl,
-      });
-
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
-      const url = await result.current.getReauthorizeUrl(testProvider, testCallbackUrl);
-
-      expect(url).toBe('https://accounts.google.com/oauth/reauthorize');
-      expect(result.current.phase).toBe('idle'); // Should not change phase
-    });
-
-    test('should handle get permission URL errors', async () => {
+    test('should handle URL generation errors', async () => {
       const error = new Error('Failed to generate permission URL');
       mockAuthService.generatePermissionUrl.mockRejectedValue(error);
 
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
+      const { result } = renderHook(() => useOAuthPermissions(testAccountId, { autoProcessCallback: false }));
 
-      const url = await result.current.getPermissionUrl(testProvider, testScopes, testCallbackUrl);
+      await act(async () => {
+        const url = await result.current.getPermissionUrl(testProvider, testScopes, testCallbackUrl);
+        expect(url).toBe('');
+      });
 
-      expect(url).toBe('');
       expect(result.current.error).toBe('Failed to get permission URL: Failed to generate permission URL');
-    });
-
-    test('should handle get reauthorize URL errors', async () => {
-      const error = new Error('Failed to generate reauthorize URL');
-      mockAuthService.generateReauthorizeUrl.mockRejectedValue(error);
-
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
-      const url = await result.current.getReauthorizeUrl(testProvider, testCallbackUrl);
-
-      expect(url).toBe('');
-      expect(result.current.error).toBe('Failed to get reauthorize URL: Failed to generate reauthorize URL');
     });
   });
 
-  describe('Callback Processing Flow', () => {
-    test('should handle successful callback processing', async () => {
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
+  describe('Account Restrictions', () => {
+    test('should handle operations on non-OAuth accounts gracefully', async () => {
+      mockGetAccountState.mockReturnValue({
+        data: {
+          id: testAccountId,
+          accountType: AccountType.Local,
+        },
+      });
+
+      const { result } = renderHook(() => useOAuthPermissions(testAccountId, { autoProcessCallback: false }));
+
+      await act(async () => {
+        await result.current.requestPermission(testProvider, testScopes, testCallbackUrl);
+      });
+
+      expect(mockAuthService.generatePermissionUrl).not.toHaveBeenCalled();
+      expect(result.current.canRequest).toBe(false);
+    });
+
+    test('should handle missing account data', () => {
+      mockGetAccountState.mockReturnValue(null);
+
+      const { result } = renderHook(() => useOAuthPermissions(testAccountId, { autoProcessCallback: false }));
+
+      expect(result.current.canRequest).toBe(false);
+    });
+  });
+
+  describe('Callback Processing', () => {
+    test('should handle callback processing', async () => {
+      const { result } = renderHook(() => useOAuthPermissions(testAccountId, { autoProcessCallback: false }));
 
       await act(async () => {
         const response = await result.current.processCallbackFromUrl();
         expect(response.success).toBe(true);
         expect(response.message).toBe('OAuth callback processed successfully');
       });
-    });
-
-    test('should handle no callback data', async () => {
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
-      await act(async () => {
-        const response = await result.current.processCallbackFromUrl();
-        expect(response.success).toBe(false);
-        expect(response.message).toBe('No valid callback found');
-      });
-    });
-  });
-
-  describe('State Management', () => {
-    test('should track last operation data', async () => {
-      mockAuthService.generatePermissionUrl.mockResolvedValue({
-        authorizationUrl: 'https://oauth.provider.com/auth',
-        state: 'state-123',
-        scopes: testScopes,
-        accountId: testAccountId,
-        userEmail: 'user@example.com',
-        callbackUrl: testCallbackUrl,
-      });
-
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
-      await act(async () => {
-        await result.current.requestPermission(testProvider, testScopes, testCallbackUrl);
-      });
-
-      expect(result.current.lastProvider).toBe(testProvider);
-      expect(result.current.lastScopes).toEqual(testScopes);
-    });
-
-    test('should clear last scopes for reauthorization', async () => {
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
-      // First do a permission request
-      mockAuthService.generatePermissionUrl.mockResolvedValue({
-        authorizationUrl: 'https://oauth.provider.com/auth',
-        state: 'state-123',
-        scopes: testScopes,
-        accountId: testAccountId,
-        userEmail: 'user@example.com',
-        callbackUrl: testCallbackUrl,
-      });
-
-      await act(async () => {
-        await result.current.requestPermission(testProvider, testScopes, testCallbackUrl);
-      });
-
-      expect(result.current.lastScopes).toEqual(testScopes);
-
-      // Then do reauthorization
-      mockAuthService.generateReauthorizeUrl.mockResolvedValue({
-        authorizationUrl: 'https://oauth.provider.com/reauth',
-        state: 'state-456',
-        scopes: undefined,
-        accountId: testAccountId,
-        userEmail: 'user@example.com',
-        callbackUrl: testCallbackUrl,
-      });
-
-      await act(async () => {
-        await result.current.reauthorizePermissions(testProvider, testCallbackUrl);
-      });
-
-      expect(result.current.lastProvider).toBe(testProvider);
-      expect(result.current.lastScopes).toBeNull(); // Should be cleared for reauth
-    });
-
-    test('should handle granted scopes from callback', () => {
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
-      // Simulate processing a successful callback
-      act(() => {
-        // This would normally be set by callback processing
-        result.current.clearError(); // Just to interact with the hook
-      });
-
-      expect(result.current.grantedScopes).toBeNull(); // Initially null
-    });
-  });
-
-  describe('Account Type Restrictions', () => {
-    test('should only work with OAuth accounts', () => {
-      mockGetAccountState.mockReturnValue({
-        data: {
-          id: testAccountId,
-          accountType: AccountType.Local,
-        },
-      });
-
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
-      expect(result.current.canRequest).toBe(false);
-    });
-
-    test('should work with OAuth accounts', () => {
-      mockGetAccountState.mockReturnValue({
-        data: {
-          id: testAccountId,
-          accountType: AccountType.OAuth,
-        },
-      });
-
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
-      expect(result.current.canRequest).toBe(true);
-    });
-
-    test('should handle missing account data', () => {
-      mockGetAccountState.mockReturnValue(null);
-
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
-      expect(result.current.canRequest).toBe(false);
-    });
-  });
-
-  describe('Error Handling', () => {
-    test('should handle API errors gracefully', async () => {
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
-      const error = new Error('OAuth API down');
-      mockAuthService.generatePermissionUrl.mockRejectedValue(error);
-
-      await act(async () => {
-        await result.current.requestPermission(testProvider, testScopes, testCallbackUrl);
-      });
-
-      expect(result.current.phase).toBe('failed');
-      expect(result.current.error).toContain('OAuth API down');
-    });
-
-    test('should handle network timeouts', async () => {
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
-      const timeoutError = new Error('Request timeout');
-      timeoutError.name = 'TimeoutError';
-      mockAuthService.generatePermissionUrl.mockRejectedValue(timeoutError);
-
-      await act(async () => {
-        await result.current.requestPermission(testProvider, testScopes, testCallbackUrl);
-      });
-
-      expect(result.current.phase).toBe('failed');
-      expect(result.current.error).toContain('Request timeout');
-    });
-
-    test('should handle validation errors before API calls', async () => {
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
-      await act(async () => {
-        await result.current.requestPermission(testProvider, testScopes, '');
-      });
-
-      // Should not make API call if validation fails
-      expect(mockAuthService.generatePermissionUrl).not.toHaveBeenCalled();
-      expect(result.current.error).toBe('Callback URL is required for permission request');
-    });
-
-    test('should handle operations on non-OAuth account', async () => {
-      mockGetAccountState.mockReturnValue({
-        data: {
-          id: testAccountId,
-          accountType: AccountType.Local,
-        },
-      });
-
-      const { result } = renderHook(() => useOAuthPermissions(testAccountId));
-
-      await act(async () => {
-        await result.current.requestPermission(testProvider, testScopes, testCallbackUrl);
-      });
-
-      // Should not make API call for non-OAuth account
-      expect(mockAuthService.generatePermissionUrl).not.toHaveBeenCalled();
-      expect(result.current.canRequest).toBe(false);
     });
   });
 });

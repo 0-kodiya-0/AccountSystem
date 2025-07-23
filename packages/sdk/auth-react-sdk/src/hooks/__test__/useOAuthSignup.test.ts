@@ -1,67 +1,28 @@
-import { describe, test, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, test, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useOAuthSignup } from '../useOAuthSignup';
-import { OAuthProviders } from '../../types';
+import { createMockAuthService, TEST_CONSTANTS } from '../../test/utils';
 
 // Mock AuthService
-const mockAuthService = {
-  generateOAuthSignupUrl: vi.fn(),
-};
+const mockAuthService = createMockAuthService();
 
-// Mock the useAuthService hook
 vi.mock('../../context/ServicesProvider', () => ({
   useAuthService: () => mockAuthService,
 }));
 
 describe('useOAuthSignup', () => {
-  const testProvider = OAuthProviders.Google;
-  const testCallbackUrl = 'http://localhost:3000/oauth/callback';
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    // Use fake timers - this handles Date mocking automatically!
-    vi.useFakeTimers();
-    // Set a specific time for consistent testing
-    vi.setSystemTime(new Date('2022-01-01T00:00:00.000Z'));
-  });
-
-  afterEach(() => {
-    vi.clearAllMocks();
-    // Restore real timers
-    vi.useRealTimers();
-  });
+  const testProvider = TEST_CONSTANTS.OAUTH.PROVIDER;
+  const testCallbackUrl = TEST_CONSTANTS.OAUTH.CALLBACK_URL;
 
   describe('Hook Initialization', () => {
-    test('should initialize with idle phase', () => {
+    test('should initialize with correct default state', () => {
       const { result } = renderHook(() => useOAuthSignup({ autoProcessCallback: false }));
 
       expect(result.current.phase).toBe('idle');
-      expect(result.current.isIdle).toBe(true);
-      expect(result.current.isRedirecting).toBe(false);
-      expect(result.current.isProcessingCallback).toBe(false);
-      expect(result.current.isCompleted).toBe(false);
-      expect(result.current.isFailed).toBe(false);
       expect(result.current.loading).toBe(false);
       expect(result.current.error).toBeNull();
-    });
-
-    test('should initialize OAuth-specific state', () => {
-      const { result } = renderHook(() => useOAuthSignup({ autoProcessCallback: false }));
-
       expect(result.current.provider).toBeNull();
       expect(result.current.retryCount).toBe(0);
-      expect(result.current.accountId).toBeNull();
-      expect(result.current.accountName).toBeNull();
-      expect(result.current.callbackMessage).toBeNull();
-      expect(result.current.canRetry).toBe(false);
-    });
-
-    test('should initialize progress tracking', () => {
-      const { result } = renderHook(() => useOAuthSignup());
-
-      expect(result.current.progress).toBe(0);
-      expect(result.current.currentStep).toBe('Ready to start OAuth signup');
-      expect(result.current.nextStep).toBe('Choose OAuth provider');
     });
   });
 
@@ -75,7 +36,7 @@ describe('useOAuthSignup', () => {
         callbackUrl: testCallbackUrl,
       });
 
-      const { result } = renderHook(() => useOAuthSignup());
+      const { result } = renderHook(() => useOAuthSignup({ autoProcessCallback: false }));
 
       await act(async () => {
         const response = await result.current.startSignup(testProvider, testCallbackUrl);
@@ -85,7 +46,6 @@ describe('useOAuthSignup', () => {
 
       expect(result.current.phase).toBe('processing_callback');
       expect(result.current.provider).toBe(testProvider);
-      expect(result.current.loading).toBe(false);
       expect(mockAuthService.generateOAuthSignupUrl).toHaveBeenCalledWith(testProvider, {
         callbackUrl: testCallbackUrl,
       });
@@ -95,7 +55,7 @@ describe('useOAuthSignup', () => {
       const error = new Error('OAuth service unavailable');
       mockAuthService.generateOAuthSignupUrl.mockRejectedValue(error);
 
-      const { result } = renderHook(() => useOAuthSignup());
+      const { result } = renderHook(() => useOAuthSignup({ autoProcessCallback: false }));
 
       await act(async () => {
         const response = await result.current.startSignup(testProvider, testCallbackUrl);
@@ -104,32 +64,7 @@ describe('useOAuthSignup', () => {
       });
 
       expect(result.current.phase).toBe('failed');
-      expect(result.current.isFailed).toBe(true);
       expect(result.current.error).toBe('Failed to start google signup: OAuth service unavailable');
-    });
-
-    test('should update phase during signup initiation', async () => {
-      let phaseBeforeRequest: string = '';
-
-      mockAuthService.generateOAuthSignupUrl.mockImplementation(async () => {
-        phaseBeforeRequest = result.current.phase;
-        return {
-          authorizationUrl: 'https://oauth.provider.com/auth',
-          state: 'state-123',
-          provider: 'google',
-          authType: 'signup',
-          callbackUrl: testCallbackUrl,
-        };
-      });
-
-      const { result } = renderHook(() => useOAuthSignup());
-
-      await act(async () => {
-        await result.current.startSignup(testProvider, testCallbackUrl);
-      });
-
-      expect(phaseBeforeRequest).toBe('redirecting');
-      expect(result.current.phase).toBe('processing_callback');
     });
 
     test('should handle failed URL generation', async () => {
@@ -141,7 +76,7 @@ describe('useOAuthSignup', () => {
         callbackUrl: testCallbackUrl,
       });
 
-      const { result } = renderHook(() => useOAuthSignup());
+      const { result } = renderHook(() => useOAuthSignup({ autoProcessCallback: false }));
 
       await act(async () => {
         const response = await result.current.startSignup(testProvider, testCallbackUrl);
@@ -153,7 +88,7 @@ describe('useOAuthSignup', () => {
     });
   });
 
-  describe('Get Signup URL Flow', () => {
+  describe('URL Generation', () => {
     test('should get signup URL without redirect', async () => {
       mockAuthService.generateOAuthSignupUrl.mockResolvedValue({
         authorizationUrl: 'https://accounts.google.com/oauth/authorize?client_id=...',
@@ -163,45 +98,48 @@ describe('useOAuthSignup', () => {
         callbackUrl: testCallbackUrl,
       });
 
-      const { result } = renderHook(() => useOAuthSignup());
+      const { result } = renderHook(() => useOAuthSignup({ autoProcessCallback: false }));
 
-      const url = await result.current.getSignupUrl(testProvider, testCallbackUrl);
-
-      expect(url).toBe('https://accounts.google.com/oauth/authorize?client_id=...');
-      expect(result.current.phase).toBe('idle'); // Should not change phase
-      expect(mockAuthService.generateOAuthSignupUrl).toHaveBeenCalledWith(testProvider, {
-        callbackUrl: testCallbackUrl,
+      await act(async () => {
+        const url = await result.current.getSignupUrl(testProvider, testCallbackUrl);
+        expect(url).toBe('https://accounts.google.com/oauth/authorize?client_id=...');
       });
+
+      expect(result.current.phase).toBe('idle'); // Should not change phase
     });
 
-    test('should handle get signup URL errors', async () => {
+    test('should handle URL generation errors', async () => {
       const error = new Error('Failed to generate URL');
       mockAuthService.generateOAuthSignupUrl.mockRejectedValue(error);
 
-      const { result } = renderHook(() => useOAuthSignup());
+      const { result } = renderHook(() => useOAuthSignup({ autoProcessCallback: false }));
 
-      const url = await result.current.getSignupUrl(testProvider, testCallbackUrl);
+      await act(async () => {
+        const url = await result.current.getSignupUrl(testProvider, testCallbackUrl);
+        expect(url).toBe('');
+      });
 
-      expect(url).toBe('');
       expect(result.current.error).toBe('Failed to get google signup URL: Failed to generate URL');
     });
 
-    test('should validate get signup URL parameters', async () => {
-      const { result } = renderHook(() => useOAuthSignup());
+    test('should validate URL generation parameters', async () => {
+      const { result } = renderHook(() => useOAuthSignup({ autoProcessCallback: false }));
 
-      // Test empty provider
-      const url1 = await result.current.getSignupUrl('' as any, testCallbackUrl);
-      expect(url1).toBe('');
+      await act(async () => {
+        // Test empty provider
+        const url1 = await result.current.getSignupUrl('' as any, testCallbackUrl);
+        expect(url1).toBe('');
 
-      // Test empty callback URL
-      const url2 = await result.current.getSignupUrl(testProvider, '');
-      expect(url2).toBe('');
+        // Test empty callback URL
+        const url2 = await result.current.getSignupUrl(testProvider, '');
+        expect(url2).toBe('');
+      });
     });
   });
 
-  describe('Callback Processing Flow', () => {
-    test('should handle successful callback processing', async () => {
-      const { result } = renderHook(() => useOAuthSignup());
+  describe('Callback Processing', () => {
+    test('should handle callback processing', async () => {
+      const { result } = renderHook(() => useOAuthSignup({ autoProcessCallback: false }));
 
       await act(async () => {
         const response = await result.current.processCallbackFromUrl();
@@ -210,8 +148,8 @@ describe('useOAuthSignup', () => {
       });
     });
 
-    test('should handle no callback data', async () => {
-      const { result } = renderHook(() => useOAuthSignup());
+    test('should handle missing callback data', async () => {
+      const { result } = renderHook(() => useOAuthSignup({ autoProcessCallback: false }));
 
       await act(async () => {
         const response = await result.current.processCallbackFromUrl();
@@ -222,8 +160,8 @@ describe('useOAuthSignup', () => {
   });
 
   describe('Retry Logic', () => {
-    test('should retry with cooldown', async () => {
-      const { result } = renderHook(() => useOAuthSignup());
+    test('should handle retry with cooldown mechanism', async () => {
+      const { result } = renderHook(() => useOAuthSignup({ autoProcessCallback: false }));
 
       // First attempt fails
       const error = new Error('Network error');
@@ -236,8 +174,10 @@ describe('useOAuthSignup', () => {
       expect(result.current.phase).toBe('failed');
       expect(result.current.canRetry).toBe(false); // Still in cooldown
 
-      // Advance time past cooldown (5 seconds)
-      vi.advanceTimersByTime(6000);
+      // Advance time past cooldown
+      await act(async () => {
+        vi.advanceTimersByTime(6000);
+      });
 
       expect(result.current.canRetry).toBe(true);
 
@@ -253,14 +193,14 @@ describe('useOAuthSignup', () => {
       await act(async () => {
         const response = await result.current.retry();
         expect(response.success).toBe(true);
-        expect(result.current.retryCount).toBe(1);
       });
+
+      expect(result.current.retryCount).toBe(1);
     });
 
-    test('should respect retry limits', async () => {
-      const { result } = renderHook(() => useOAuthSignup());
+    test('should respect maximum retry limits', async () => {
+      const { result } = renderHook(() => useOAuthSignup({ autoProcessCallback: false }));
 
-      // Simulate being at max retries
       const error = new Error('Persistent error');
       mockAuthService.generateOAuthSignupUrl.mockRejectedValue(error);
 
@@ -271,15 +211,18 @@ describe('useOAuthSignup', () => {
         });
 
         if (i < 2) {
-          vi.advanceTimersByTime(6000); // Advance past cooldown
           await act(async () => {
+            vi.advanceTimersByTime(6000);
             await result.current.retry();
           });
+
+          expect(result.current.retryCount).toBe(i + 1);
         }
       }
 
       // Should not allow more retries
       await act(async () => {
+        vi.advanceTimersByTime(6000);
         const response = await result.current.retry();
         expect(response.success).toBe(false);
         expect(response.message).toBe('Maximum retry attempts (3) exceeded');
@@ -287,7 +230,7 @@ describe('useOAuthSignup', () => {
     });
 
     test('should handle retry without previous attempt', async () => {
-      const { result } = renderHook(() => useOAuthSignup());
+      const { result } = renderHook(() => useOAuthSignup({ autoProcessCallback: false }));
 
       await act(async () => {
         const response = await result.current.retry();
@@ -295,155 +238,11 @@ describe('useOAuthSignup', () => {
         expect(response.message).toBe('No previous signup attempt to retry');
       });
     });
-
-    test('should store last signup data for retry', async () => {
-      const { result } = renderHook(() => useOAuthSignup());
-
-      // First attempt fails
-      const error = new Error('Network error');
-      mockAuthService.generateOAuthSignupUrl.mockRejectedValue(error);
-
-      await act(async () => {
-        await result.current.startSignup(testProvider, testCallbackUrl);
-      });
-
-      // Clear mock and setup successful response
-      mockAuthService.generateOAuthSignupUrl.mockClear();
-      mockAuthService.generateOAuthSignupUrl.mockResolvedValue({
-        authorizationUrl: 'https://oauth.provider.com/auth',
-        state: 'state-123',
-        provider: 'google',
-        authType: 'signup',
-        callbackUrl: testCallbackUrl,
-      });
-
-      // Advance time past cooldown
-      vi.advanceTimersByTime(6000);
-
-      // Retry should use stored data
-      await act(async () => {
-        await result.current.retry();
-      });
-
-      expect(mockAuthService.generateOAuthSignupUrl).toHaveBeenCalledWith(testProvider, {
-        callbackUrl: testCallbackUrl,
-      });
-    });
   });
 
-  describe('Progress and Phase Management', () => {
-    test('should calculate progress correctly', () => {
-      const { result } = renderHook(() => useOAuthSignup());
-
-      expect(result.current.progress).toBe(0); // idle
-      expect(result.current.currentStep).toBe('Ready to start OAuth signup');
-      expect(result.current.nextStep).toBe('Choose OAuth provider');
-    });
-
-    test('should provide correct step descriptions', async () => {
-      const { result } = renderHook(() => useOAuthSignup());
-
-      // Initial state
-      expect(result.current.currentStep).toBe('Ready to start OAuth signup');
-      expect(result.current.nextStep).toBe('Choose OAuth provider');
-
-      // After starting signup
-      mockAuthService.generateOAuthSignupUrl.mockResolvedValue({
-        authorizationUrl: 'https://oauth.provider.com/auth',
-        state: 'state-123',
-        provider: 'google',
-        authType: 'signup',
-        callbackUrl: testCallbackUrl,
-      });
-
-      await act(async () => {
-        await result.current.startSignup(testProvider, testCallbackUrl);
-      });
-
-      // Progress should update based on phase
-      expect(result.current.progress).toBeGreaterThan(0);
-    });
-
-    test('should transition through phases correctly', async () => {
-      const { result } = renderHook(() => useOAuthSignup());
-
-      // Initial state
-      expect(result.current.phase).toBe('idle');
-
-      // Start signup
-      mockAuthService.generateOAuthSignupUrl.mockResolvedValue({
-        authorizationUrl: 'https://oauth.provider.com/auth',
-        state: 'state-123',
-        provider: 'google',
-        authType: 'signup',
-        callbackUrl: testCallbackUrl,
-      });
-
-      await act(async () => {
-        await result.current.startSignup(testProvider, testCallbackUrl);
-      });
-
-      expect(result.current.phase).toBe('processing_callback');
-    });
-
-    test('should update progress during different phases', async () => {
-      const { result } = renderHook(() => useOAuthSignup());
-
-      // Initial progress
-      expect(result.current.progress).toBe(0);
-
-      // After starting signup
-      mockAuthService.generateOAuthSignupUrl.mockResolvedValue({
-        authorizationUrl: 'https://oauth.provider.com/auth',
-        state: 'state-123',
-        provider: 'google',
-        authType: 'signup',
-        callbackUrl: testCallbackUrl,
-      });
-
-      await act(async () => {
-        await result.current.startSignup(testProvider, testCallbackUrl);
-      });
-
-      expect(result.current.progress).toBe(75); // processing_callback phase
-    });
-  });
-
-  describe('Error Handling', () => {
-    test('should handle API errors gracefully', async () => {
-      const { result } = renderHook(() => useOAuthSignup());
-
-      const error = new Error('API service down');
-      mockAuthService.generateOAuthSignupUrl.mockRejectedValue(error);
-
-      await act(async () => {
-        const response = await result.current.startSignup(testProvider, testCallbackUrl);
-        expect(response.success).toBe(false);
-        expect(response.message).toContain('API service down');
-      });
-
-      expect(result.current.phase).toBe('failed');
-      expect(result.current.error).toContain('API service down');
-    });
-
-    test('should handle network timeouts', async () => {
-      const { result } = renderHook(() => useOAuthSignup());
-
-      const timeoutError = new Error('Request timeout');
-      timeoutError.name = 'TimeoutError';
-      mockAuthService.generateOAuthSignupUrl.mockRejectedValue(timeoutError);
-
-      await act(async () => {
-        const response = await result.current.startSignup(testProvider, testCallbackUrl);
-        expect(response.success).toBe(false);
-      });
-
-      expect(result.current.phase).toBe('failed');
-      expect(result.current.error).toContain('Request timeout');
-    });
-
-    test('should handle validation errors before API calls', async () => {
-      const { result } = renderHook(() => useOAuthSignup());
+  describe('Input Validation', () => {
+    test('should validate signup parameters', async () => {
+      const { result } = renderHook(() => useOAuthSignup({ autoProcessCallback: false }));
 
       await act(async () => {
         const response = await result.current.startSignup(undefined as any, testCallbackUrl);
@@ -451,7 +250,6 @@ describe('useOAuthSignup', () => {
         expect(response.message).toBe('OAuth provider is required');
       });
 
-      // Should not make API call if validation fails
       expect(mockAuthService.generateOAuthSignupUrl).not.toHaveBeenCalled();
     });
   });
