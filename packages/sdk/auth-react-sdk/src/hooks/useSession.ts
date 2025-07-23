@@ -53,9 +53,11 @@ export function useSession(options: SessionOptions = {}): SessionReturn {
   const { autoLoad = true, autoLoadSessionAccounts = false } = options;
   const authService = useAuthService();
 
-  // Store state
+  // Store state - use direct selectors for reactive updates
   const sessionState = useAppStore((state) => state.getSessionState());
   const sessionAccountsState = useAppStore((state) => state.getSessionAccountsState());
+  const shouldLoadSession = useAppStore((state) => state.shouldLoadSession());
+  const shouldLoadSessionAccounts = useAppStore((state) => state.shouldLoadSessionAccounts());
 
   const setSessionStatus = useAppStore((state) => state.setSessionStatus);
   const setSessionData = useAppStore((state) => state.setSessionData);
@@ -82,7 +84,7 @@ export function useSession(options: SessionOptions = {}): SessionReturn {
   const loadSessionAccounts = useCallback(async () => {
     try {
       // Check if we have session data with account IDs
-      const currentSessionData = sessionState.data || useAppStore.getState().getSessionState().data;
+      const currentSessionData = sessionState.data;
       if (!currentSessionData?.accountIds.length) {
         console.warn('No account IDs available to load session accounts');
         return;
@@ -133,17 +135,17 @@ export function useSession(options: SessionOptions = {}): SessionReturn {
 
   // Auto-load session on mount (if enabled)
   useEffect(() => {
-    if (autoLoad && useAppStore.getState().shouldLoadSession()) {
+    if (autoLoad && shouldLoadSession) {
       load();
     }
-  }, [autoLoad]);
+  }, [autoLoad, shouldLoadSession, load]); // All dependencies included
 
+  // Auto-load session accounts when session is ready
   useEffect(() => {
-    // Automatically load session accounts if configured to do so
-    if (autoLoadSessionAccounts && useAppStore.getState().shouldLoadSessionAccounts()) {
+    if (autoLoadSessionAccounts && shouldLoadSessionAccounts) {
       loadSessionAccounts();
     }
-  }, [autoLoadSessionAccounts, sessionState.status]);
+  }, [autoLoadSessionAccounts, shouldLoadSessionAccounts, loadSessionAccounts]); // All dependencies included
 
   // Derived state
   const isAuthenticated = autoLoadSessionAccounts
