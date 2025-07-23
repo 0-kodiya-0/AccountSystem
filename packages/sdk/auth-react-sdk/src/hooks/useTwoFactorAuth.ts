@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useSession } from './useSession';
 import { useAppStore } from '../store/useAppStore';
 import { useAuthService } from '../context/ServicesProvider';
 import {
