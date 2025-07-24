@@ -8,10 +8,9 @@ import {
   createMockAccountService,
   createMockAccount,
   createMockSessionData,
-  resetAppStore,
-  setMockSessionState,
   TEST_CONSTANTS,
 } from '../../test/utils';
+import { resetAppStore, setMockSessionState } from '../../test/storeUtils';
 
 // Mock services
 const mockAuthService = createMockAuthService();
@@ -29,6 +28,7 @@ describe('useAccount', () => {
 
   beforeEach(() => {
     resetAppStore();
+
     setMockSessionState(mockSessionData);
   });
 

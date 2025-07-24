@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, vi } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useLocalSignup } from '../useLocalSignup';
 import { createMockAuthService, setupBrowserMocks, TEST_CONSTANTS } from '../../test/utils';
@@ -281,6 +281,196 @@ describe('useLocalSignup', () => {
         const response = await result.current.cancel();
         expect(response.success).toBe(false);
         expect(response.message).toBe('No signup process to cancel');
+      });
+    });
+  });
+
+  describe('Retry Logic', () => {
+    test('should retry failed start operation with cooldown', async () => {
+      const { result } = renderHook(() => useLocalSignup({ autoProcessToken: false }));
+
+      // First attempt fails
+      const error = new Error('Network error');
+      mockAuthService.requestEmailVerification.mockRejectedValue(error);
+
+      await act(async () => {
+        await result.current.start({
+          email: 'test@example.com',
+          callbackUrl: TEST_CONSTANTS.URLs.CALLBACK,
+        });
+      });
+
+      expect(result.current.phase).toBe('failed');
+
+      // Immediately try to retry - should be blocked by cooldown
+      await act(async () => {
+        const response = await result.current.retry();
+        expect(response.success).toBe(false);
+        expect(response.message).toContain('Please wait');
+      });
+
+      // Advance time past cooldown
+      act(() => {
+        vi.advanceTimersByTime(6000);
+      });
+
+      // Mock successful retry
+      mockAuthService.requestEmailVerification.mockResolvedValue({
+        message: 'Email sent on retry',
+        email: 'test@example.com',
+        callbackUrl: TEST_CONSTANTS.URLs.CALLBACK,
+      });
+
+      // Now retry should work
+      await act(async () => {
+        const response = await result.current.retry();
+        expect(response.success).toBe(true);
+      });
+
+      expect(result.current.retryCount).toBe(0); // Reset to 0 on successful retry
+      expect(result.current.phase).toBe('email_sent');
+    });
+
+    test('should retry failed complete operation', async () => {
+      const { result } = renderHook(() => useLocalSignup({ autoProcessToken: false }));
+
+      // Set up email verified state
+      mockLocation.search = `?token=${TEST_CONSTANTS.TOKENS.VERIFICATION}`;
+      mockAuthService.verifyEmailForSignup.mockResolvedValue({
+        profileToken: TEST_CONSTANTS.TOKENS.PROFILE,
+        email: 'test@example.com',
+        message: 'Verified',
+      });
+
+      await act(async () => {
+        await result.current.processTokenFromUrl();
+      });
+
+      // First complete attempt fails
+      const error = new Error('Server error');
+      mockAuthService.completeProfile.mockRejectedValue(error);
+
+      await act(async () => {
+        await result.current.complete({
+          firstName: 'John',
+          lastName: 'Doe',
+          password: 'password123',
+          confirmPassword: 'password123',
+          agreeToTerms: true,
+        });
+      });
+
+      expect(result.current.phase).toBe('failed');
+
+      // Advance time past cooldown
+      act(() => {
+        vi.advanceTimersByTime(6000);
+      });
+
+      // Mock successful retry
+      mockAuthService.completeProfile.mockResolvedValue({
+        accountId: TEST_CONSTANTS.ACCOUNT_IDS.CURRENT,
+        name: 'John Doe',
+        message: 'Success',
+      });
+
+      // Retry should work
+      await act(async () => {
+        const response = await result.current.retry();
+        expect(response.success).toBe(true);
+        expect(response.accountId).toBe(TEST_CONSTANTS.ACCOUNT_IDS.CURRENT);
+      });
+
+      expect(result.current.phase).toBe('completed');
+    });
+
+    test('should retry failed token verification', async () => {
+      const { result } = renderHook(() => useLocalSignup({ autoProcessToken: false }));
+
+      // Set up token in URL
+      mockLocation.search = `?token=${TEST_CONSTANTS.TOKENS.VERIFICATION}`;
+
+      // First verification fails
+      const error = new Error('Token expired');
+      mockAuthService.verifyEmailForSignup.mockRejectedValue(error);
+
+      await act(async () => {
+        await result.current.processTokenFromUrl();
+      });
+
+      expect(result.current.phase).toBe('failed');
+
+      // Advance time past cooldown
+      act(() => {
+        vi.advanceTimersByTime(6000);
+      });
+
+      // Mock successful retry
+      mockAuthService.verifyEmailForSignup.mockResolvedValue({
+        profileToken: TEST_CONSTANTS.TOKENS.PROFILE,
+        email: 'test@example.com',
+        message: 'Verified',
+      });
+
+      // Retry should work
+      await act(async () => {
+        const response = await result.current.retry();
+        expect(response.success).toBe(true);
+        expect(response.message).toBe('Email verification retry successful');
+      });
+
+      expect(result.current.phase).toBe('email_verified');
+    });
+
+    test('should respect maximum retry limits', async () => {
+      const { result } = renderHook(() => useLocalSignup({ autoProcessToken: false }));
+
+      const error = new Error('Persistent error');
+      mockAuthService.requestEmailVerification.mockRejectedValue(error);
+
+      // Initial request fails
+      await act(async () => {
+        await result.current.start({
+          email: 'test@example.com',
+          callbackUrl: TEST_CONSTANTS.URLs.CALLBACK,
+        });
+      });
+
+      expect(result.current.phase).toBe('failed');
+
+      // Perform exactly MAX_RETRY_ATTEMPTS (3) retries that all fail
+      for (let i = 1; i <= 3; i++) {
+        // Advance time past cooldown
+        act(() => {
+          vi.advanceTimersByTime(6000);
+        });
+
+        await act(async () => {
+          const response = await result.current.retry();
+          expect(response.success).toBe(false);
+          expect(response.message).toBe('Failed to send verification email: Persistent error');
+        });
+      }
+
+      // After 3 failed retries, the next retry should hit the max limit
+      act(() => {
+        vi.advanceTimersByTime(6000);
+      });
+
+      await act(async () => {
+        const response = await result.current.retry();
+        expect(response.success).toBe(false);
+        expect(response.message).toBe('Maximum retry attempts (3) exceeded');
+      });
+    });
+
+    test('should handle retry without previous operation', async () => {
+      const { result } = renderHook(() => useLocalSignup({ autoProcessToken: false }));
+
+      await act(async () => {
+        const response = await result.current.retry();
+        expect(response.success).toBe(false);
+        expect(response.message).toBe('No previous operation to retry');
       });
     });
   });

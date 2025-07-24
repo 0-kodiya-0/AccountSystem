@@ -1,7 +1,7 @@
 import { describe, test, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { usePasswordReset } from '../usePasswordReset';
-import { createMockAuthService, TEST_CONSTANTS } from '../../test/utils';
+import { createMockAuthService, setupBrowserMocks, TEST_CONSTANTS } from '../../test/utils';
 
 // Mock AuthService
 const mockAuthService = createMockAuthService();
@@ -11,6 +11,13 @@ vi.mock('../../context/ServicesProvider', () => ({
 }));
 
 describe('usePasswordReset', () => {
+  let mockLocation: ReturnType<typeof setupBrowserMocks>['mockLocation'];
+
+  beforeEach(() => {
+    const browserMocks = setupBrowserMocks();
+    mockLocation = browserMocks.mockLocation;
+  });
+
   describe('Hook Initialization', () => {
     test('should initialize with correct default state', () => {
       const { result } = renderHook(() => usePasswordReset({ autoProcessToken: false }));
@@ -71,20 +78,28 @@ describe('usePasswordReset', () => {
   });
 
   describe('Password Reset Flow', () => {
-    test('should handle successful password reset', async () => {
-      const { result } = renderHook(() => usePasswordReset({ autoProcessToken: false }));
+    beforeEach(() => {
+      mockLocation.search = `?token=${TEST_CONSTANTS.TOKENS.SETUP}`;
+    });
 
+    test('should handle successful password reset', async () => {
       // Mock token verification
       mockAuthService.verifyPasswordReset.mockResolvedValue({
         success: true,
         message: 'Token verified',
-        resetToken: 'verified-token',
+        resetToken: TEST_CONSTANTS.TOKENS.VERIFICATION,
         expiresAt: '2022-01-01T01:00:00.000Z',
       });
 
       // Mock password reset
       mockAuthService.resetPassword.mockResolvedValue({
         message: 'Password reset successfully',
+      });
+
+      let result: any;
+      await act(async () => {
+        const hook = renderHook(() => usePasswordReset());
+        result = hook.result;
       });
 
       await act(async () => {
@@ -106,6 +121,13 @@ describe('usePasswordReset', () => {
 
       const error = new Error('Token expired');
       mockAuthService.resetPassword.mockRejectedValue(error);
+
+      await act(async () => {
+        const response = await result.current.processTokenFromUrl();
+
+        expect(response.success).toBe(true);
+        expect(response.message).toBe('Reset token verified successfully');
+      });
 
       await act(async () => {
         const response = await result.current.resetPassword({
@@ -135,6 +157,19 @@ describe('usePasswordReset', () => {
     });
   });
 
+  // Update the setup to properly handle timers
+  beforeEach(() => {
+    const browserMocks = setupBrowserMocks();
+    mockLocation = browserMocks.mockLocation;
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2022-01-01T00:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
   describe('Retry Logic', () => {
     test('should handle retry with cooldown mechanism', async () => {
       const { result } = renderHook(() => usePasswordReset({ autoProcessToken: false }));
@@ -151,14 +186,18 @@ describe('usePasswordReset', () => {
       });
 
       expect(result.current.phase).toBe('failed');
-      expect(result.current.canRetry).toBe(false); // Still in cooldown
 
-      // Advance time past cooldown
+      // Immediately try to retry - should be blocked by cooldown
       await act(async () => {
-        vi.advanceTimersByTime(6000);
+        const response = await result.current.retry();
+        expect(response.success).toBe(false);
+        expect(response.message).toContain('Please wait');
       });
 
-      expect(result.current.canRetry).toBe(true);
+      // Advance time past cooldown
+      act(() => {
+        vi.advanceTimersByTime(6000); // 6 seconds > 5 second cooldown
+      });
 
       // Mock successful retry
       mockAuthService.requestPasswordReset.mockResolvedValue({
@@ -166,12 +205,14 @@ describe('usePasswordReset', () => {
         callbackUrl: TEST_CONSTANTS.URLs.CALLBACK,
       });
 
+      // Now retry should work
       await act(async () => {
         const response = await result.current.retry();
         expect(response.success).toBe(true);
       });
 
-      expect(result.current.retryCount).toBe(1);
+      expect(result.current.retryCount).toBe(0);
+      expect(result.current.phase).toBe('reset_email_sent');
     });
 
     test('should respect maximum retry limits', async () => {
@@ -180,29 +221,46 @@ describe('usePasswordReset', () => {
       const error = new Error('Persistent error');
       mockAuthService.requestPasswordReset.mockRejectedValue(error);
 
-      // Perform multiple failures and retries
-      for (let i = 0; i < 3; i++) {
-        await act(async () => {
-          await result.current.requestReset({
-            email: 'test@example.com',
-            callbackUrl: TEST_CONSTANTS.URLs.CALLBACK,
-          });
+      // Initial request fails
+      await act(async () => {
+        await result.current.requestReset({
+          email: 'test@example.com',
+          callbackUrl: TEST_CONSTANTS.URLs.CALLBACK,
+        });
+      });
+
+      expect(result.current.phase).toBe('failed');
+      expect(result.current.retryCount).toBe(0);
+
+      // Perform exactly MAX_RETRY_ATTEMPTS (3) retries
+      for (let i = 1; i <= 3; i++) {
+        // Advance time past cooldown
+        act(() => {
+          vi.advanceTimersByTime(6000);
         });
 
-        if (i < 2) {
-          await act(async () => {
-            vi.advanceTimersByTime(6000);
-            await result.current.retry();
-          });
-        }
+        await act(async () => {
+          const response = await result.current.retry();
+          expect(response.success).toBe(false);
+          expect(response.message).toBe('Failed to request password reset: Persistent error');
+        });
+
+        expect(result.current.retryCount).toBe(i);
       }
 
-      // Should not allow more retries
+      // Now should hit max retry limit
+      act(() => {
+        vi.advanceTimersByTime(6000);
+      });
+
       await act(async () => {
         const response = await result.current.retry();
         expect(response.success).toBe(false);
         expect(response.message).toBe('Maximum retry attempts (3) exceeded');
       });
+
+      // Retry count should still be 3 (not incremented when max reached)
+      expect(result.current.retryCount).toBe(3);
     });
   });
 
@@ -248,6 +306,25 @@ describe('usePasswordReset', () => {
 
       expect(result.current.phase).toBe('reset_email_sent');
       expect(result.current.progress).toBe(50);
+
+      mockAuthService.verifyPasswordReset.mockResolvedValue({
+        success: true,
+        message: 'Token verified',
+        resetToken: TEST_CONSTANTS.TOKENS.VERIFICATION,
+        expiresAt: '2022-01-01T01:00:00.000Z',
+      });
+
+      mockLocation.search = `?token=${TEST_CONSTANTS.TOKENS.SETUP}`;
+
+      await act(async () => {
+        const response = await result.current.processTokenFromUrl();
+
+        expect(response.success).toBe(true);
+        expect(response.message).toBe('Reset token verified successfully');
+      });
+
+      expect(result.current.phase).toBe('token_verified');
+      expect(result.current.progress).toBe(60);
 
       // Step 2: Reset password (with token verification)
       mockAuthService.resetPassword.mockResolvedValue({

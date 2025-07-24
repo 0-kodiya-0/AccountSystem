@@ -5,10 +5,9 @@ import {
   createMockAuthService,
   createMockSessionData,
   createMockSessionAccounts,
-  resetAppStore,
-  setMockSessionState,
   TEST_CONSTANTS,
 } from '../../test/utils';
+import { resetAppStore, setMockSessionState } from '../../test/storeUtils';
 
 // Mock the AuthService
 const mockAuthService = createMockAuthService();

@@ -1,7 +1,8 @@
-import { describe, test, expect, vi } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useOAuthSignin } from '../useOAuthSignin';
-import { createMockAuthService, TEST_CONSTANTS } from '../../test/utils';
+import { CallbackCode } from '../../types';
+import { createMockAuthService, setupBrowserMocks, TEST_CONSTANTS } from '../../test/utils';
 
 // Mock AuthService
 const mockAuthService = createMockAuthService();
@@ -13,6 +14,14 @@ vi.mock('../../context/ServicesProvider', () => ({
 describe('useOAuthSignin', () => {
   const testProvider = TEST_CONSTANTS.OAUTH.PROVIDER;
   const testCallbackUrl = TEST_CONSTANTS.OAUTH.CALLBACK_URL;
+  let mockLocation: ReturnType<typeof setupBrowserMocks>['mockLocation'];
+  let mockHistory: ReturnType<typeof setupBrowserMocks>['mockHistory'];
+
+  beforeEach(() => {
+    const browserMocks = setupBrowserMocks();
+    mockLocation = browserMocks.mockLocation;
+    mockHistory = browserMocks.mockHistory;
+  });
 
   describe('Hook Initialization', () => {
     test('should initialize with correct default state', () => {
@@ -94,6 +103,19 @@ describe('useOAuthSignin', () => {
     test('should handle successful 2FA verification', async () => {
       const { result } = renderHook(() => useOAuthSignin({ autoProcessCallback: false }));
 
+      // Set up 2FA state by processing callback that requires 2FA
+      mockLocation.search = `?code=${CallbackCode.OAUTH_SIGNIN_REQUIRES_2FA}&tempToken=${TEST_CONSTANTS.TOKENS.TEMP}&accountId=${TEST_CONSTANTS.ACCOUNT_IDS.CURRENT}&name=John%20Doe`;
+      mockLocation.href = `http://localhost:3000?code=${CallbackCode.OAUTH_SIGNIN_REQUIRES_2FA}&tempToken=${TEST_CONSTANTS.TOKENS.TEMP}&accountId=${TEST_CONSTANTS.ACCOUNT_IDS.CURRENT}&name=John%20Doe`;
+
+      await act(async () => {
+        const response = await result.current.processCallbackFromUrl();
+        expect(response.success).toBe(true);
+        expect(response.message).toBe('OAuth callback processed successfully');
+      });
+
+      expect(result.current.phase).toBe('requires_2fa');
+      expect(result.current.tempToken).toBe(TEST_CONSTANTS.TOKENS.TEMP);
+
       mockAuthService.verifyTwoFactorLogin.mockResolvedValue({
         accountId: TEST_CONSTANTS.ACCOUNT_IDS.CURRENT,
         name: 'John Doe',
@@ -113,6 +135,15 @@ describe('useOAuthSignin', () => {
 
     test('should handle 2FA verification with additional scopes needed', async () => {
       const { result } = renderHook(() => useOAuthSignin({ autoProcessCallback: false }));
+
+      // Set up 2FA state by processing callback
+      mockLocation.search = `?code=${CallbackCode.OAUTH_SIGNIN_REQUIRES_2FA}&tempToken=${TEST_CONSTANTS.TOKENS.TEMP}&accountId=${TEST_CONSTANTS.ACCOUNT_IDS.CURRENT}&name=John%20Doe`;
+
+      await act(async () => {
+        const response = await result.current.processCallbackFromUrl();
+        expect(response.success).toBe(true);
+        expect(response.message).toBe('OAuth callback processed successfully');
+      });
 
       mockAuthService.verifyTwoFactorLogin.mockResolvedValue({
         accountId: TEST_CONSTANTS.ACCOUNT_IDS.CURRENT,
@@ -175,15 +206,18 @@ describe('useOAuthSignin', () => {
 
       const { result } = renderHook(() => useOAuthSignin({ autoProcessCallback: false }));
 
-      const url = await result.current.getSigninUrl(testProvider, testCallbackUrl);
+      await act(async () => {
+        const url = await result.current.getSigninUrl(testProvider, testCallbackUrl);
 
-      expect(url).toBe('');
+        expect(url).toBe(null);
+      });
+
       expect(result.current.error).toBe('Failed to get google signin URL: Failed to generate URL');
     });
   });
 
   describe('Retry Logic', () => {
-    test('should handle retry with cooldown mechanism', async () => {
+    test('should handle retry with cooldown mechanism for signin', async () => {
       const { result } = renderHook(() => useOAuthSignin({ autoProcessCallback: false }));
 
       // First attempt fails
@@ -195,14 +229,18 @@ describe('useOAuthSignin', () => {
       });
 
       expect(result.current.phase).toBe('failed');
-      expect(result.current.canRetry).toBe(false); // Still in cooldown
 
-      // Advance time past cooldown
+      // Immediately try to retry - should be blocked by cooldown
       await act(async () => {
-        vi.advanceTimersByTime(6000);
+        const response = await result.current.retry();
+        expect(response.success).toBe(false);
+        expect(response.message).toContain('Please wait');
       });
 
-      expect(result.current.canRetry).toBe(true);
+      // Advance time past cooldown
+      act(() => {
+        vi.advanceTimersByTime(6000);
+      });
 
       // Mock successful retry
       mockAuthService.generateOAuthSigninUrl.mockResolvedValue({
@@ -216,8 +254,55 @@ describe('useOAuthSignin', () => {
       await act(async () => {
         const response = await result.current.retry();
         expect(response.success).toBe(true);
-        expect(result.current.retryCount).toBe(1);
       });
+
+      expect(result.current.retryCount).toBe(0); // Reset to 0 on successful retry
+      expect(result.current.phase).toBe('processing_callback');
+    });
+
+    test('should handle retry for 2FA verification', async () => {
+      const { result } = renderHook(() => useOAuthSignin({ autoProcessCallback: false }));
+
+      // Set up 2FA state by processing callback that requires 2FA
+      mockLocation.search = `?code=${CallbackCode.OAUTH_SIGNIN_REQUIRES_2FA}&tempToken=${TEST_CONSTANTS.TOKENS.TEMP}&accountId=${TEST_CONSTANTS.ACCOUNT_IDS.CURRENT}&name=John%20Doe`;
+
+      await act(async () => {
+        const response = await result.current.processCallbackFromUrl();
+        expect(response.success).toBe(true);
+        expect(response.message).toBe('OAuth callback processed successfully');
+      });
+
+      expect(result.current.phase).toBe('requires_2fa');
+      expect(result.current.tempToken).toBe(TEST_CONSTANTS.TOKENS.TEMP);
+
+      // 2FA verification fails
+      const error = new Error('Invalid code');
+      mockAuthService.verifyTwoFactorLogin.mockRejectedValue(error);
+
+      await act(async () => {
+        await result.current.verify2FA('123456');
+      });
+
+      expect(result.current.phase).toBe('failed');
+
+      // Advance time past cooldown
+      act(() => {
+        vi.advanceTimersByTime(6000);
+      });
+
+      // Mock successful retry
+      mockAuthService.verifyTwoFactorLogin.mockResolvedValue({
+        accountId: TEST_CONSTANTS.ACCOUNT_IDS.CURRENT,
+        name: 'John Doe',
+        message: 'Success!',
+      });
+
+      await act(async () => {
+        const response = await result.current.retry();
+        expect(response.success).toBe(true);
+      });
+
+      expect(result.current.phase).toBe('completed');
     });
 
     test('should respect maximum retry limits', async () => {
@@ -226,21 +311,32 @@ describe('useOAuthSignin', () => {
       const error = new Error('Persistent error');
       mockAuthService.generateOAuthSigninUrl.mockRejectedValue(error);
 
-      // Perform multiple failures and retries
-      for (let i = 0; i < 3; i++) {
-        await act(async () => {
-          await result.current.startSignin(testProvider, testCallbackUrl);
+      // Initial attempt fails
+      await act(async () => {
+        await result.current.startSignin(testProvider, testCallbackUrl);
+      });
+
+      expect(result.current.phase).toBe('failed');
+
+      // Perform exactly MAX_RETRY_ATTEMPTS (3) retries that all fail
+      for (let i = 1; i <= 3; i++) {
+        // Advance time past cooldown
+        act(() => {
+          vi.advanceTimersByTime(6000);
         });
 
-        if (i < 2) {
-          await act(async () => {
-            vi.advanceTimersByTime(6000);
-            await result.current.retry();
-          });
-        }
+        await act(async () => {
+          const response = await result.current.retry();
+          expect(response.success).toBe(false);
+          expect(response.message).toBe('Failed to start google signin: Persistent error');
+        });
       }
 
-      // Should not allow more retries
+      // After 3 failed retries, the next retry should hit the max limit
+      act(() => {
+        vi.advanceTimersByTime(6000);
+      });
+
       await act(async () => {
         const response = await result.current.retry();
         expect(response.success).toBe(false);
@@ -256,6 +352,61 @@ describe('useOAuthSignin', () => {
         expect(response.success).toBe(false);
         expect(response.message).toBe('No previous signin attempt to retry');
       });
+    });
+  });
+
+  describe('Callback Processing', () => {
+    test('should process callback from URL successfully', async () => {
+      // Mock URL with callback parameters using setupBrowserMocks
+      mockLocation.search = `?code=${CallbackCode.OAUTH_SIGNIN_SUCCESS}&accountId=${TEST_CONSTANTS.ACCOUNT_IDS.CURRENT}&name=John%20Doe&message=Success`;
+      mockLocation.href = `http://localhost:3000?code=${CallbackCode.OAUTH_SIGNIN_SUCCESS}&accountId=${TEST_CONSTANTS.ACCOUNT_IDS.CURRENT}&name=John%20Doe&message=Success`;
+
+      const { result } = renderHook(() => useOAuthSignin({ autoProcessCallback: false }));
+
+      await act(async () => {
+        const response = await result.current.processCallbackFromUrl();
+        expect(response.success).toBe(true);
+        expect(response.message).toBe('OAuth callback processed successfully');
+      });
+
+      expect(result.current.phase).toBe('completed');
+      expect(result.current.accountId).toBe(TEST_CONSTANTS.ACCOUNT_IDS.CURRENT);
+      expect(result.current.accountName).toBe('John Doe');
+      expect(mockHistory.replaceState).toHaveBeenCalled();
+    });
+
+    test('should handle callback processing errors', async () => {
+      // Mock URL with error callback using setupBrowserMocks
+      mockLocation.search = `?code=${CallbackCode.OAUTH_ERROR}&error=Authorization%20failed`;
+      mockLocation.href = `http://localhost:3000?code=${CallbackCode.OAUTH_ERROR}&error=Authorization%20failed`;
+
+      const { result } = renderHook(() => useOAuthSignin({ autoProcessCallback: false }));
+
+      await act(async () => {
+        const response = await result.current.processCallbackFromUrl();
+        expect(response.success).toBe(false);
+        expect(response.message).toBe('No valid callback found');
+      });
+
+      expect(result.current.phase).toBe('failed');
+      expect(result.current.error).toBe('Authorization failed');
+      expect(mockHistory.replaceState).toHaveBeenCalled();
+    });
+
+    test('should handle missing callback gracefully', async () => {
+      // Mock URL without callback parameters
+      mockLocation.search = '';
+      mockLocation.href = 'http://localhost:3000';
+
+      const { result } = renderHook(() => useOAuthSignin({ autoProcessCallback: false }));
+
+      await act(async () => {
+        const response = await result.current.processCallbackFromUrl();
+        expect(response.success).toBe(false);
+        expect(response.message).toBe('No valid callback found');
+      });
+
+      expect(result.current.phase).toBe('idle'); // Should remain idle
     });
   });
 });

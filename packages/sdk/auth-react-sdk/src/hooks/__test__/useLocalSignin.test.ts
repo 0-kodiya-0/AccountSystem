@@ -1,4 +1,4 @@
-import { describe, test, expect, vi } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useLocalSignin } from '../useLocalSignin';
 import { LocalLoginResponse } from '../../types';
@@ -46,10 +46,11 @@ describe('useLocalSignin', () => {
 
         expect(response.success).toBe(true);
         expect(response.message).toBe('Signin successful!');
-        expect(result.current.phase).toBe('completed');
-        expect(result.current.accountId).toBe(TEST_CONSTANTS.ACCOUNT_IDS.CURRENT);
-        expect(result.current.accountName).toBe('John Doe');
       });
+
+      expect(result.current.phase).toBe('completed');
+      expect(result.current.accountId).toBe(TEST_CONSTANTS.ACCOUNT_IDS.CURRENT);
+      expect(result.current.accountName).toBe('John Doe');
     });
 
     test('should handle signin requiring 2FA', async () => {
@@ -202,7 +203,7 @@ describe('useLocalSignin', () => {
   });
 
   describe('Retry Logic', () => {
-    test('should handle retry with cooldown mechanism', async () => {
+    test('should handle retry with cooldown mechanism for signin', async () => {
       const { result } = renderHook(() => useLocalSignin());
 
       // Simulate failed signin
@@ -217,14 +218,18 @@ describe('useLocalSignin', () => {
       });
 
       expect(result.current.phase).toBe('failed');
-      expect(result.current.canRetry).toBe(false); // Still in cooldown
 
-      // Advance time past cooldown (5 seconds)
+      // Immediately try to retry - should be blocked by cooldown
       await act(async () => {
-        vi.advanceTimersByTime(6000);
+        const response = await result.current.retry();
+        expect(response.success).toBe(false);
+        expect(response.message).toContain('Please wait');
       });
 
-      expect(result.current.canRetry).toBe(true);
+      // Advance time past cooldown (5 seconds)
+      act(() => {
+        vi.advanceTimersByTime(6000);
+      });
 
       // Mock successful retry
       mockAuthService.localLogin.mockResolvedValue({
@@ -236,8 +241,58 @@ describe('useLocalSignin', () => {
       await act(async () => {
         const response = await result.current.retry();
         expect(response.success).toBe(true);
-        expect(result.current.retryCount).toBe(1);
       });
+
+      expect(result.current.retryCount).toBe(0); // Reset to 0 on successful retry
+      expect(result.current.phase).toBe('completed');
+    });
+
+    test('should handle retry for 2FA verification', async () => {
+      const { result } = renderHook(() => useLocalSignin());
+
+      // Set up 2FA state
+      mockAuthService.localLogin.mockResolvedValue({
+        requiresTwoFactor: true,
+        tempToken: TEST_CONSTANTS.TOKENS.TEMP,
+        accountId: TEST_CONSTANTS.ACCOUNT_IDS.CURRENT,
+        name: 'John Doe',
+      });
+
+      await act(async () => {
+        await result.current.signin({
+          email: 'test@example.com',
+          password: 'password123',
+        });
+      });
+
+      // 2FA verification fails
+      const error = new Error('Invalid code');
+      mockAuthService.verifyTwoFactorLogin.mockRejectedValue(error);
+
+      await act(async () => {
+        await result.current.verify2FA('123456');
+      });
+
+      expect(result.current.phase).toBe('failed');
+
+      // Advance time past cooldown
+      act(() => {
+        vi.advanceTimersByTime(6000);
+      });
+
+      // Mock successful retry
+      mockAuthService.verifyTwoFactorLogin.mockResolvedValue({
+        accountId: TEST_CONSTANTS.ACCOUNT_IDS.CURRENT,
+        name: 'John Doe',
+        message: 'Success!',
+      });
+
+      await act(async () => {
+        const response = await result.current.retry();
+        expect(response.success).toBe(true);
+      });
+
+      expect(result.current.phase).toBe('completed');
     });
 
     test('should respect maximum retry limits', async () => {
@@ -246,7 +301,7 @@ describe('useLocalSignin', () => {
       const error = new Error('Network error');
       mockAuthService.localLogin.mockRejectedValue(error);
 
-      // Perform initial attempt + 3 retries
+      // Initial attempt fails
       await act(async () => {
         await result.current.signin({
           email: 'test@example.com',
@@ -254,17 +309,28 @@ describe('useLocalSignin', () => {
         });
       });
 
+      expect(result.current.phase).toBe('failed');
+
+      // Perform exactly MAX_RETRY_ATTEMPTS (3) retries that all fail
       for (let i = 1; i <= 3; i++) {
-        await act(async () => {
+        // Advance time past cooldown
+        act(() => {
           vi.advanceTimersByTime(6000);
-          await result.current.retry();
         });
-        expect(result.current.retryCount).toBe(i);
+
+        await act(async () => {
+          const response = await result.current.retry();
+          expect(response.success).toBe(false);
+          expect(response.message).toBe('Signin failed: Network error');
+        });
       }
 
-      // Try one more retry - should be blocked
-      await act(async () => {
+      // After 3 failed retries, the next retry should hit the max limit
+      act(() => {
         vi.advanceTimersByTime(6000);
+      });
+
+      await act(async () => {
         const response = await result.current.retry();
         expect(response.success).toBe(false);
         expect(response.message).toBe('Maximum retry attempts (3) exceeded');

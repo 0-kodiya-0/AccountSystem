@@ -1,5 +1,4 @@
 import { vi } from 'vitest';
-import { useAppStore } from '../store/useAppStore';
 import { AccountType, AccountStatus, Account, AccountSessionInfo, SessionAccount, OAuthProviders } from '../types';
 
 // === MOCK SERVICES ===
@@ -98,47 +97,6 @@ export const createMockSessionAccounts = (): SessionAccount[] => [
   },
 ];
 
-// === STORE UTILITIES ===
-export const resetAppStore = () => {
-  useAppStore.setState({
-    session: {
-      data: null,
-      status: 'idle',
-      currentOperation: null,
-      error: null,
-      lastLoaded: null,
-    },
-    accounts: {},
-    sessionAccounts: {
-      data: [],
-      status: 'idle',
-      currentOperation: null,
-      error: null,
-      lastLoaded: null,
-    },
-  });
-};
-
-export const setMockSessionState = (sessionData: AccountSessionInfo, accounts: SessionAccount[] = []) => {
-  useAppStore.setState({
-    session: {
-      data: sessionData,
-      status: 'success',
-      currentOperation: null,
-      error: null,
-      lastLoaded: Date.now(),
-    },
-    accounts: {},
-    sessionAccounts: {
-      data: accounts,
-      status: 'success',
-      currentOperation: null,
-      error: null,
-      lastLoaded: Date.now(),
-    },
-  });
-};
-
 // === BROWSER MOCKS ===
 export const createMockLocation = () => ({
   href: 'http://localhost:3000',
@@ -172,72 +130,10 @@ export const createMockStoreSelectors = () => {
   const mockGetAccountState = vi.fn();
   const mockUpdateAccountData = vi.fn();
 
-  const mockUseAppStore = vi.fn();
-  mockUseAppStore.mockImplementation((selector) => {
-    if (typeof selector === 'function') {
-      return selector({
-        getAccountState: mockGetAccountState,
-        updateAccountData: mockUpdateAccountData,
-      } as any);
-    }
-    return {
-      getAccountState: mockGetAccountState,
-      updateAccountData: mockUpdateAccountData,
-    };
-  });
-
   return {
-    mockUseAppStore,
     mockGetAccountState,
     mockUpdateAccountData,
   };
-};
-
-// === ERROR HANDLING UTILITIES ===
-export const testErrorHandling = async (
-  operation: () => Promise<any>,
-  expectedError: string,
-  mockService: any,
-  methodName: string,
-) => {
-  const error = new Error(expectedError);
-  mockService[methodName].mockRejectedValue(error);
-
-  const result = await operation();
-
-  expect(result.success).toBe(false);
-  expect(result.message).toContain(expectedError);
-};
-
-// === RETRY LOGIC UTILITIES ===
-export const testRetryLogic = async (
-  hook: any,
-  operation: string,
-  mockService: any,
-  methodName: string,
-  maxRetries: number = 3,
-) => {
-  const error = new Error('Network error');
-  mockService[methodName].mockRejectedValue(error);
-
-  // Perform initial attempt + retries
-  for (let i = 0; i <= maxRetries; i++) {
-    if (i > 0) {
-      vi.advanceTimersByTime(6000); // Advance past cooldown
-    }
-
-    await hook.current[operation]();
-
-    if (i < maxRetries) {
-      expect(hook.current.retryCount).toBe(i);
-    }
-  }
-
-  // Try one more retry - should be blocked
-  vi.advanceTimersByTime(6000);
-  const response = await hook.current.retry();
-  expect(response.success).toBe(false);
-  expect(response.message).toBe(`Maximum retry attempts (${maxRetries}) exceeded`);
 };
 
 // === COMMON TEST CONSTANTS ===
@@ -252,7 +148,7 @@ export const TEST_CONSTANTS = {
     SCOPES: ['read:profile', 'write:calendar'],
   },
   URLs: {
-    BASE: 'http://localhost:3000',
+    BASE: 'http://localhost:3000/',
     CALLBACK: 'http://localhost:3000/verify',
   },
   TOKENS: {
