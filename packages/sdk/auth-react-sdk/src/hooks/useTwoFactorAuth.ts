@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { useAuthService } from '../context/ServicesProvider';
 import {
@@ -13,31 +13,22 @@ import {
 import { parseApiError } from '../utils';
 
 // Two-factor authentication phases
-type TwoFactorPhase =
-  | 'idle'
-  | 'checking_status'
-  | 'setting_up'
-  | 'verifying_setup'
-  | 'generating_codes'
-  | 'completed'
-  | 'failed';
+type TwoFactorPhase = 'idle' | 'setting_up' | 'verifying_setup' | 'generating_codes' | 'completed' | 'failed';
 
 interface TwoFactorState {
   phase: TwoFactorPhase;
   loading: boolean;
   error: string | null;
+  retryCount: number;
+  lastAttemptTimestamp: number | null;
   // Setup data
   setupData: TwoFactorSetupResponse | null;
   // Status data
   statusData: TwoFactorStatusResponse | null;
   // Backup codes
   backupCodes: string[] | null;
-  // NEW: Setup token for verification
+  // Setup token for verification
   setupToken: string | null;
-}
-
-interface TwoFactorOptions {
-  autoLoadStatus?: boolean; // Whether to automatically load 2FA status on mount (default: true)
 }
 
 interface TwoFactorReturn {
@@ -49,10 +40,11 @@ interface TwoFactorReturn {
   phase: TwoFactorPhase;
   loading: boolean;
   error: string | null;
+  canRetry: boolean;
+  retryCount: number;
 
   // Convenience getters
   isIdle: boolean;
-  isCheckingStatus: boolean;
   isSettingUp: boolean;
   isVerifyingSetup: boolean;
   isGeneratingCodes: boolean;
@@ -70,38 +62,48 @@ interface TwoFactorReturn {
   qrCode: string | null;
   secret: string | null;
   backupCodes: string[] | null;
-  setupToken: string | null; // NEW: Setup token for verification
+  setupToken: string | null;
 
   // Operations
-  checkStatus: () => Promise<TwoFactorStatusResponse | null>;
   setup: (data: TwoFactorSetupRequest) => Promise<TwoFactorSetupResponse | null>;
-  verifySetup: (token: string) => Promise<TwoFactorVerifySetupResponse | null>; // UPDATED
+  verifySetup: (token: string) => Promise<TwoFactorVerifySetupResponse | null>;
   generateBackupCodes: (data: BackupCodesRequest) => Promise<BackupCodesResponse | null>;
   disable: (password?: string) => Promise<{ success: boolean; message?: string }>;
+  retry: () => Promise<{ success: boolean; message?: string }>;
 
   // Utilities
   clearError: () => void;
   reset: () => void;
   canSetup: boolean;
   canDisable: boolean;
-  canVerifySetup: boolean; // NEW: Can verify setup (has setup token)
+  canVerifySetup: boolean;
 }
 
 const INITIAL_STATE: TwoFactorState = {
   phase: 'idle',
   loading: false,
   error: null,
+  retryCount: 0,
+  lastAttemptTimestamp: null,
   setupData: null,
   statusData: null,
   backupCodes: null,
-  setupToken: null, // NEW
+  setupToken: null,
 };
 
-export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOptions = {}): TwoFactorReturn {
-  const { autoLoadStatus = true } = options;
+const MAX_RETRY_ATTEMPTS = 3;
+const RETRY_COOLDOWN_MS = 5000; // 5 seconds
 
+export function useTwoFactorAuth(accountId: string | null): TwoFactorReturn {
   const authService = useAuthService();
   const [state, setState] = useState<TwoFactorState>(INITIAL_STATE);
+
+  // Refs for retry logic
+  const lastSetupDataRef = useRef<TwoFactorSetupRequest | null>(null);
+  const lastVerifyTokenRef = useRef<string | null>(null);
+  const lastBackupCodesDataRef = useRef<BackupCodesRequest | null>(null);
+  const lastDisablePasswordRef = useRef<string | undefined>(undefined);
+  const lastOperationRef = useRef<'setup' | 'verify' | 'backup_codes' | 'disable' | null>(null);
 
   // Get account data from store to determine account type
   const accountType = useAppStore((state) => {
@@ -126,6 +128,7 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
         phase: 'failed',
         loading: false,
         error: apiError.message,
+        lastAttemptTimestamp: Date.now(),
       }));
 
       return apiError.message;
@@ -133,36 +136,8 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
     [safeSetState],
   );
 
-  // Two-factor operations
-  const checkStatus = useCallback(async () => {
-    if (!accountId) return null;
-
-    try {
-      safeSetState((prev) => ({
-        ...prev,
-        phase: 'checking_status',
-        loading: true,
-        error: null,
-      }));
-
-      const result = await authService.getTwoFactorStatus(accountId);
-
-      safeSetState((prev) => ({
-        ...prev,
-        phase: 'idle',
-        loading: false,
-        statusData: result,
-      }));
-
-      return result;
-    } catch (error) {
-      handleError(error, 'Failed to check 2FA status');
-      return null;
-    }
-  }, [accountId, authService, handleError, safeSetState]);
-
   const setup = useCallback(
-    async (data: TwoFactorSetupRequest) => {
+    async (data: TwoFactorSetupRequest, isRetry = false): Promise<TwoFactorSetupResponse | null> => {
       if (!accountId || !accountType) return null;
 
       try {
@@ -171,7 +146,14 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
           phase: 'setting_up',
           loading: true,
           error: null,
+          retryCount: isRetry ? prev.retryCount : 0,
         }));
+
+        // Store for retry
+        if (!isRetry) {
+          lastSetupDataRef.current = data;
+          lastOperationRef.current = 'setup';
+        }
 
         const result = await authService.setupTwoFactor(accountId, accountType, data);
 
@@ -180,7 +162,8 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
           phase: 'verifying_setup',
           loading: false,
           setupData: result,
-          setupToken: result.setupToken || null, // NEW: Store setup token
+          setupToken: result.setupToken || null,
+          retryCount: 0,
         }));
 
         return result;
@@ -192,14 +175,14 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
     [accountId, accountType, authService, handleError, safeSetState],
   );
 
-  // UPDATED: Now uses setup token from state
   const verifySetup = useCallback(
-    async (token: string) => {
+    async (token: string, isRetry = false): Promise<TwoFactorVerifySetupResponse | null> => {
       if (!accountId || !state.setupToken) {
         const errorMsg = !accountId ? 'No account ID available' : 'No setup token available. Please run setup first.';
         safeSetState((prev) => ({
           ...prev,
           phase: 'failed',
+          loading: false,
           error: errorMsg,
         }));
         return null;
@@ -211,7 +194,14 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
           phase: 'verifying_setup',
           loading: true,
           error: null,
+          retryCount: isRetry ? prev.retryCount : 0,
         }));
+
+        // Store for retry
+        if (!isRetry) {
+          lastVerifyTokenRef.current = token;
+          lastOperationRef.current = 'verify';
+        }
 
         const result = await authService.verifyTwoFactorSetup(accountId, token, state.setupToken);
 
@@ -230,7 +220,8 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
             lastSetupDate: new Date().toISOString(),
           },
           backupCodes: prev.setupData?.backupCodes || null,
-          setupToken: null, // Clear setup token after successful verification
+          setupToken: null,
+          retryCount: 0,
         }));
 
         return result;
@@ -243,7 +234,7 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
   );
 
   const generateBackupCodes = useCallback(
-    async (data: BackupCodesRequest) => {
+    async (data: BackupCodesRequest, isRetry = false): Promise<BackupCodesResponse | null> => {
       if (!accountId) return null;
 
       try {
@@ -252,7 +243,14 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
           phase: 'generating_codes',
           loading: true,
           error: null,
+          retryCount: isRetry ? prev.retryCount : 0,
         }));
+
+        // Store for retry
+        if (!isRetry) {
+          lastBackupCodesDataRef.current = data;
+          lastOperationRef.current = 'backup_codes';
+        }
 
         const result = await authService.generateBackupCodes(accountId, data);
 
@@ -261,12 +259,18 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
           phase: 'completed',
           loading: false,
           backupCodes: result.backupCodes,
-          statusData: prev.statusData
-            ? {
-                ...prev.statusData,
-                backupCodesCount: result.backupCodes.length,
-              }
-            : null,
+          statusData:
+            prev.statusData !== null
+              ? {
+                  ...prev.statusData,
+                  backupCodesCount: result.backupCodes.length,
+                }
+              : {
+                  enabled: true,
+                  lastSetupDate: new Date(Date.now()).toString(),
+                  backupCodesCount: result.backupCodes.length,
+                },
+          retryCount: 0,
         }));
 
         return result;
@@ -279,7 +283,7 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
   );
 
   const disable = useCallback(
-    async (password?: string) => {
+    async (password?: string, isRetry = false): Promise<{ success: boolean; message?: string }> => {
       if (!accountId || !accountType) {
         return { success: false, message: 'No account available' };
       }
@@ -290,7 +294,14 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
           phase: 'setting_up',
           loading: true,
           error: null,
+          retryCount: isRetry ? prev.retryCount : 0,
         }));
+
+        // Store for retry
+        if (!isRetry) {
+          lastDisablePasswordRef.current = password;
+          lastOperationRef.current = 'disable';
+        }
 
         // Call setup with enableTwoFactor: false to disable
         const result = await authService.setupTwoFactor(accountId, accountType, {
@@ -313,7 +324,8 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
           },
           setupData: null,
           backupCodes: null,
-          setupToken: null, // Clear setup token
+          setupToken: null,
+          retryCount: 0,
         }));
 
         return {
@@ -328,12 +340,65 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
     [accountId, accountType, authService, updateAccountData, handleError, safeSetState],
   );
 
-  // Auto-load status on mount
-  useEffect(() => {
-    if (autoLoadStatus && accountId && state.phase === 'idle' && !state.statusData) {
-      checkStatus();
+  // Enhanced retry with cooldown and attempt limits
+  const retry = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
+    if (state.retryCount >= MAX_RETRY_ATTEMPTS) {
+      const message = `Maximum retry attempts (${MAX_RETRY_ATTEMPTS}) exceeded`;
+      safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
+      return { success: false, message };
     }
-  }, [autoLoadStatus, accountId, state.phase]);
+
+    if (state.lastAttemptTimestamp && Date.now() - state.lastAttemptTimestamp < RETRY_COOLDOWN_MS) {
+      const remainingTime = Math.ceil((RETRY_COOLDOWN_MS - (Date.now() - state.lastAttemptTimestamp)) / 1000);
+      const message = `Please wait ${remainingTime} seconds before retrying`;
+      return { success: false, message };
+    }
+
+    safeSetState((prev) => ({
+      ...prev,
+      retryCount: prev.retryCount + 1,
+      error: null,
+    }));
+
+    // Retry the specific operation that failed
+    switch (lastOperationRef.current) {
+      case 'setup':
+        if (lastSetupDataRef.current) {
+          const result = await setup(lastSetupDataRef.current, true);
+          return {
+            success: !!result,
+            message: result ? '2FA setup retry successful' : '2FA setup retry failed',
+          };
+        }
+        break;
+      case 'verify':
+        if (lastVerifyTokenRef.current) {
+          const result = await verifySetup(lastVerifyTokenRef.current, true);
+          return {
+            success: !!result,
+            message: result ? '2FA verification retry successful' : '2FA verification retry failed',
+          };
+        }
+        break;
+      case 'backup_codes':
+        if (lastBackupCodesDataRef.current) {
+          const result = await generateBackupCodes(lastBackupCodesDataRef.current, true);
+          return {
+            success: !!result,
+            message: result ? 'Backup codes generation retry successful' : 'Backup codes generation retry failed',
+          };
+        }
+        break;
+      case 'disable':
+        return disable(lastDisablePasswordRef.current, true);
+      default:
+        break;
+    }
+
+    const message = 'No previous operation to retry';
+    safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
+    return { success: false, message };
+  }, [state.retryCount, state.lastAttemptTimestamp, setup, verifySetup, generateBackupCodes, disable, safeSetState]);
 
   // Utility functions
   const clearError = useCallback(() => {
@@ -341,8 +406,21 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
   }, [safeSetState]);
 
   const reset = useCallback(() => {
+    lastSetupDataRef.current = null;
+    lastVerifyTokenRef.current = null;
+    lastBackupCodesDataRef.current = null;
+    lastDisablePasswordRef.current = undefined;
+    lastOperationRef.current = null;
     setState(INITIAL_STATE);
   }, []);
+
+  // Computed values for better UX
+  const canRetry =
+    state.phase === 'failed' &&
+    state.retryCount < MAX_RETRY_ATTEMPTS &&
+    state.lastAttemptTimestamp !== null &&
+    Date.now() - state.lastAttemptTimestamp >= RETRY_COOLDOWN_MS &&
+    lastOperationRef.current !== null;
 
   // Derived state
   const isEnabled = state.statusData?.enabled ?? false;
@@ -352,7 +430,7 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
 
   const canSetup = !!accountId && !!accountType && !isEnabled;
   const canDisable = !!accountId && !!accountType && isEnabled;
-  const canVerifySetup = !!accountId && !!state.setupToken; // NEW: Can verify if setup token exists
+  const canVerifySetup = !!accountId && !!state.setupToken;
 
   return {
     // Account identification
@@ -363,10 +441,11 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
     phase: state.phase,
     loading: state.loading,
     error: state.error,
+    canRetry,
+    retryCount: state.retryCount,
 
     // Convenience getters
     isIdle: state.phase === 'idle',
-    isCheckingStatus: state.phase === 'checking_status',
     isSettingUp: state.phase === 'setting_up',
     isVerifyingSetup: state.phase === 'verifying_setup',
     isGeneratingCodes: state.phase === 'generating_codes',
@@ -384,20 +463,19 @@ export function useTwoFactorAuth(accountId: string | null, options: TwoFactorOpt
     qrCode: state.setupData?.qrCode ?? null,
     secret: state.setupData?.secret ?? null,
     backupCodes: state.backupCodes,
-    setupToken: state.setupToken, // NEW: Expose setup token
+    setupToken: state.setupToken,
 
-    // Operations
-    checkStatus,
     setup,
     verifySetup,
     generateBackupCodes,
     disable,
+    retry,
 
     // Utilities
     clearError,
     reset,
     canSetup,
     canDisable,
-    canVerifySetup, // NEW: Can verify setup capability
+    canVerifySetup,
   };
 }

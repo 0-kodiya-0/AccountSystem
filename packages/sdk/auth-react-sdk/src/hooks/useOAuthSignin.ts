@@ -38,7 +38,7 @@ interface UseOAuthSigninOptions {
 interface UseOAuthSigninReturn {
   // Main actions
   startSignin: (provider: OAuthProviders, callbackUrl: string) => Promise<{ success: boolean; message?: string }>;
-  getSigninUrl: (provider: OAuthProviders, callbackUrl: string) => Promise<string>;
+  getSigninUrl: (provider: OAuthProviders, callbackUrl: string) => Promise<string | null>;
   verify2FA: (token: string) => Promise<{ success: boolean; message?: string }>;
   retry: () => Promise<{ success: boolean; message?: string }>;
 
@@ -106,8 +106,11 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
   const authService = useAuthService();
   const [state, setState] = useState<OAuthSigninState>(INITIAL_STATE);
 
-  // Refs for cleanup and state tracking
+  // Refs for retry logic
   const lastCallbackUrlRef = useRef<string | null>(null);
+  const last2FATokenRef = useRef<string | null>(null);
+  const lastOperationRef = useRef<'signin' | 'callback' | '2fa' | null>(null);
+
   // Safe state update that checks if component is still mounted
   const safeSetState = useCallback((updater: (prev: OAuthSigninState) => OAuthSigninState) => {
     setState(updater);
@@ -132,114 +135,126 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
   );
 
   // Handle OAuth callback from URL parameters
-  const handleOAuthCallback = useCallback(async (): Promise<boolean> => {
-    const urlParams = new URLSearchParams(window.location.search);
+  const handleOAuthCallback = useCallback(
+    async (isRetry = false): Promise<boolean> => {
+      const urlParams = new URLSearchParams(window.location.search);
 
-    const callbackData: CallbackData = {};
-    urlParams.forEach((value, key) => {
-      const decodedValue = decodeURIComponent(value);
+      const callbackData: CallbackData = {};
+      urlParams.forEach((value, key) => {
+        const decodedValue = decodeURIComponent(value);
 
-      // Handle arrays - if value contains commas, split into array
-      if (decodedValue.includes(',')) {
-        callbackData[key] = decodedValue.split(',').map((s) => s.trim());
-      } else {
-        // Handle boolean values
-        if (decodedValue === 'true') {
-          callbackData[key] = true;
-        } else if (decodedValue === 'false') {
-          callbackData[key] = false;
+        // Handle arrays - if value contains commas, split into array
+        if (decodedValue.includes(',')) {
+          callbackData[key] = decodedValue.split(',').map((s) => s.trim());
         } else {
-          callbackData[key] = decodedValue;
-        }
-      }
-    });
-
-    if (urlParams.size <= 0 || !callbackData.code) {
-      return false;
-    }
-
-    try {
-      safeSetState((prev) => ({
-        ...prev,
-        phase: 'processing_callback',
-        loading: true,
-        error: null,
-      }));
-
-      // Handle based on callback code
-      switch (callbackData.code) {
-        case CallbackCode.OAUTH_SIGNIN_SUCCESS: {
-          // Check if needs additional scopes
-          if (callbackData.needsAdditionalScopes && callbackData.missingScopes) {
-            safeSetState((prev) => ({
-              ...prev,
-              phase: 'completed',
-              loading: false,
-              error: null,
-              accountId: callbackData.accountId || null,
-              accountName: callbackData.name || null,
-              needsAdditionalScopes: true,
-              missingScopes: Array.isArray(callbackData.missingScopes) ? callbackData.missingScopes : [],
-              callbackMessage: callbackData.message || 'OAuth signin successful, but additional permissions needed.',
-            }));
+          // Handle boolean values
+          if (decodedValue === 'true') {
+            callbackData[key] = true;
+          } else if (decodedValue === 'false') {
+            callbackData[key] = false;
           } else {
-            // Complete success
-            safeSetState((prev) => ({
-              ...prev,
-              phase: 'completed',
-              loading: false,
-              error: null,
-              accountId: callbackData.accountId || null,
-              accountName: callbackData.name || null,
-              needsAdditionalScopes: false,
-              missingScopes: [],
-              callbackMessage: callbackData.message || 'OAuth signin completed successfully!',
-            }));
+            callbackData[key] = decodedValue;
+          }
+        }
+      });
+
+      if (urlParams.size <= 0 || !callbackData.code) {
+        return false;
+      }
+
+      try {
+        safeSetState((prev) => ({
+          ...prev,
+          phase: 'processing_callback',
+          retryCount: isRetry ? prev.retryCount : 0, // Only reset if not a retry
+          loading: true,
+          error: null,
+        }));
+
+        // Store for retry
+        if (!isRetry) {
+          lastOperationRef.current = 'callback';
+        }
+
+        // Handle based on callback code
+        switch (callbackData.code) {
+          case CallbackCode.OAUTH_SIGNIN_SUCCESS: {
+            // Check if needs additional scopes
+            if (callbackData.needsAdditionalScopes && callbackData.missingScopes) {
+              safeSetState((prev) => ({
+                ...prev,
+                phase: 'completed',
+                loading: false,
+                error: null,
+                accountId: callbackData.accountId || null,
+                accountName: callbackData.name || null,
+                needsAdditionalScopes: true,
+                missingScopes: Array.isArray(callbackData.missingScopes) ? callbackData.missingScopes : [],
+                callbackMessage: callbackData.message || 'OAuth signin successful, but additional permissions needed.',
+                retryCount: 0,
+              }));
+            } else {
+              // Complete success
+              safeSetState((prev) => ({
+                ...prev,
+                phase: 'completed',
+                loading: false,
+                error: null,
+                accountId: callbackData.accountId || null,
+                accountName: callbackData.name || null,
+                needsAdditionalScopes: false,
+                missingScopes: [],
+                callbackMessage: callbackData.message || 'OAuth signin completed successfully!',
+                retryCount: 0,
+              }));
+            }
+
+            return true;
           }
 
-          return true;
+          case CallbackCode.OAUTH_SIGNIN_REQUIRES_2FA: {
+            safeSetState((prev) => ({
+              ...prev,
+              phase: 'requires_2fa',
+              loading: false,
+              error: null,
+              tempToken: callbackData.tempToken || null,
+              accountId: callbackData.accountId || null,
+              accountName: callbackData.name || null,
+              callbackMessage: callbackData.message || 'Two-factor authentication required',
+              retryCount: 0,
+            }));
+
+            return true;
+          }
+
+          case CallbackCode.OAUTH_ERROR:
+          default: {
+            const errorMessage = callbackData.error || 'OAuth signin failed';
+
+            safeSetState((prev) => ({
+              ...prev,
+              phase: 'failed',
+              loading: false,
+              error: errorMessage,
+              lastAttemptTimestamp: Date.now(),
+            }));
+
+            return false;
+          }
         }
-
-        case CallbackCode.OAUTH_SIGNIN_REQUIRES_2FA: {
-          safeSetState((prev) => ({
-            ...prev,
-            phase: 'requires_2fa',
-            loading: false,
-            error: null,
-            tempToken: callbackData.tempToken || null,
-            accountId: callbackData.accountId || null,
-            accountName: callbackData.name || null,
-            callbackMessage: callbackData.message || 'Two-factor authentication required',
-          }));
-
-          return true;
-        }
-
-        case CallbackCode.OAUTH_ERROR:
-        default: {
-          const errorMessage = callbackData.error || 'OAuth signin failed';
-
-          safeSetState((prev) => ({
-            ...prev,
-            phase: 'failed',
-            loading: false,
-            error: errorMessage,
-            lastAttemptTimestamp: Date.now(),
-          }));
-
-          return false;
-        }
+      } catch (error) {
+        handleError(error, 'Failed to process OAuth callback');
+        console.error('OAuth callback processing error:', error);
+        return false;
+      } finally {
+        const url = new URL(window.location.href);
+        url.search = '';
+        window.history.replaceState({}, '', url.toString());
       }
-    } catch (error) {
-      handleError(error, 'Failed to process OAuth callback');
-      console.error('OAuth callback processing error:', error);
-      return false;
-    } finally {
-      const url = new URL(window.location.href);
-      url.search = '';
-      window.history.replaceState({}, '', url.toString());
-    }
-  }, [safeSetState, handleError]);
+    },
+    [safeSetState, handleError],
+  );
 
   const processCallbackFromUrl = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
     const success = await handleOAuthCallback();
@@ -258,17 +273,21 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
 
   // Start OAuth signin with redirect
   const startSignin = useCallback(
-    async (provider: OAuthProviders, callbackUrl: string): Promise<{ success: boolean; message?: string }> => {
+    async (
+      provider: OAuthProviders,
+      callbackUrl: string,
+      isRetry = false,
+    ): Promise<{ success: boolean; message?: string }> => {
       // Validation
       if (!provider) {
         const message = 'OAuth provider is required';
-        safeSetState((prev) => ({ ...prev, error: message }));
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
         return { success: false, message };
       }
 
       if (!callbackUrl || !callbackUrl.trim()) {
         const message = 'Callback URL is required';
-        safeSetState((prev) => ({ ...prev, error: message }));
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
         return { success: false, message };
       }
 
@@ -279,11 +298,14 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
           loading: true,
           error: null,
           provider,
-          retryCount: 0,
+          retryCount: isRetry ? prev.retryCount : 0, // Only reset if not a retry
         }));
 
-        // Store callback URL for potential retry
-        lastCallbackUrlRef.current = callbackUrl;
+        // Store callback URL and operation for potential retry
+        if (!isRetry) {
+          lastCallbackUrlRef.current = callbackUrl;
+          lastOperationRef.current = 'signin';
+        }
 
         const response = await authService.generateOAuthSigninUrl(provider, { callbackUrl });
 
@@ -293,6 +315,7 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
             ...prev,
             phase: 'processing_callback',
             lastAttemptTimestamp: Date.now(),
+            retryCount: 0,
           }));
 
           // Redirect to OAuth provider
@@ -307,6 +330,7 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
           phase: 'failed',
           loading: false,
           error: message,
+          lastAttemptTimestamp: Date.now(),
         }));
         return { success: false, message };
       } catch (error) {
@@ -319,7 +343,7 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
 
   // Get OAuth signin URL without redirect (for custom handling)
   const getSigninUrl = useCallback(
-    async (provider: OAuthProviders, callbackUrl: string): Promise<string> => {
+    async (provider: OAuthProviders, callbackUrl: string): Promise<string | null> => {
       try {
         if (!provider) {
           throw new Error('OAuth provider is required');
@@ -333,8 +357,8 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
         return response.authorizationUrl;
       } catch (error) {
         const apiError = parseApiError(error, `Failed to get ${provider} signin URL`);
-        safeSetState((prev) => ({ ...prev, error: apiError.message }));
-        return '';
+        safeSetState((prev) => ({ ...prev, phase: 'failed', error: apiError.message }));
+        return null;
       }
     },
     [authService, safeSetState],
@@ -342,16 +366,16 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
 
   // Two-factor verification function
   const verify2FA = useCallback(
-    async (token: string): Promise<{ success: boolean; message?: string }> => {
+    async (token: string, isRetry = false): Promise<{ success: boolean; message?: string }> => {
       if (!token || !token.trim()) {
         const message = 'Verification code is required';
-        safeSetState((prev) => ({ ...prev, error: message }));
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
         return { success: false, message };
       }
 
       if (!state.tempToken) {
         const message = 'No temporary token available. Please sign in again.';
-        safeSetState((prev) => ({ ...prev, error: message }));
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
         return { success: false, message };
       }
 
@@ -361,7 +385,14 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
           phase: 'verifying_2fa',
           loading: true,
           error: null,
+          retryCount: isRetry ? prev.retryCount : 0, // Only reset if not a retry
         }));
+
+        // Store 2FA data for potential retry
+        if (!isRetry) {
+          last2FATokenRef.current = token.trim();
+          lastOperationRef.current = '2fa';
+        }
 
         const result = await authService.verifyTwoFactorLogin({
           token: token.trim(),
@@ -382,6 +413,7 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
               missingScopes: result.missingScopes || [],
               callbackMessage:
                 result.message || 'Two-factor authentication successful, but additional permissions needed.',
+              retryCount: 0,
             }));
           } else {
             // Complete success
@@ -395,6 +427,7 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
               needsAdditionalScopes: false,
               missingScopes: [],
               callbackMessage: result.message || 'Two-factor authentication successful!',
+              retryCount: 0,
             }));
           }
 
@@ -425,7 +458,7 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
   const retry = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
     if (state.retryCount >= MAX_RETRY_ATTEMPTS) {
       const message = `Maximum retry attempts (${MAX_RETRY_ATTEMPTS}) exceeded`;
-      safeSetState((prev) => ({ ...prev, error: message }));
+      safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
       return { success: false, message };
     }
 
@@ -435,21 +468,46 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
       return { success: false, message };
     }
 
-    if (!state.provider || !lastCallbackUrlRef.current) {
-      const message = 'No previous signin attempt to retry';
-      safeSetState((prev) => ({ ...prev, error: message }));
-      return { success: false, message };
-    }
-
     safeSetState((prev) => ({
       ...prev,
       retryCount: prev.retryCount + 1,
       error: null,
     }));
 
-    // Retry the previous signin attempt
-    return startSignin(state.provider, lastCallbackUrlRef.current);
-  }, [state.retryCount, state.lastAttemptTimestamp, state.provider, startSignin, safeSetState]);
+    // Retry the specific operation that failed
+    switch (lastOperationRef.current) {
+      case 'signin':
+        if (state.provider && lastCallbackUrlRef.current) {
+          return startSignin(state.provider, lastCallbackUrlRef.current, true);
+        }
+        break;
+      case '2fa':
+        if (last2FATokenRef.current) {
+          return verify2FA(last2FATokenRef.current, true);
+        }
+        break;
+      case 'callback':
+        const success = await handleOAuthCallback(true);
+        return {
+          success,
+          message: success ? 'OAuth callback retry successful' : 'OAuth callback retry failed',
+        };
+      default:
+        break;
+    }
+
+    const message = 'No previous signin attempt to retry';
+    safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
+    return { success: false, message };
+  }, [
+    state.retryCount,
+    state.lastAttemptTimestamp,
+    state.provider,
+    startSignin,
+    verify2FA,
+    handleOAuthCallback,
+    safeSetState,
+  ]);
 
   // Utility functions
   const clearError = useCallback(() => {
@@ -458,6 +516,8 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
 
   const reset = useCallback(() => {
     lastCallbackUrlRef.current = null;
+    last2FATokenRef.current = null;
+    lastOperationRef.current = null;
     setState(INITIAL_STATE);
   }, []);
 
@@ -467,9 +527,9 @@ export const useOAuthSignin = (options: UseOAuthSigninOptions = {}): UseOAuthSig
   const canRetry =
     state.phase === 'failed' &&
     state.retryCount < MAX_RETRY_ATTEMPTS &&
-    (!state.lastAttemptTimestamp || Date.now() - state.lastAttemptTimestamp >= RETRY_COOLDOWN_MS) &&
-    !!state.provider &&
-    !!lastCallbackUrlRef.current;
+    state.lastAttemptTimestamp !== null &&
+    Date.now() - state.lastAttemptTimestamp >= RETRY_COOLDOWN_MS &&
+    lastOperationRef.current !== null;
 
   const requiresTwoFactor = state.phase === 'requires_2fa';
 

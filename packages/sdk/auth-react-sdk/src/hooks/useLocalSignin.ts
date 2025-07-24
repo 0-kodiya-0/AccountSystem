@@ -80,8 +80,10 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
   const authService = useAuthService();
   const [state, setState] = useState<LocalSigninState>(INITIAL_STATE);
 
-  // Refs for cleanup and state tracking
+  // Refs for retry logic
   const lastSigninDataRef = useRef<LocalLoginRequest | null>(null);
+  const last2FATokenRef = useRef<string | null>(null);
+  const lastOperationRef = useRef<'signin' | '2fa' | null>(null);
 
   // Safe state update that checks if component is still mounted
   const safeSetState = useCallback((updater: (prev: LocalSigninState) => LocalSigninState) => {
@@ -108,29 +110,29 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
 
   // Main signin function
   const signin = useCallback(
-    async (data: LocalLoginRequest): Promise<{ success: boolean; message?: string }> => {
+    async (data: LocalLoginRequest, isRetry = false): Promise<{ success: boolean; message?: string }> => {
       // Validation
       if (typeof data?.email !== 'string' && typeof data?.username !== 'string') {
         const message = 'Email or username is required';
-        safeSetState((prev) => ({ ...prev, error: message }));
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
         return { success: false, message };
       }
 
       if (data.email && !data.email.trim()) {
         const message = 'Email cannot be empty';
-        safeSetState((prev) => ({ ...prev, error: message }));
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
         return { success: false, message };
       }
 
       if (data.username && !data.username.trim()) {
         const message = 'Username cannot be empty';
-        safeSetState((prev) => ({ ...prev, error: message }));
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
         return { success: false, message };
       }
 
       if (!data.password || !data.password.trim()) {
         const message = 'Password is required';
-        safeSetState((prev) => ({ ...prev, error: message }));
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
         return { success: false, message };
       }
 
@@ -140,11 +142,14 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
           phase: 'signing_in',
           loading: true,
           error: null,
-          retryCount: 0,
+          retryCount: isRetry ? prev.retryCount : 0, // Only reset if not a retry
         }));
 
         // Store signin data for potential retry
-        lastSigninDataRef.current = data;
+        if (!isRetry) {
+          lastSigninDataRef.current = data;
+          lastOperationRef.current = 'signin';
+        }
 
         const result = await authService.localLogin(data);
 
@@ -157,6 +162,7 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
             accountId: result.accountId || null,
             accountName: result.name || null,
             lastAttemptTimestamp: Date.now(),
+            retryCount: 0,
           }));
 
           return {
@@ -172,6 +178,7 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
             accountId: result.accountId || null,
             accountName: result.name || null,
             completionMessage: result.message || 'Signin successful!',
+            retryCount: 0,
           }));
 
           return {
@@ -189,16 +196,16 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
 
   // Two-factor verification function
   const verify2FA = useCallback(
-    async (token: string): Promise<{ success: boolean; message?: string }> => {
+    async (token: string, isRetry = false): Promise<{ success: boolean; message?: string }> => {
       if (!token || !token.trim()) {
         const message = 'Verification code is required';
-        safeSetState((prev) => ({ ...prev, error: message }));
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
         return { success: false, message };
       }
 
       if (!state.tempToken) {
         const message = 'No temporary token available. Please sign in again.';
-        safeSetState((prev) => ({ ...prev, error: message }));
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
         return { success: false, message };
       }
 
@@ -208,7 +215,14 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
           phase: 'verifying_2fa',
           loading: true,
           error: null,
+          retryCount: isRetry ? prev.retryCount : 0, // Only reset if not a retry
         }));
+
+        // Store 2FA data for potential retry
+        if (!isRetry) {
+          last2FATokenRef.current = token.trim();
+          lastOperationRef.current = '2fa';
+        }
 
         const result = await authService.verifyTwoFactorLogin({
           token: token.trim(),
@@ -224,6 +238,7 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
             accountId: result.accountId,
             accountName: result.name,
             completionMessage: result.message || 'Two-factor authentication successful!',
+            retryCount: 0,
           }));
 
           return {
@@ -253,7 +268,7 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
   const retry = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
     if (state.retryCount >= MAX_RETRY_ATTEMPTS) {
       const message = `Maximum retry attempts (${MAX_RETRY_ATTEMPTS}) exceeded`;
-      safeSetState((prev) => ({ ...prev, error: message }));
+      safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
       return { success: false, message };
     }
 
@@ -263,21 +278,32 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
       return { success: false, message };
     }
 
-    if (!lastSigninDataRef.current) {
-      const message = 'No previous signin attempt to retry';
-      safeSetState((prev) => ({ ...prev, error: message }));
-      return { success: false, message };
-    }
-
     safeSetState((prev) => ({
       ...prev,
       retryCount: prev.retryCount + 1,
       error: null,
     }));
 
-    // Retry the previous signin attempt
-    return signin(lastSigninDataRef.current);
-  }, [state.retryCount, state.lastAttemptTimestamp, signin, safeSetState]);
+    // Retry the specific operation that failed
+    switch (lastOperationRef.current) {
+      case 'signin':
+        if (lastSigninDataRef.current) {
+          return signin(lastSigninDataRef.current, true);
+        }
+        break;
+      case '2fa':
+        if (last2FATokenRef.current) {
+          return verify2FA(last2FATokenRef.current, true);
+        }
+        break;
+      default:
+        break;
+    }
+
+    const message = 'No previous signin attempt to retry';
+    safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
+    return { success: false, message };
+  }, [state.retryCount, state.lastAttemptTimestamp, signin, verify2FA, safeSetState]);
 
   // Utility functions
   const clearError = useCallback(() => {
@@ -286,6 +312,8 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
 
   const reset = useCallback(() => {
     lastSigninDataRef.current = null;
+    last2FATokenRef.current = null;
+    lastOperationRef.current = null;
     setState(INITIAL_STATE);
   }, []);
 
@@ -295,8 +323,9 @@ export const useLocalSignin = (): UseLocalSigninReturn => {
   const canRetry =
     state.phase === 'failed' &&
     state.retryCount < MAX_RETRY_ATTEMPTS &&
-    (!state.lastAttemptTimestamp || Date.now() - state.lastAttemptTimestamp >= RETRY_COOLDOWN_MS) &&
-    !!lastSigninDataRef.current;
+    state.lastAttemptTimestamp !== null &&
+    Date.now() - state.lastAttemptTimestamp >= RETRY_COOLDOWN_MS &&
+    lastOperationRef.current !== null;
 
   const requiresTwoFactor = state.phase === 'requires_2fa';
 

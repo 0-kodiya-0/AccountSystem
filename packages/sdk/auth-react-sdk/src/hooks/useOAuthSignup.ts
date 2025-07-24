@@ -26,7 +26,7 @@ interface UseOAuthSignupOptions {
 interface UseOAuthSignupReturn {
   // Main actions
   startSignup: (provider: OAuthProviders, callbackUrl: string) => Promise<{ success: boolean; message?: string }>;
-  getSignupUrl: (provider: OAuthProviders, callbackUrl: string) => Promise<string>;
+  getSignupUrl: (provider: OAuthProviders, callbackUrl: string) => Promise<string | null>;
   retry: () => Promise<{ success: boolean; message?: string }>;
 
   processCallbackFromUrl: () => Promise<{ success: boolean; message?: string }>;
@@ -82,8 +82,9 @@ export const useOAuthSignup = (options: UseOAuthSignupOptions = {}): UseOAuthSig
   const authService = useAuthService();
   const [state, setState] = useState<OAuthSignupState>(INITIAL_STATE);
 
-  // Refs for cleanup and state tracking
+  // Refs for retry logic
   const lastCallbackUrlRef = useRef<string | null>(null);
+  const lastOperationRef = useRef<'signup' | 'callback' | null>(null);
 
   // Safe state update that checks if component is still mounted
   const safeSetState = useCallback((updater: (prev: OAuthSignupState) => OAuthSignupState) => {
@@ -109,84 +110,93 @@ export const useOAuthSignup = (options: UseOAuthSignupOptions = {}): UseOAuthSig
   );
 
   // Handle OAuth callback from URL parameters
-  const handleOAuthCallback = useCallback(async (): Promise<boolean> => {
-    const urlParams = new URLSearchParams(window.location.search);
+  const handleOAuthCallback = useCallback(
+    async (isRetry = false): Promise<boolean> => {
+      const urlParams = new URLSearchParams(window.location.search);
 
-    const callbackData: CallbackData = {};
-    urlParams.forEach((value, key) => {
-      const decodedValue = decodeURIComponent(value);
+      const callbackData: CallbackData = {};
+      urlParams.forEach((value, key) => {
+        const decodedValue = decodeURIComponent(value);
 
-      // Handle arrays - if value contains commas, split into array
-      if (decodedValue.includes(',')) {
-        callbackData[key] = decodedValue.split(',').map((s) => s.trim());
-      } else {
-        // Handle boolean values
-        if (decodedValue === 'true') {
-          callbackData[key] = true;
-        } else if (decodedValue === 'false') {
-          callbackData[key] = false;
+        // Handle arrays - if value contains commas, split into array
+        if (decodedValue.includes(',')) {
+          callbackData[key] = decodedValue.split(',').map((s) => s.trim());
         } else {
-          callbackData[key] = decodedValue;
+          // Handle boolean values
+          if (decodedValue === 'true') {
+            callbackData[key] = true;
+          } else if (decodedValue === 'false') {
+            callbackData[key] = false;
+          } else {
+            callbackData[key] = decodedValue;
+          }
         }
+      });
+
+      if (urlParams.size <= 0 || !callbackData.code) {
+        return false;
       }
-    });
 
-    if (urlParams.size <= 0 || !callbackData.code) {
-      return false;
-    }
+      try {
+        safeSetState((prev) => ({
+          ...prev,
+          phase: 'processing_callback',
+          loading: true,
+          retryCount: isRetry ? prev.retryCount : 0, // Only reset if not a retry
+          error: null,
+        }));
 
-    try {
-      safeSetState((prev) => ({
-        ...prev,
-        phase: 'processing_callback',
-        loading: true,
-        error: null,
-      }));
-
-      // Handle based on callback code
-      switch (callbackData.code) {
-        case CallbackCode.OAUTH_SIGNUP_SUCCESS: {
-          safeSetState((prev) => ({
-            ...prev,
-            phase: 'completed',
-            loading: false,
-            error: null,
-            accountId: callbackData.accountId || null,
-            accountName: callbackData.name || null,
-            callbackMessage: callbackData.message || 'OAuth signup completed successfully!',
-          }));
-
-          return true;
+        // Store for retry
+        if (!isRetry) {
+          lastOperationRef.current = 'callback';
         }
 
-        case CallbackCode.OAUTH_ERROR:
-        default: {
-          const errorMessage = callbackData.error || 'OAuth signup failed';
+        // Handle based on callback code
+        switch (callbackData.code) {
+          case CallbackCode.OAUTH_SIGNUP_SUCCESS: {
+            safeSetState((prev) => ({
+              ...prev,
+              phase: 'completed',
+              loading: false,
+              error: null,
+              accountId: callbackData.accountId || null,
+              accountName: callbackData.name || null,
+              callbackMessage: callbackData.message || 'OAuth signup completed successfully!',
+              retryCount: 0,
+            }));
 
-          safeSetState((prev) => ({
-            ...prev,
-            phase: 'failed',
-            loading: false,
-            error: errorMessage,
-            lastAttemptTimestamp: Date.now(),
-          }));
+            return true;
+          }
 
-          return false;
+          case CallbackCode.OAUTH_ERROR:
+          default: {
+            const errorMessage = callbackData.error || 'OAuth signup failed';
+
+            safeSetState((prev) => ({
+              ...prev,
+              phase: 'failed',
+              loading: false,
+              error: errorMessage,
+              lastAttemptTimestamp: Date.now(),
+            }));
+
+            return false;
+          }
         }
+      } catch (error) {
+        handleError(error, 'Failed to process OAuth callback');
+        console.error('OAuth callback processing error:', error);
+        return false;
+      } finally {
+        // Clean up URL parameters
+        const url = new URL(window.location.href);
+        url.search = '';
+        window.history.replaceState({}, '', url.toString());
       }
-    } catch (error) {
-      handleError(error, 'Failed to process OAuth callback');
-      console.error('OAuth callback processing error:', error);
-      return false;
-    } finally {
-      // Clean up URL parameters
-      const url = new URL(window.location.href);
-      url.search = '';
-      window.history.replaceState({}, '', url.toString());
-    }
-  }, [safeSetState, handleError]);
+    },
+    [safeSetState, handleError],
+  );
 
-  // Add manual callback processing to return interface
   const processCallbackFromUrl = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
     const success = await handleOAuthCallback();
     return {
@@ -195,26 +205,30 @@ export const useOAuthSignup = (options: UseOAuthSignupOptions = {}): UseOAuthSig
     };
   }, [handleOAuthCallback]);
 
-  // Update useEffect to respect autoProcessCallback option
+  // Auto-process callback on mount only
   useEffect(() => {
     if (autoProcessCallback) {
       handleOAuthCallback();
     }
-  }, [autoProcessCallback]); // Updated dependency array
+  }, []); // Only run on mount
 
   // Start OAuth signup with redirect
   const startSignup = useCallback(
-    async (provider: OAuthProviders, callbackUrl: string): Promise<{ success: boolean; message?: string }> => {
+    async (
+      provider: OAuthProviders,
+      callbackUrl: string,
+      isRetry = false,
+    ): Promise<{ success: boolean; message?: string }> => {
       // Validation
       if (!provider) {
         const message = 'OAuth provider is required';
-        safeSetState((prev) => ({ ...prev, error: message }));
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
         return { success: false, message };
       }
 
       if (!callbackUrl || !callbackUrl.trim()) {
         const message = 'Callback URL is required';
-        safeSetState((prev) => ({ ...prev, error: message }));
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
         return { success: false, message };
       }
 
@@ -225,11 +239,14 @@ export const useOAuthSignup = (options: UseOAuthSignupOptions = {}): UseOAuthSig
           loading: true,
           error: null,
           provider,
-          retryCount: 0,
+          retryCount: isRetry ? prev.retryCount : 0, // Only reset if not a retry
         }));
 
-        // Store callback URL for potential retry
-        lastCallbackUrlRef.current = callbackUrl;
+        // Store callback URL and operation for potential retry
+        if (!isRetry) {
+          lastCallbackUrlRef.current = callbackUrl;
+          lastOperationRef.current = 'signup';
+        }
 
         const response = await authService.generateOAuthSignupUrl(provider, { callbackUrl });
 
@@ -238,6 +255,8 @@ export const useOAuthSignup = (options: UseOAuthSignupOptions = {}): UseOAuthSig
           safeSetState((prev) => ({
             ...prev,
             phase: 'processing_callback',
+            loading: false,
+            retryCount: 0,
             lastAttemptTimestamp: Date.now(),
           }));
 
@@ -253,6 +272,7 @@ export const useOAuthSignup = (options: UseOAuthSignupOptions = {}): UseOAuthSig
           phase: 'failed',
           loading: false,
           error: message,
+          lastAttemptTimestamp: Date.now(),
         }));
         return { success: false, message };
       } catch (error) {
@@ -265,7 +285,7 @@ export const useOAuthSignup = (options: UseOAuthSignupOptions = {}): UseOAuthSig
 
   // Get OAuth signup URL without redirect (for custom handling)
   const getSignupUrl = useCallback(
-    async (provider: OAuthProviders, callbackUrl: string): Promise<string> => {
+    async (provider: OAuthProviders, callbackUrl: string): Promise<string | null> => {
       try {
         if (!provider) {
           throw new Error('OAuth provider is required');
@@ -280,7 +300,7 @@ export const useOAuthSignup = (options: UseOAuthSignupOptions = {}): UseOAuthSig
       } catch (error) {
         const apiError = parseApiError(error, `Failed to get ${provider} signup URL`);
         safeSetState((prev) => ({ ...prev, error: apiError.message }));
-        return '';
+        return null;
       }
     },
     [authService, safeSetState],
@@ -290,7 +310,7 @@ export const useOAuthSignup = (options: UseOAuthSignupOptions = {}): UseOAuthSig
   const retry = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
     if (state.retryCount >= MAX_RETRY_ATTEMPTS) {
       const message = `Maximum retry attempts (${MAX_RETRY_ATTEMPTS}) exceeded`;
-      safeSetState((prev) => ({ ...prev, error: message }));
+      safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
       return { success: false, message };
     }
 
@@ -300,45 +320,33 @@ export const useOAuthSignup = (options: UseOAuthSignupOptions = {}): UseOAuthSig
       return { success: false, message };
     }
 
-    if (!state.provider || !lastCallbackUrlRef.current) {
-      const message = 'No previous signup attempt to retry';
-      safeSetState((prev) => ({ ...prev, error: message }));
-      return { success: false, message };
-    }
-
     safeSetState((prev) => ({
       ...prev,
       retryCount: prev.retryCount + 1,
       error: null,
     }));
 
-    // Retry the previous signup attempt
-    return startSignup(state.provider, lastCallbackUrlRef.current);
-  }, [state.retryCount, state.lastAttemptTimestamp, state.provider, startSignup, safeSetState]);
+    // Retry the specific operation that failed
+    switch (lastOperationRef.current) {
+      case 'signup':
+        if (state.provider && lastCallbackUrlRef.current) {
+          return startSignup(state.provider, lastCallbackUrlRef.current, true);
+        }
+        break;
+      case 'callback':
+        const success = await handleOAuthCallback(true);
+        return {
+          success,
+          message: success ? 'OAuth callback retry successful' : 'OAuth callback retry failed',
+        };
+      default:
+        break;
+    }
 
-  // Mark signup as completed (called by callback handler)
-  const markCompleted = useCallback(() => {
-    safeSetState((prev) => ({
-      ...prev,
-      phase: 'completed',
-      loading: false,
-      error: null,
-    }));
-  }, [safeSetState]);
-
-  // Mark signup as failed (called by callback handler)
-  const markFailed = useCallback(
-    (errorMessage: string) => {
-      safeSetState((prev) => ({
-        ...prev,
-        phase: 'failed',
-        loading: false,
-        error: errorMessage,
-        lastAttemptTimestamp: Date.now(),
-      }));
-    },
-    [safeSetState],
-  );
+    const message = 'No previous signup attempt to retry';
+    safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
+    return { success: false, message };
+  }, [state.retryCount, state.lastAttemptTimestamp, state.provider, startSignup, handleOAuthCallback, safeSetState]);
 
   // Utility functions
   const clearError = useCallback(() => {
@@ -347,6 +355,7 @@ export const useOAuthSignup = (options: UseOAuthSignupOptions = {}): UseOAuthSig
 
   const reset = useCallback(() => {
     lastCallbackUrlRef.current = null;
+    lastOperationRef.current = null;
     setState(INITIAL_STATE);
   }, []);
 
@@ -356,9 +365,9 @@ export const useOAuthSignup = (options: UseOAuthSignupOptions = {}): UseOAuthSig
   const canRetry =
     state.phase === 'failed' &&
     state.retryCount < MAX_RETRY_ATTEMPTS &&
-    (!state.lastAttemptTimestamp || Date.now() - state.lastAttemptTimestamp >= RETRY_COOLDOWN_MS) &&
-    !!state.provider &&
-    !!lastCallbackUrlRef.current;
+    state.lastAttemptTimestamp !== null &&
+    Date.now() - state.lastAttemptTimestamp >= RETRY_COOLDOWN_MS &&
+    lastOperationRef.current !== null;
 
   // Progress calculation
   const getProgress = useCallback((): number => {

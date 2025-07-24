@@ -122,60 +122,65 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}): UsePass
   );
 
   // Extract and verify reset token from URL
-  const extractResetToken = useCallback(async (): Promise<boolean> => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const tokenFromUrl = urlParams.get('token');
+  const extractResetToken = useCallback(
+    async (isRetry = false): Promise<boolean> => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const tokenFromUrl = urlParams.get('token');
 
-    // Check if we should process this token
-    if (!tokenFromUrl) {
-      return false;
-    }
+      // Check if we should process this token
+      if (!tokenFromUrl) {
+        return false;
+      }
 
-    // Prevent double processing of the same token
-    if (processingTokenRef.current === tokenFromUrl) {
-      return false;
-    }
+      // Prevent double processing of the same token
+      if (processingTokenRef.current === tokenFromUrl) {
+        return false;
+      }
 
-    // Mark token as being processed
-    processingTokenRef.current = tokenFromUrl;
+      // Mark token as being processed
+      processingTokenRef.current = tokenFromUrl;
 
-    try {
-      safeSetState((prev) => ({
-        ...prev,
-        phase: 'token_verifying',
-        loading: true,
-        error: null,
-        resetToken: tokenFromUrl,
-      }));
-
-      const result = await authService.verifyPasswordReset({ token: tokenFromUrl });
-
-      if (result.resetToken) {
+      try {
         safeSetState((prev) => ({
           ...prev,
-          phase: 'token_verified',
-          loading: false,
+          phase: 'token_verifying',
+          loading: true,
           error: null,
-          resetToken: result.resetToken,
+          resetToken: tokenFromUrl,
+          retryCount: isRetry ? prev.retryCount : 0, // Only reset if not a retry
         }));
 
-        processingTokenRef.current = result.resetToken;
+        const result = await authService.verifyPasswordReset({ token: tokenFromUrl });
 
-        return true;
-      } else {
-        throw new Error('Password reset verification failed - no reset token received');
+        if (result.resetToken) {
+          safeSetState((prev) => ({
+            ...prev,
+            phase: 'token_verified',
+            loading: false,
+            error: null,
+            retryCount: 0,
+            resetToken: result.resetToken,
+          }));
+
+          processingTokenRef.current = result.resetToken;
+
+          return true;
+        } else {
+          throw new Error('Password reset verification failed - no reset token received');
+        }
+      } catch (error) {
+        handleError(error, 'Invalid reset token');
+        return false;
+      } finally {
+        processingTokenRef.current = null;
+
+        const url = new URL(window.location.href);
+        url.searchParams.delete('token');
+        window.history.replaceState({}, '', url.toString());
       }
-    } catch (error) {
-      handleError(error, 'Invalid reset token');
-      return false;
-    } finally {
-      processingTokenRef.current = null;
-
-      const url = new URL(window.location.href);
-      url.searchParams.delete('token');
-      window.history.replaceState({}, '', url.toString());
-    }
-  }, [handleError, safeSetState]);
+    },
+    [handleError, safeSetState],
+  );
 
   const processTokenFromUrl = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
     const success = await extractResetToken();
@@ -194,17 +199,17 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}): UsePass
 
   // Request password reset
   const requestReset = useCallback(
-    async (data: PasswordResetRequest): Promise<{ success: boolean; message?: string }> => {
+    async (data: PasswordResetRequest, isRetry = false): Promise<{ success: boolean; message?: string }> => {
       // Validation
       if (!data.email || !data.email.trim()) {
         const message = 'Email address is required';
-        safeSetState((prev) => ({ ...prev, error: message }));
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
         return { success: false, message };
       }
 
       if (!data.callbackUrl || !data.callbackUrl.trim()) {
         const message = 'Callback URL is required';
-        safeSetState((prev) => ({ ...prev, error: message }));
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
         return { success: false, message };
       }
 
@@ -215,7 +220,7 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}): UsePass
           loading: true,
           error: null,
           email: data.email,
-          retryCount: 0,
+          retryCount: isRetry ? prev.retryCount : 0, // Only reset if not a retry
         }));
 
         // Store request data for potential retry
@@ -228,6 +233,7 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}): UsePass
             ...prev,
             phase: 'reset_email_sent',
             loading: false,
+            retryCount: 0,
             lastAttemptTimestamp: Date.now(),
           }));
 
@@ -255,35 +261,35 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}): UsePass
 
   // Reset password with token
   const resetPassword = useCallback(
-    async (data: ResetPasswordRequest): Promise<{ success: boolean; message?: string }> => {
+    async (data: ResetPasswordRequest, isRetry = false): Promise<{ success: boolean; message?: string }> => {
       if (!state.resetToken) {
         const message = 'No reset token available. Please request a new password reset.';
-        safeSetState((prev) => ({ ...prev, error: message }));
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
         return { success: false, message };
       }
 
       // Enhanced validation
       if (!data.password || !data.password.trim()) {
         const message = 'New password is required';
-        safeSetState((prev) => ({ ...prev, error: message }));
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
         return { success: false, message };
       }
 
       if (data.password.length < 8) {
         const message = 'Password must be at least 8 characters long';
-        safeSetState((prev) => ({ ...prev, error: message }));
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
         return { success: false, message };
       }
 
       if (!data.confirmPassword || !data.confirmPassword.trim()) {
         const message = 'Password confirmation is required';
-        safeSetState((prev) => ({ ...prev, error: message }));
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
         return { success: false, message };
       }
 
       if (data.password !== data.confirmPassword) {
         const message = 'Passwords do not match';
-        safeSetState((prev) => ({ ...prev, error: message }));
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
         return { success: false, message };
       }
 
@@ -292,6 +298,7 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}): UsePass
           ...prev,
           phase: 'resetting_password',
           loading: true,
+          retryCount: isRetry ? prev.retryCount : 0, // Only reset if not a retry
           error: null,
         }));
 
@@ -302,6 +309,7 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}): UsePass
             ...prev,
             phase: 'completed',
             loading: false,
+            retryCount: 0,
             completionMessage: result.message,
           }));
 
@@ -332,7 +340,7 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}): UsePass
   const retry = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
     if (state.retryCount >= MAX_RETRY_ATTEMPTS) {
       const message = `Maximum retry attempts (${MAX_RETRY_ATTEMPTS}) exceeded`;
-      safeSetState((prev) => ({ ...prev, error: message }));
+      safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
       return { success: false, message };
     }
 
@@ -351,11 +359,11 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}): UsePass
     // Retry based on current phase
     if (state.phase === 'failed' && lastRequestDataRef.current) {
       // Retry password reset request
-      return requestReset(lastRequestDataRef.current);
+      return requestReset(lastRequestDataRef.current, true);
     } else if (state.resetToken) {
       // Try to re-extract token from URL
       processingTokenRef.current = null;
-      const success = await extractResetToken();
+      const success = await extractResetToken(true);
       return {
         success,
         message: success ? 'Reset token verified' : 'No reset token found',
@@ -363,7 +371,7 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}): UsePass
     }
 
     const message = 'No previous operation to retry';
-    safeSetState((prev) => ({ ...prev, error: message }));
+    safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
     return { success: false, message };
   }, [
     state.retryCount,
@@ -392,7 +400,8 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}): UsePass
   const canRetry =
     state.phase === 'failed' &&
     state.retryCount < MAX_RETRY_ATTEMPTS &&
-    (!state.lastAttemptTimestamp || Date.now() - state.lastAttemptTimestamp >= RETRY_COOLDOWN_MS);
+    state.lastAttemptTimestamp !== null &&
+    Date.now() - state.lastAttemptTimestamp >= RETRY_COOLDOWN_MS;
 
   const hasValidToken = !!state.resetToken;
   const canResetPassword = state.phase === 'token_verified' && hasValidToken;
@@ -406,7 +415,7 @@ export const usePasswordReset = (options: UsePasswordResetOptions = {}): UsePass
         return 25;
       case 'reset_email_sent':
         return 50;
-      case 'token_verifying':
+      case 'token_verified':
         return 60;
       case 'resetting_password':
         return 85;

@@ -35,7 +35,7 @@ interface UseLocalSignupReturn {
   start: (data: RequestEmailVerificationRequest) => Promise<{ success: boolean; message?: string }>;
   cancel: () => Promise<{ success: boolean; message?: string }>;
   complete: (data: CompleteProfileRequest) => Promise<{ success: boolean; accountId?: string; message?: string }>;
-  retry: () => Promise<{ success: boolean; message?: string }>;
+  retry: () => Promise<{ success: boolean; accountId?: string; message?: string }>;
   processTokenFromUrl: () => Promise<{ success: boolean; message?: string }>;
 
   // Computed state for better UX
@@ -88,6 +88,11 @@ export const useLocalSignup = (options: UseLocalSignupOptions = {}): UseLocalSig
   const authService = useAuthService();
   const [state, setState] = useState<SignupState>(INITIAL_STATE);
 
+  // Add refs to store the last operation data for retry
+  const lastStartDataRef = useRef<RequestEmailVerificationRequest | null>(null);
+  const lastCompleteDataRef = useRef<CompleteProfileRequest | null>(null);
+  const lastOperationRef = useRef<'start' | 'complete' | 'cancel' | 'verify' | null>(null);
+
   // Safe state update that checks if component is still mounted
   const safeSetState = useCallback((updater: (prev: SignupState) => SignupState) => {
     setState(updater);
@@ -111,50 +116,311 @@ export const useLocalSignup = (options: UseLocalSignupOptions = {}): UseLocalSig
     [safeSetState],
   );
 
-  // Extract and verify token with proper state management
-  const extractAndVerifyToken = useCallback(async (): Promise<boolean> => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const tokenFromUrl = urlParams.get('token');
+  // Update the start function to store data for retry
+  const start = useCallback(
+    async (data: RequestEmailVerificationRequest, isRetry = false): Promise<{ success: boolean; message?: string }> => {
+      // Validation
+      if (!data.email || !data.email.trim()) {
+        const message = 'Email address is required';
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
+        return { success: false, message };
+      }
 
-    // Check if we should process this token
-    if (!tokenFromUrl) {
-      return false;
-    }
+      if (!data.callbackUrl || !data.callbackUrl.trim()) {
+        const message = 'Callback URL is required';
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
+        return { success: false, message };
+      }
 
-    try {
-      safeSetState((prev) => ({
-        ...prev,
-        phase: 'email_verifying',
-        loading: true,
-        error: null,
-        verificationToken: tokenFromUrl,
-      }));
-
-      const result = await authService.verifyEmailForSignup(tokenFromUrl);
-
-      if (result.profileToken) {
+      try {
         safeSetState((prev) => ({
           ...prev,
-          phase: 'email_verified',
-          loading: false,
-          profileToken: result.profileToken,
+          phase: 'email_sending',
+          loading: true,
           error: null,
+          email: data.email,
+          retryCount: isRetry ? prev.retryCount : 0,
         }));
 
-        return true;
-      } else {
-        throw new Error('Email verification failed - no profile token received');
+        // Store for retry
+        if (!isRetry) {
+          lastStartDataRef.current = data;
+          lastOperationRef.current = 'start';
+        }
+
+        const result = await authService.requestEmailVerification(data);
+
+        if (result.message) {
+          safeSetState((prev) => ({
+            ...prev,
+            phase: 'email_sent',
+            loading: false,
+            lastAttemptTimestamp: Date.now(),
+            retryCount: 0,
+          }));
+          return { success: true, message: result.message };
+        }
+
+        const message = 'Failed to send verification email';
+        safeSetState((prev) => ({
+          ...prev,
+          phase: 'failed',
+          loading: false,
+          error: message,
+          lastAttemptTimestamp: Date.now(),
+        }));
+        return { success: false, message };
+      } catch (error) {
+        const message = handleError(error, 'Failed to send verification email');
+        return { success: false, message };
       }
-    } catch (error: any) {
-      handleError(error, 'Email verification failed');
-      return false;
-    } finally {
-      // Clean up URL without page reload
-      const url = new URL(window.location.href);
-      url.searchParams.delete('token');
-      window.history.replaceState({}, '', url.toString());
+    },
+    [authService, handleError, safeSetState],
+  );
+
+  // Update the complete function to store data for retry
+  const complete = useCallback(
+    async (
+      data: CompleteProfileRequest,
+      isRetry = false,
+    ): Promise<{ success: boolean; accountId?: string; message?: string }> => {
+      if (!state.profileToken) {
+        const message = 'No profile token available. Please verify your email first.';
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
+        return { success: false, message };
+      }
+
+      // Enhanced validation
+      if (!data.firstName?.trim()) {
+        const message = 'First name is required';
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
+        return { success: false, message };
+      }
+
+      if (!data.lastName?.trim()) {
+        const message = 'Last name is required';
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
+        return { success: false, message };
+      }
+
+      if (!data.password || data.password.length < 8) {
+        const message = 'Password must be at least 8 characters long';
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
+        return { success: false, message };
+      }
+
+      if (data.password !== data.confirmPassword) {
+        const message = 'Passwords do not match';
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
+        return { success: false, message };
+      }
+
+      if (!data.agreeToTerms) {
+        const message = 'You must agree to the terms and conditions';
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
+        return { success: false, message };
+      }
+
+      try {
+        safeSetState((prev) => ({
+          ...prev,
+          phase: 'profile_completing',
+          loading: true,
+          error: null,
+          retryCount: isRetry ? prev.retryCount : 0,
+        }));
+
+        // Store for retry
+        if (!isRetry) {
+          lastCompleteDataRef.current = data;
+          lastOperationRef.current = 'complete';
+        }
+
+        const result = await authService.completeProfile(state.profileToken, data);
+
+        if (result.accountId) {
+          safeSetState((prev) => ({
+            ...prev,
+            phase: 'completed',
+            loading: false,
+            retryCount: 0,
+          }));
+
+          return {
+            success: true,
+            accountId: result.accountId,
+            message: `Welcome ${result.name}! Your account has been created successfully.`,
+          };
+        }
+
+        const message = 'Failed to complete profile';
+        safeSetState((prev) => ({
+          ...prev,
+          phase: 'failed',
+          loading: false,
+          error: message,
+          lastAttemptTimestamp: Date.now(),
+        }));
+        return { success: false, message };
+      } catch (error) {
+        const message = handleError(error, 'Failed to complete profile');
+        return { success: false, message };
+      }
+    },
+    [state.profileToken, authService, handleError, safeSetState],
+  );
+
+  // Update cancel to store operation for retry
+  const cancel = useCallback(
+    async (isRetry = false): Promise<{ success: boolean; message?: string }> => {
+      if (!state.email) {
+        const message = 'No signup process to cancel';
+        safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
+        return { success: false, message };
+      }
+
+      try {
+        safeSetState((prev) => ({
+          ...prev,
+          loading: true,
+          error: null,
+          retryCount: isRetry ? prev.retryCount : 0,
+        }));
+
+        // Store for retry
+        if (!isRetry) {
+          lastOperationRef.current = 'cancel';
+        }
+
+        const result = await authService.cancelSignup({ email: state.email });
+
+        if (result) {
+          safeSetState((prev) => ({
+            ...prev,
+            phase: 'canceled',
+            loading: false,
+            retryCount: 0,
+          }));
+          return { success: true, message: 'Signup canceled successfully' };
+        }
+
+        const message = 'Failed to cancel signup';
+        safeSetState((prev) => ({
+          ...prev,
+          loading: false,
+          error: message,
+          lastAttemptTimestamp: Date.now(),
+        }));
+        return { success: false, message };
+      } catch (error) {
+        const message = handleError(error, 'Failed to cancel signup');
+        return { success: false, message };
+      }
+    },
+    [state.email, authService, handleError, safeSetState],
+  );
+
+  // Update extractAndVerifyToken to store operation for retry
+  const extractAndVerifyToken = useCallback(
+    async (isRetry = false): Promise<boolean> => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const tokenFromUrl = urlParams.get('token');
+
+      if (!tokenFromUrl) {
+        return false;
+      }
+
+      try {
+        safeSetState((prev) => ({
+          ...prev,
+          phase: 'email_verifying',
+          loading: true,
+          error: null,
+          verificationToken: tokenFromUrl,
+          retryCount: isRetry ? prev.retryCount : 0,
+        }));
+
+        // Store for retry
+        if (!isRetry) {
+          lastOperationRef.current = 'verify';
+        }
+
+        const result = await authService.verifyEmailForSignup(tokenFromUrl);
+
+        if (result.profileToken) {
+          safeSetState((prev) => ({
+            ...prev,
+            phase: 'email_verified',
+            loading: false,
+            profileToken: result.profileToken,
+            error: null,
+            retryCount: 0,
+          }));
+
+          return true;
+        } else {
+          throw new Error('Email verification failed - no profile token received');
+        }
+      } catch (error: any) {
+        handleError(error, 'Email verification failed');
+        return false;
+      } finally {
+        // Clean up URL without page reload
+        const url = new URL(window.location.href);
+        url.searchParams.delete('token');
+        window.history.replaceState({}, '', url.toString());
+      }
+    },
+    [authService, handleError, safeSetState],
+  );
+
+  const retry = useCallback(async (): Promise<{ success: boolean; accountId?: string; message?: string }> => {
+    if (state.retryCount >= MAX_RETRY_ATTEMPTS) {
+      const message = `Maximum retry attempts (${MAX_RETRY_ATTEMPTS}) exceeded`;
+      safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
+      return { success: false, message };
     }
-  }, [authService, handleError, safeSetState]);
+
+    if (state.lastAttemptTimestamp && Date.now() - state.lastAttemptTimestamp < RETRY_COOLDOWN_MS) {
+      const remainingTime = Math.ceil((RETRY_COOLDOWN_MS - (Date.now() - state.lastAttemptTimestamp)) / 1000);
+      const message = `Please wait ${remainingTime} seconds before retrying`;
+      return { success: false, message };
+    }
+
+    safeSetState((prev) => ({
+      ...prev,
+      retryCount: prev.retryCount + 1,
+      error: null,
+    }));
+
+    // Retry the specific operation that failed
+    switch (lastOperationRef.current) {
+      case 'start':
+        if (lastStartDataRef.current) {
+          return start(lastStartDataRef.current, true);
+        }
+        break;
+      case 'complete':
+        if (lastCompleteDataRef.current) {
+          return complete(lastCompleteDataRef.current, true);
+        }
+        break;
+      case 'cancel':
+        return cancel(true);
+      case 'verify':
+        const success = await extractAndVerifyToken(true);
+        return {
+          success,
+          message: success ? 'Email verification retry successful' : 'Email verification retry failed',
+        };
+      default:
+        break;
+    }
+
+    const message = 'No previous operation to retry';
+    safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
+    return { success: false, message };
+  }, [state.retryCount, state.lastAttemptTimestamp, start, complete, cancel, extractAndVerifyToken, safeSetState]);
 
   const processTokenFromUrl = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
     const success = await extractAndVerifyToken();
@@ -171,206 +437,6 @@ export const useLocalSignup = (options: UseLocalSignupOptions = {}): UseLocalSig
     }
   }, [autoProcessToken]); // Empty dependency array - only run on mount
 
-  // Enhanced start function with validation
-  const start = useCallback(
-    async (data: RequestEmailVerificationRequest): Promise<{ success: boolean; message?: string }> => {
-      // Validation
-      if (!data.email || !data.email.trim()) {
-        const message = 'Email address is required';
-        safeSetState((prev) => ({ ...prev, error: message }));
-        return { success: false, message };
-      }
-
-      if (!data.callbackUrl || !data.callbackUrl.trim()) {
-        const message = 'Callback URL is required';
-        safeSetState((prev) => ({ ...prev, error: message }));
-        return { success: false, message };
-      }
-
-      try {
-        safeSetState((prev) => ({
-          ...prev,
-          phase: 'email_sending',
-          loading: true,
-          error: null,
-          email: data.email,
-          retryCount: 0,
-        }));
-
-        const result = await authService.requestEmailVerification(data);
-
-        if (result.message) {
-          safeSetState((prev) => ({
-            ...prev,
-            phase: 'email_sent',
-            loading: false,
-            lastAttemptTimestamp: Date.now(),
-          }));
-          return { success: true, message: result.message };
-        }
-
-        const message = 'Failed to send verification email';
-        safeSetState((prev) => ({
-          ...prev,
-          phase: 'failed',
-          loading: false,
-          error: message,
-        }));
-        return { success: false, message };
-      } catch (error) {
-        const message = handleError(error, 'Failed to send verification email');
-        return { success: false, message };
-      }
-    },
-    [authService, handleError, safeSetState],
-  );
-
-  // Enhanced cancel with automatic cleanup
-  const cancel = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
-    if (!state.email) {
-      const message = 'No signup process to cancel';
-      safeSetState((prev) => ({ ...prev, error: message }));
-      return { success: false, message };
-    }
-
-    try {
-      safeSetState((prev) => ({
-        ...prev,
-        loading: true,
-        error: null,
-      }));
-
-      const result = await authService.cancelSignup({ email: state.email });
-
-      if (result) {
-        safeSetState((prev) => ({
-          ...prev,
-          phase: 'canceled',
-          loading: false,
-        }));
-        return { success: true, message: 'Signup canceled successfully' };
-      }
-
-      const message = 'Failed to cancel signup';
-      safeSetState((prev) => ({
-        ...prev,
-        loading: false,
-        error: message,
-      }));
-      return { success: false, message };
-    } catch (error) {
-      const message = handleError(error, 'Failed to cancel signup');
-      return { success: false, message };
-    }
-  }, [state.email, authService, handleError, safeSetState]);
-
-  // Enhanced complete with validation and session initialization
-  const complete = useCallback(
-    async (data: CompleteProfileRequest): Promise<{ success: boolean; accountId?: string; message?: string }> => {
-      if (!state.profileToken) {
-        const message = 'No profile token available. Please verify your email first.';
-        safeSetState((prev) => ({ ...prev, error: message }));
-        return { success: false, message };
-      }
-
-      // Enhanced validation
-      if (!data.firstName?.trim()) {
-        const message = 'First name is required';
-        safeSetState((prev) => ({ ...prev, error: message }));
-        return { success: false, message };
-      }
-
-      if (!data.lastName?.trim()) {
-        const message = 'Last name is required';
-        safeSetState((prev) => ({ ...prev, error: message }));
-        return { success: false, message };
-      }
-
-      if (!data.password || data.password.length < 8) {
-        const message = 'Password must be at least 8 characters long';
-        safeSetState((prev) => ({ ...prev, error: message }));
-        return { success: false, message };
-      }
-
-      if (data.password !== data.confirmPassword) {
-        const message = 'Passwords do not match';
-        safeSetState((prev) => ({ ...prev, error: message }));
-        return { success: false, message };
-      }
-
-      if (!data.agreeToTerms) {
-        const message = 'You must agree to the terms and conditions';
-        safeSetState((prev) => ({ ...prev, error: message }));
-        return { success: false, message };
-      }
-
-      try {
-        safeSetState((prev) => ({
-          ...prev,
-          phase: 'profile_completing',
-          loading: true,
-          error: null,
-        }));
-
-        const result = await authService.completeProfile(state.profileToken, data);
-
-        if (result.accountId) {
-          safeSetState((prev) => ({
-            ...prev,
-            phase: 'completed',
-            loading: false,
-          }));
-
-          return {
-            success: true,
-            accountId: result.accountId,
-            message: `Welcome ${result.name}! Your account has been created successfully.`,
-          };
-        }
-
-        const message = 'Failed to complete profile';
-        safeSetState((prev) => ({
-          ...prev,
-          phase: 'failed',
-          loading: false,
-          error: message,
-        }));
-        return { success: false, message };
-      } catch (error) {
-        const message = handleError(error, 'Failed to complete profile');
-        return { success: false, message };
-      }
-    },
-    [state.profileToken, authService, handleError, safeSetState],
-  );
-
-  // Enhanced retry with cooldown and attempt limits
-  const retry = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
-    if (state.retryCount >= MAX_RETRY_ATTEMPTS) {
-      const message = `Maximum retry attempts (${MAX_RETRY_ATTEMPTS}) exceeded`;
-      safeSetState((prev) => ({ ...prev, error: message }));
-      return { success: false, message };
-    }
-
-    if (state.lastAttemptTimestamp && Date.now() - state.lastAttemptTimestamp < RETRY_COOLDOWN_MS) {
-      const remainingTime = Math.ceil((RETRY_COOLDOWN_MS - (Date.now() - state.lastAttemptTimestamp)) / 1000);
-      const message = `Please wait ${remainingTime} seconds before retrying`;
-      return { success: false, message };
-    }
-
-    safeSetState((prev) => ({
-      ...prev,
-      retryCount: prev.retryCount + 1,
-      error: null,
-    }));
-
-    const success = await extractAndVerifyToken();
-    return {
-      success,
-      message: success ? 'Email verification retry successful' : 'Email verification retry failed',
-    };
-  }, [state.retryCount, state.lastAttemptTimestamp, safeSetState, extractAndVerifyToken]);
-
   // Utility functions
   const clearError = useCallback(() => {
     safeSetState((prev) => ({ ...prev, error: null }));
@@ -386,7 +452,8 @@ export const useLocalSignup = (options: UseLocalSignupOptions = {}): UseLocalSig
   const canRetry =
     state.phase === 'failed' &&
     state.retryCount < MAX_RETRY_ATTEMPTS &&
-    (!state.lastAttemptTimestamp || Date.now() - state.lastAttemptTimestamp >= RETRY_COOLDOWN_MS);
+    state.lastAttemptTimestamp !== null &&
+    Date.now() - state.lastAttemptTimestamp >= RETRY_COOLDOWN_MS;
 
   const canComplete = state.phase === 'email_verified' && !!state.profileToken;
   const canCancel = ['email_sending', 'email_sent', 'email_verifying', 'failed'].includes(state.phase);

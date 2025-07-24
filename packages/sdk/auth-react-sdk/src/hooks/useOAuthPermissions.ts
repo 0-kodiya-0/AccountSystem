@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { useAuthService } from '../context/ServicesProvider';
 import { OAuthProviders, CallbackCode, CallbackData } from '../types';
@@ -11,6 +11,8 @@ interface PermissionsState {
   phase: PermissionsPhase;
   loading: boolean;
   error: string | null;
+  retryCount: number;
+  lastAttemptTimestamp: number | null;
   lastProvider: OAuthProviders | null;
   lastScopes: string[] | null;
   // Callback result data
@@ -30,6 +32,8 @@ interface PermissionsReturn {
   phase: PermissionsPhase;
   loading: boolean;
   error: string | null;
+  canRetry: boolean;
+  retryCount: number;
 
   // Convenience getters
   isIdle: boolean;
@@ -48,10 +52,18 @@ interface PermissionsReturn {
   grantedScopes: string[] | null;
 
   // Operations
-  requestPermission: (provider: OAuthProviders, scopeNames: string[], callbackUrl: string) => Promise<void>;
-  getPermissionUrl: (provider: OAuthProviders, scopeNames: string[], callbackUrl: string) => Promise<string>;
-  reauthorizePermissions: (provider: OAuthProviders, callbackUrl: string) => Promise<void>;
-  getReauthorizeUrl: (provider: OAuthProviders, callbackUrl: string) => Promise<string>;
+  requestPermission: (
+    provider: OAuthProviders,
+    scopeNames: string[],
+    callbackUrl: string,
+  ) => Promise<{ success: boolean; message?: string }>;
+  getPermissionUrl: (provider: OAuthProviders, scopeNames: string[], callbackUrl: string) => Promise<string | null>;
+  reauthorizePermissions: (
+    provider: OAuthProviders,
+    callbackUrl: string,
+  ) => Promise<{ success: boolean; message?: string }>;
+  getReauthorizeUrl: (provider: OAuthProviders, callbackUrl: string) => Promise<string | null>;
+  retry: () => Promise<{ success: boolean; message?: string }>;
   processCallbackFromUrl: () => Promise<{ success: boolean; message?: string }>;
 
   // Utilities
@@ -64,17 +76,27 @@ const INITIAL_STATE: PermissionsState = {
   phase: 'idle',
   loading: false,
   error: null,
+  retryCount: 0,
+  lastAttemptTimestamp: null,
   lastProvider: null,
   lastScopes: null,
   callbackMessage: null,
   grantedScopes: null,
 };
 
+const MAX_RETRY_ATTEMPTS = 3;
+const RETRY_COOLDOWN_MS = 5000; // 5 seconds
+
 export function useOAuthPermissions(accountId: string | null, options: PermissionsOptions = {}): PermissionsReturn {
   const { autoProcessCallback = true } = options;
 
   const authService = useAuthService();
   const [state, setState] = useState<PermissionsState>(INITIAL_STATE);
+
+  // Refs for retry logic
+  const lastCallbackUrlRef = useRef<string | null>(null);
+  const lastScopeNamesRef = useRef<string[] | null>(null);
+  const lastOperationRef = useRef<'request' | 'reauthorize' | 'callback' | null>(null);
 
   // Get account data from store to check if it's OAuth
   const accountType = useAppStore((state) => {
@@ -98,6 +120,7 @@ export function useOAuthPermissions(accountId: string | null, options: Permissio
         phase: 'failed',
         loading: false,
         error: apiError.message,
+        lastAttemptTimestamp: Date.now(),
       }));
 
       return apiError.message;
@@ -106,86 +129,97 @@ export function useOAuthPermissions(accountId: string | null, options: Permissio
   );
 
   // Handle OAuth callback from URL parameters
-  const handleOAuthCallback = useCallback(async (): Promise<boolean> => {
-    const urlParams = new URLSearchParams(window.location.search);
+  const handleOAuthCallback = useCallback(
+    async (isRetry = false): Promise<boolean> => {
+      const urlParams = new URLSearchParams(window.location.search);
 
-    const callbackData: CallbackData = {};
-    urlParams.forEach((value, key) => {
-      const decodedValue = decodeURIComponent(value);
+      const callbackData: CallbackData = {};
+      urlParams.forEach((value, key) => {
+        const decodedValue = decodeURIComponent(value);
 
-      // Handle arrays - if value contains commas, split into array
-      if (decodedValue.includes(',')) {
-        callbackData[key] = decodedValue.split(',').map((s) => s.trim());
-      } else {
-        // Handle boolean values
-        if (decodedValue === 'true') {
-          callbackData[key] = true;
-        } else if (decodedValue === 'false') {
-          callbackData[key] = false;
+        // Handle arrays - if value contains commas, split into array
+        if (decodedValue.includes(',')) {
+          callbackData[key] = decodedValue.split(',').map((s) => s.trim());
         } else {
-          callbackData[key] = decodedValue;
+          // Handle boolean values
+          if (decodedValue === 'true') {
+            callbackData[key] = true;
+          } else if (decodedValue === 'false') {
+            callbackData[key] = false;
+          } else {
+            callbackData[key] = decodedValue;
+          }
         }
+      });
+
+      if (urlParams.size <= 0 || !callbackData.code) {
+        return false;
       }
-    });
 
-    if (urlParams.size <= 0 || !callbackData.code) {
-      return false;
-    }
+      try {
+        safeSetState((prev) => ({
+          ...prev,
+          phase: 'processing_callback',
+          loading: true,
+          error: null,
+          retryCount: isRetry ? prev.retryCount : 0,
+        }));
 
-    try {
-      safeSetState((prev) => ({
-        ...prev,
-        phase: 'processing_callback',
-        loading: true,
-        error: null,
-      }));
-
-      // Handle based on callback code
-      switch (callbackData.code) {
-        case CallbackCode.OAUTH_PERMISSION_SUCCESS: {
-          safeSetState((prev) => ({
-            ...prev,
-            phase: 'completed',
-            loading: false,
-            error: null,
-            callbackMessage: callbackData.message || 'Permissions granted successfully!',
-            grantedScopes: Array.isArray(callbackData.scopes)
-              ? callbackData.scopes
-              : typeof callbackData.scopes === 'string'
-                ? [callbackData.scopes]
-                : [],
-            lastProvider: callbackData.provider || prev.lastProvider,
-          }));
-
-          return true;
+        // Store for retry
+        if (!isRetry) {
+          lastOperationRef.current = 'callback';
         }
 
-        case CallbackCode.OAUTH_PERMISSION_ERROR:
-        case CallbackCode.OAUTH_ERROR:
-        default: {
-          const errorMessage = callbackData.error || 'OAuth permission request failed';
+        // Handle based on callback code
+        switch (callbackData.code) {
+          case CallbackCode.OAUTH_PERMISSION_SUCCESS: {
+            safeSetState((prev) => ({
+              ...prev,
+              phase: 'completed',
+              loading: false,
+              error: null,
+              callbackMessage: callbackData.message || 'Permissions granted successfully!',
+              grantedScopes: Array.isArray(callbackData.scopes)
+                ? callbackData.scopes
+                : typeof callbackData.scopes === 'string'
+                  ? [callbackData.scopes]
+                  : [],
+              lastProvider: callbackData.provider || prev.lastProvider,
+              retryCount: 0,
+            }));
 
-          safeSetState((prev) => ({
-            ...prev,
-            phase: 'failed',
-            loading: false,
-            error: errorMessage,
-          }));
+            return true;
+          }
 
-          return false;
+          case CallbackCode.OAUTH_PERMISSION_ERROR:
+          case CallbackCode.OAUTH_ERROR:
+          default: {
+            const errorMessage = callbackData.error || 'OAuth permission request failed';
+
+            safeSetState((prev) => ({
+              ...prev,
+              phase: 'failed',
+              loading: false,
+              error: errorMessage,
+              lastAttemptTimestamp: Date.now(),
+            }));
+
+            return false;
+          }
         }
+      } catch (error) {
+        handleError(error, 'Failed to process OAuth callback');
+        console.error('OAuth callback processing error:', error);
+        return false;
+      } finally {
+        // Clean up URL parameters
+        const url = new URL(window.location.href);
+        url.search = '';
+        window.history.replaceState({}, '', url.toString());
       }
-    } catch (error) {
-      handleError(error, 'Failed to process OAuth callback');
-      console.error('OAuth callback processing error:', error);
-      return false;
-    } finally {
-      // Clean up URL parameters
-      const url = new URL(window.location.href);
-      url.search = '';
-      window.history.replaceState({}, '', url.toString());
-    }
-  }, [safeSetState, handleError]);
+    },
+    [safeSetState, handleError],
+  );
 
   const processCallbackFromUrl = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
     const success = await handleOAuthCallback();
@@ -200,12 +234,19 @@ export function useOAuthPermissions(accountId: string | null, options: Permissio
     if (autoProcessCallback) {
       handleOAuthCallback();
     }
-  }, [autoProcessCallback, handleOAuthCallback]);
+  }, []); // Only run on mount
 
   // OAuth permissions operations
   const requestPermission = useCallback(
-    async (provider: OAuthProviders, scopeNames: string[], callbackUrl: string) => {
-      if (!accountId) return;
+    async (
+      provider: OAuthProviders,
+      scopeNames: string[],
+      callbackUrl: string,
+      isRetry = false,
+    ): Promise<{ success: boolean; message?: string }> => {
+      if (!accountId) {
+        return { success: false, message: 'No account ID available' };
+      }
 
       try {
         if (!callbackUrl) {
@@ -219,7 +260,15 @@ export function useOAuthPermissions(accountId: string | null, options: Permissio
           error: null,
           lastProvider: provider,
           lastScopes: scopeNames,
+          retryCount: isRetry ? prev.retryCount : 0,
         }));
+
+        // Store for retry
+        if (!isRetry) {
+          lastCallbackUrlRef.current = callbackUrl;
+          lastScopeNamesRef.current = scopeNames;
+          lastOperationRef.current = 'request';
+        }
 
         const response = await authService.generatePermissionUrl(provider, {
           accountId: accountId,
@@ -232,12 +281,16 @@ export function useOAuthPermissions(accountId: string | null, options: Permissio
           ...prev,
           phase: 'requesting',
           loading: false,
+          retryCount: 0,
         }));
 
         // Redirect to OAuth provider
         window.location.href = response.authorizationUrl;
+
+        return { success: true, message: `Redirecting to ${provider} for permissions...` };
       } catch (error) {
-        handleError(error, 'Failed to request permission');
+        const message = handleError(error, 'Failed to request permission');
+        return { success: false, message };
       }
     },
     [accountId, authService, handleError, safeSetState],
@@ -245,7 +298,7 @@ export function useOAuthPermissions(accountId: string | null, options: Permissio
 
   const getPermissionUrl = useCallback(
     async (provider: OAuthProviders, scopeNames: string[], callbackUrl: string) => {
-      if (!accountId) return '';
+      if (!accountId) return null;
 
       try {
         if (!callbackUrl) {
@@ -261,15 +314,21 @@ export function useOAuthPermissions(accountId: string | null, options: Permissio
       } catch (error) {
         const apiError = parseApiError(error, 'Failed to get permission URL');
         safeSetState((prev) => ({ ...prev, error: apiError.message }));
-        return '';
+        return null;
       }
     },
     [accountId, authService, safeSetState],
   );
 
   const reauthorizePermissions = useCallback(
-    async (provider: OAuthProviders, callbackUrl: string) => {
-      if (!accountId) return;
+    async (
+      provider: OAuthProviders,
+      callbackUrl: string,
+      isRetry = false,
+    ): Promise<{ success: boolean; message?: string }> => {
+      if (!accountId) {
+        return { success: false, message: 'No account ID available' };
+      }
 
       try {
         if (!callbackUrl) {
@@ -283,7 +342,15 @@ export function useOAuthPermissions(accountId: string | null, options: Permissio
           error: null,
           lastProvider: provider,
           lastScopes: null, // Reauth doesn't specify scopes
+          retryCount: isRetry ? prev.retryCount : 0,
         }));
+
+        // Store for retry
+        if (!isRetry) {
+          lastCallbackUrlRef.current = callbackUrl;
+          lastScopeNamesRef.current = null;
+          lastOperationRef.current = 'reauthorize';
+        }
 
         const response = await authService.generateReauthorizeUrl(provider, {
           accountId: accountId,
@@ -296,10 +363,13 @@ export function useOAuthPermissions(accountId: string | null, options: Permissio
             ...prev,
             phase: 'reauthorizing',
             loading: false,
+            retryCount: 0,
           }));
 
           // Redirect to OAuth provider
           window.location.href = response.authorizationUrl;
+
+          return { success: true, message: `Redirecting to ${provider} for reauthorization...` };
         } else {
           // No reauthorization needed
           safeSetState((prev) => ({
@@ -307,10 +377,14 @@ export function useOAuthPermissions(accountId: string | null, options: Permissio
             phase: 'completed',
             loading: false,
             callbackMessage: response.message || 'No reauthorization needed',
+            retryCount: 0,
           }));
+
+          return { success: true, message: response.message || 'No reauthorization needed' };
         }
       } catch (error) {
-        handleError(error, 'Failed to reauthorize permissions');
+        const message = handleError(error, 'Failed to reauthorize permissions');
+        return { success: false, message };
       }
     },
     [accountId, authService, handleError, safeSetState],
@@ -318,7 +392,7 @@ export function useOAuthPermissions(accountId: string | null, options: Permissio
 
   const getReauthorizeUrl = useCallback(
     async (provider: OAuthProviders, callbackUrl: string) => {
-      if (!accountId) return '';
+      if (!accountId) return null;
 
       try {
         if (!callbackUrl) {
@@ -329,15 +403,70 @@ export function useOAuthPermissions(accountId: string | null, options: Permissio
           accountId: accountId,
           callbackUrl,
         });
-        return response.authorizationUrl || '';
+        return response.authorizationUrl;
       } catch (error) {
         const apiError = parseApiError(error, 'Failed to get reauthorize URL');
         safeSetState((prev) => ({ ...prev, error: apiError.message }));
-        return '';
+        return null;
       }
     },
     [accountId, authService, safeSetState],
   );
+
+  // Enhanced retry with cooldown and attempt limits
+  const retry = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
+    if (state.retryCount >= MAX_RETRY_ATTEMPTS) {
+      const message = `Maximum retry attempts (${MAX_RETRY_ATTEMPTS}) exceeded`;
+      safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
+      return { success: false, message };
+    }
+
+    if (state.lastAttemptTimestamp && Date.now() - state.lastAttemptTimestamp < RETRY_COOLDOWN_MS) {
+      const remainingTime = Math.ceil((RETRY_COOLDOWN_MS - (Date.now() - state.lastAttemptTimestamp)) / 1000);
+      const message = `Please wait ${remainingTime} seconds before retrying`;
+      return { success: false, message };
+    }
+
+    safeSetState((prev) => ({
+      ...prev,
+      retryCount: prev.retryCount + 1,
+      error: null,
+    }));
+
+    // Retry the specific operation that failed
+    switch (lastOperationRef.current) {
+      case 'request':
+        if (state.lastProvider && lastScopeNamesRef.current && lastCallbackUrlRef.current) {
+          return requestPermission(state.lastProvider, lastScopeNamesRef.current, lastCallbackUrlRef.current, true);
+        }
+        break;
+      case 'reauthorize':
+        if (state.lastProvider && lastCallbackUrlRef.current) {
+          return reauthorizePermissions(state.lastProvider, lastCallbackUrlRef.current, true);
+        }
+        break;
+      case 'callback':
+        const success = await handleOAuthCallback(true);
+        return {
+          success,
+          message: success ? 'OAuth callback retry successful' : 'OAuth callback retry failed',
+        };
+      default:
+        break;
+    }
+
+    const message = 'No previous operation to retry';
+    safeSetState((prev) => ({ ...prev, phase: 'failed', loading: false, error: message }));
+    return { success: false, message };
+  }, [
+    state.retryCount,
+    state.lastAttemptTimestamp,
+    state.lastProvider,
+    requestPermission,
+    reauthorizePermissions,
+    handleOAuthCallback,
+    safeSetState,
+  ]);
 
   // Utility functions
   const clearError = useCallback(() => {
@@ -345,8 +474,19 @@ export function useOAuthPermissions(accountId: string | null, options: Permissio
   }, [safeSetState]);
 
   const reset = useCallback(() => {
+    lastCallbackUrlRef.current = null;
+    lastScopeNamesRef.current = null;
+    lastOperationRef.current = null;
     setState(INITIAL_STATE);
   }, []);
+
+  // Computed values for better UX
+  const canRetry =
+    state.phase === 'failed' &&
+    state.retryCount < MAX_RETRY_ATTEMPTS &&
+    state.lastAttemptTimestamp !== null &&
+    Date.now() - state.lastAttemptTimestamp >= RETRY_COOLDOWN_MS &&
+    lastOperationRef.current !== null;
 
   // Derived state
   const canRequest = !!accountId && accountType === 'oauth';
@@ -359,6 +499,8 @@ export function useOAuthPermissions(accountId: string | null, options: Permissio
     phase: state.phase,
     loading: state.loading,
     error: state.error,
+    canRetry,
+    retryCount: state.retryCount,
 
     // Convenience getters
     isIdle: state.phase === 'idle',
@@ -381,6 +523,7 @@ export function useOAuthPermissions(accountId: string | null, options: Permissio
     getPermissionUrl,
     reauthorizePermissions,
     getReauthorizeUrl,
+    retry,
     processCallbackFromUrl,
 
     // Utilities
